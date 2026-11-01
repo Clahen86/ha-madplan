@@ -16,6 +16,7 @@ from .const import (
     IKKE_MAD,
     IKKE_MAD_AVIS,
     REMA_URL,
+    SALLING_URL,
     TJEK_CATALOGS_URL,
     TJEK_DEALER_OFFERS_URL,
     TJEK_DEALER_URL,
@@ -143,3 +144,64 @@ def rema_pris(vare: dict, dato: datetime.date) -> float | None:
     # Normalpris frem for en kampagne, der slutter midt i ugen.
     gyldige.sort(key=lambda p: (p["kampagne"], p["til"]))
     return gyldige[0]["pris"]
+
+
+# ---------------------------------------------------------------- Salling Group (valgfrit)
+
+
+async def _salling(hass: HomeAssistant, noegle: str, sti: str) -> Any:
+    """Kald Salling Groups API. Feeds svarer med en henvisning (307) til en fil, som hentes uden nøgle."""
+    session = async_get_clientsession(hass)
+    tid = aiohttp.ClientTimeout(total=30)
+    hoved = {"Authorization": f"Bearer {noegle}", **_HEADERS}
+    async with session.get(SALLING_URL + sti, headers=hoved, timeout=tid, allow_redirects=False) as r:
+        if r.status in (301, 302, 307, 308):
+            url = r.headers.get("Location") or (await r.json(content_type=None)).get("redirectUrl")
+            async with session.get(url, headers=_HEADERS, timeout=tid) as r2:
+                r2.raise_for_status()
+                return await r2.json(content_type=None)
+        r.raise_for_status()
+        return await r.json(content_type=None)
+
+
+async def hent_salling_butikker(
+    hass: HomeAssistant, noegle: str, brand: str, lat: float, lon: float, radius: int
+) -> list[dict]:
+    """Kædens butikker nærmest hjemmet: [{"id", "navn", "km"}]."""
+    d = await _salling(
+        hass, noegle, f"/v2/stores?brand={brand}&geo={lat},{lon}&radius={radius}&per_page=30&fields=id,name,address,distance_km"
+    )
+    return [
+        {"id": b["id"], "navn": b.get("name") or "", "by": (b.get("address") or {}).get("city") or "", "km": b.get("distance_km")}
+        for b in d or []
+    ]
+
+
+async def hent_salling_katalog(hass: HomeAssistant, noegle: str, feed: str) -> dict[str, dict]:
+    """Kædens ca. 1000 mest købte varer: {ean: {navn, str, billede}}. Priserne slås op enkeltvis."""
+    varer: dict[str, dict] = {}
+    for p in await _salling(hass, noegle, f"/v1/recommendations/most-bought/{feed}/feed") or []:
+        ean = (p.get("gtins") or [None])[0]
+        navn = (p.get("description") or p.get("name") or "").strip()
+        if not ean or not navn:
+            continue
+        mgd, enhed = p.get("contents"), (p.get("contentsUnit") or "").strip()
+        varer[ean] = {
+            "navn": navn[:1].upper() + navn[1:],
+            "str": f"{mgd:g} {enhed}".strip() if isinstance(mgd, (int, float)) else enhed,
+            "billede": p.get("image"),
+        }
+    _LOGGER.debug("Salling-katalog %s: %s varer", feed, len(varer))
+    return varer
+
+
+async def hent_salling_pris(hass: HomeAssistant, noegle: str, ean: str, butik_id: str) -> float | None:
+    """Prisen i den valgte butik, eller None hvis butikken ikke fører varen."""
+    try:
+        d = await _salling(hass, noegle, f"/v2/products/{ean}?storeId={butik_id}")
+    except aiohttp.ClientResponseError as e:
+        if e.status == 404:
+            return None
+        raise
+    pris = ((d or {}).get("instore") or {}).get("price")
+    return float(pris) if pris else None

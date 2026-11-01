@@ -26,10 +26,13 @@ from .const import (
     CONF_BUTIK,
     CONF_INDKOBSLISTE,
     CONF_NOTIFY,
+    CONF_SALLING_BUTIK,
+    CONF_SALLING_NOEGLE,
     DAGE,
     DOMAIN,
     HISTORIK_UGER,
     KATALOG_MAX_ALDER,
+    SALLING,
     SIGNAL_OPDATERET,
     STANDARD_PERSONER,
     STANDARD_REGLER,
@@ -74,6 +77,11 @@ class Madplan:
         self.katalog: dict[str, dict] = {}
         self.tilbud: dict[str, dict] = {}
         self._navne: list[str] = []
+        # Salling Group (valgfrit): kædens eget katalog og priser i den valgte butik.
+        self.salling: dict[str, dict] = {}
+        self._salling_priser: dict[str, float | None] = {}
+        self._salling_fejl = False
+        self._salling_store = Store(hass, 1, f"{DOMAIN}.salling_{self.butik}") if self.butik in SALLING else None
         self._en_laas = asyncio.Lock()
         self._laas = asyncio.Lock()
 
@@ -160,6 +168,8 @@ class Madplan:
         for v in self.plan.get("varer", []):
             if v.get("for_mange"):
                 ud.append(f"Tjek mængden af {v['navn']} – sat til {MAKS_PAKKER} pakker")
+        if self.plan.get("salling_fejl"):
+            ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
         if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
             ud.append(f"Koster {self.plan['total_alle']} kr (budget {r['budget']} kr)")
         return ud
@@ -210,6 +220,8 @@ class Madplan:
                     "slut": slut.isoformat(),
                     "uge": (start + datetime.timedelta(days=1)).isocalendar()[1],
                     "tilbud": self.tilbud,
+                    "salling_priser": self._salling_priser,
+                    "salling_fejl": self._salling_fejl,
                     "retter": retter,
                     "lavet": dt_util.now().isoformat(timespec="minutes"),
                 }
@@ -222,7 +234,8 @@ class Madplan:
                 # Faste behov får nye tilbud hver uge.
                 if behov:
                     try:
-                        self._gem_behov(svar.get("varer", []), behov, start)
+                        await self.hass.async_add_executor_job(self._gem_behov, svar.get("varer", []), behov, start)
+                        self.plan["salling_priser"] = self._salling_priser
                     except Exception as e:  # noqa: BLE001 - planen er lavet; kun ekstra fejlede
                         _LOGGER.warning("Ekstra varer fejlede: %s", e)
                     await self._gem()
@@ -266,6 +279,7 @@ class Madplan:
                 if gammel_ret.get("personer"):
                     ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
                 await self.hass.async_add_executor_job(self._find_varer, [ret], start)
+                self.plan["salling_priser"] = self._salling_priser
                 self.plan["retter"][dag - 1] = ret
                 self._beregn()
                 self._gem_historik()
@@ -353,14 +367,15 @@ class Madplan:
                 continue
             navn, strr, enhedspris, _, tilbud = info
             k = koeb.setdefault(ing["vare"], {"navn": navn, "str": strr, "enhedspris": enhedspris, "tilbud": tilbud,
-                                              "ukendt": ing["vare"].startswith("S:"), "andel": 0.0})
+                                              "ukendt": ing["vare"].startswith("S:"), "ca": self._ca(ing["vare"]), "andel": 0.0})
             k["andel"] += 1.0 if ing.get("pakke_ukendt") or pakke <= 0 else mgd / pakke
         varer = []
         for k in koeb.values():
             antal = min(MAKS_PAKKER, max(1, math.ceil(k["andel"] - 0.15)))
             v = {"navn": k["navn"], "str": k["str"], "antal": antal, "pris": round(antal * k["enhedspris"], 2),
-                 "tilbud": k["tilbud"], "ukendt": k["ukendt"], "anslaaet": not k["tilbud"] and not self.er_rema and not k["ukendt"]}
-            varer.append({"tekst": vare_tekst(v), "pris": pris_tekst(v, 0), "kr": 0 if k["ukendt"] else v["pris"], "tilbud": k["tilbud"]})
+                 "tilbud": k["tilbud"], "ukendt": k["ukendt"], "anslaaet": k["ca"]}
+            varer.append({"tekst": vare_tekst(v), "pris": pris_tekst(v, 0), "kr": 0 if k["ukendt"] else v["pris"],
+                          "tilbud": k["tilbud"], "ca": k["ca"]})
         hv = self._slaa_op(ret.get("hovedvare"), dato)
         return {
             "id": f"{int(time.time())}",
@@ -377,7 +392,7 @@ class Madplan:
             "trin": ret.get("trin", []),
             "koeb": varer,
             "koeb_total": round(sum(v["kr"] for v in varer)),
-            "koeb_ca": not self.er_rema and any(not v["tilbud"] for v in varer),
+            "koeb_ca": any(v["ca"] for v in varer),
         }
 
     async def async_slet_en_ret(self, ret_id: str) -> None:
@@ -535,7 +550,9 @@ class Madplan:
         svar = await self._spoerg(
             "Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste, aftensmad=False)
         )
-        self._gem_behov(svar.get("varer", []), behov, start)
+        # I en baggrundstråd: Salling-priser slås op undervejs.
+        await self.hass.async_add_executor_job(self._gem_behov, svar.get("varer", []), behov, start)
+        self.plan["salling_priser"] = self._salling_priser
 
     @staticmethod
     def _behov_regler(behov: list[str]) -> str:
@@ -577,7 +594,7 @@ class Madplan:
                     "enhedspris": enhedspris,
                     "pris": round(antal * enhedspris, 2),
                     "tilbud": tilbud,
-                    "anslaaet": not tilbud and not self.er_rema and not v["vare"].startswith("S:"),
+                    "anslaaet": self._ca(v["vare"]),
                     "ukendt": v["vare"].startswith("S:"),
                     "hvorfor": v.get("hvorfor", ""),
                     "hjemme": False,
@@ -640,8 +657,20 @@ class Madplan:
                 else:
                     self.katalog = await kilder.hent_rema_katalog(self.hass)
                     await self._katalog_store.async_save({"hentet": time.time(), "varer": self.katalog})
+        if nye_tilbud or not self.plan:
+            self._salling_priser = {}
+            self._salling_fejl = False
+        else:
+            self._salling_priser = dict(self.plan.get("salling_priser") or {})
+        if self.salling_aktiv and not self.salling:
+            await self._hent_salling()
         # Navnelisten tager nogle sekunder første gang; den laves uden for HA's event loop.
-        self._navne = await self.hass.async_add_executor_job(soeg.navneliste, self.katalog, start)
+        if self.salling:
+            self._navne = await self.hass.async_add_executor_job(
+                lambda: soeg.navneliste(self.salling, start, pris=lambda _vid, _v: 1.0)
+            )
+        else:
+            self._navne = await self.hass.async_add_executor_job(soeg.navneliste, self.katalog, start)
         if nye_tilbud:
             self.tilbud = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
             try:
@@ -650,6 +679,21 @@ class Madplan:
                 _LOGGER.debug("Kunne ikke hente butiksinfo for %s", self.butik_navn)
         else:
             self.tilbud = self.plan.get("tilbud") or {}
+
+    async def _hent_salling(self) -> None:
+        """Kædens katalog fra Salling (gemt en uge). Fejler det, bruges REMA's katalog som før."""
+        brand, feed, _ = SALLING[self.butik]
+        gemt = await self._salling_store.async_load() or {}
+        if gemt.get("hentet") and time.time() - gemt["hentet"] < KATALOG_MAX_ALDER and gemt.get("varer"):
+            self.salling = gemt["varer"]
+            return
+        try:
+            self.salling = await kilder.hent_salling_katalog(self.hass, self.entry.options[CONF_SALLING_NOEGLE], feed)
+            await self._salling_store.async_save({"hentet": time.time(), "varer": self.salling})
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("Salling-katalog for %s kunne ikke hentes - bruger ca.-priser: %s", self.butik_navn, e)
+            self.salling = gemt.get("varer") or {}
+            self._salling_fejl = True
 
     async def _spoerg(self, opgave: str, byg: Callable[[bool], str]) -> dict:
         """Spørg med navnelisten; bliver svaret for langt, så én gang til uden (som før listen kom)."""
@@ -714,6 +758,10 @@ class Madplan:
         v = str(vare or "").strip()
         if not v.startswith("S:"):
             return v
+        if self.salling and (
+            vid := soeg.find_vare(self.salling, v[2:], dato, behov, kun_mad, pris=lambda e, _v: self._salling_pris(e))
+        ):
+            return f"N:{vid}"
         if vid := soeg.find_vare(self.katalog, v[2:], dato, behov, kun_mad):
             return f"R:{vid}"
         return "S:" + v[2:].strip().lower()
@@ -752,7 +800,8 @@ class Madplan:
         for ret in retter:
             for ing in ret.get("ingredienser", []):
                 v = str(ing.get("vare") or "")
-                vare = self.tilbud.get(v[2:]) if v.startswith("T:") else self.katalog.get(v[2:]) if v.startswith("R:") else None
+                kilde = {"T": self.tilbud, "R": self.katalog, "N": self.salling}.get(v[:1]) if v[1:2] == ":" else None
+                vare = kilde.get(v[2:]) if kilde is not None else None
                 s = soeg.stoerrelse(vare["str"]) if vare else None
                 ing.pop("pakke_ukendt", None)
                 vaegt = soeg.stk_vaegt(ing.get("navn", ""))
@@ -773,6 +822,30 @@ class Madplan:
     @property
     def er_rema(self) -> bool:
         return self.butik == "rema1000"
+
+    @property
+    def salling_aktiv(self) -> bool:
+        o = self.entry.options
+        return self.butik in SALLING and bool(o.get(CONF_SALLING_NOEGLE)) and bool(o.get(CONF_SALLING_BUTIK))
+
+    def _ca(self, vare_id: str) -> bool:
+        """Cirkapris: REMA's katalogpris brugt i en anden kæde (ikke tilbud, ikke Salling, ikke ukendt)."""
+        return str(vare_id).startswith("R:") and not self.er_rema
+
+    def _salling_pris(self, ean: str) -> float | None:
+        """Pris i den valgte butik. Kaldes fra en baggrundstråd under vareopslaget; fejl giver ca.-pris."""
+        if ean not in self._salling_priser:
+            o = self.entry.options
+            try:
+                self._salling_priser[ean] = asyncio.run_coroutine_threadsafe(
+                    kilder.hent_salling_pris(self.hass, o[CONF_SALLING_NOEGLE], ean, o[CONF_SALLING_BUTIK]),
+                    self.hass.loop,
+                ).result(30)
+            except Exception as e:  # noqa: BLE001 - falder tilbage til REMA's ca.-pris
+                _LOGGER.warning("Salling-pris for %s kunne ikke hentes: %s", ean, e)
+                self._salling_fejl = True
+                return None
+        return self._salling_priser[ean]
 
     def _familiens_regler(self) -> str:
         """Familiens egne regler fra panelet, som tekst til AI'en."""
@@ -822,7 +895,7 @@ class Madplan:
             "almindeligt dansk varenavn uden mærke og mængde. "
             + (
                 ""
-                if self.er_rema
+                if self.er_rema or self.salling_aktiv
                 else "Varer uden tilbud får kun en cirkapris, så brug tilbudsvarer (T:) til så mange "
                 "ingredienser som muligt – altid til kød, fisk, ost og grøntsager, når der findes et passende "
                 "tilbud – og S:-varer kun til det, der ikke er på tilbud. "
@@ -869,6 +942,8 @@ class Madplan:
         elif kilde == "R" and (v := self.katalog.get(vid)):
             if pris := kilder.rema_pris(v, dato):
                 return v["navn"], v["str"], float(pris), v.get("billede"), False
+        elif kilde == "N" and (v := self.salling.get(vid)) and (pris := self._salling_priser.get(vid)):
+            return v["navn"], v["str"], float(pris), v.get("billede"), False
         elif kilde == "S" and vid.strip():
             # Søgeord uden fund i kataloget: kommer på listen uden pris i stedet for et gæt.
             return vid.strip().capitalize(), "", 0.0, None, False
@@ -903,7 +978,7 @@ class Madplan:
                 )
                 # Uden for REMA er normalprisen kun et cirkatal.
                 f["ukendt"] = ing["vare"].startswith("S:")
-                f["anslaaet"] = not tilbud and not self.er_rema and not f["ukendt"]
+                f["anslaaet"] = self._ca(ing["vare"])
                 f["basis"] = f["basis"] and _basis(ing)
                 if not _basis(ing) and (pakke > 0 or ing.get("pakke_ukendt")):
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke

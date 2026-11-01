@@ -8,6 +8,12 @@ CONF_AI_ENTITY = "ai_entity"
 CONF_INDKOBSLISTE = "indkobsliste"
 CONF_NOTIFY = "notify_service"
 CONF_BUTIK = "butik"
+# Salling Group (valgfrit, brugerens egen gratis nøgle): rigtige priser i Netto, føtex og Bilka.
+CONF_SALLING_NOEGLE = "salling_noegle"
+CONF_SALLING_BUTIK = "salling_butik"
+CONF_SALLING_BUTIK_NAVN = "salling_butik_navn"
+SALLING = {"netto": ("netto", "nettoplus", 10), "foetex": ("foetex", "foetexplus", 15), "bilka": ("bilka", "bilkatogo", 60)}
+SALLING_URL = "https://api.sallinggroup.com"
 
 STANDARD_PERSONER = 4
 # Familiens regler for madplanen - fælles for alle butikker.
@@ -62,7 +68,7 @@ IKKE_MAD = re.compile(
     r"neglelak|rengøring|klud|\bsvamp\b|(skure|stål|mirakel)svamp|ståluld|affaldsposer|fryseposer|gave|blomst|"
     r"kalender|legetøj|hot wheels|lego|stueplante|potteplante|\bplante\b|kaktus|roser\b|amaryllis|moppe|duracell|mundpleje|colgate|"
     r"tena\b|libresse|garn\b|samlealbum|\bpapir\b|bagepapir|biotex|vanish|fyrfadslys|kronelys|stearin|affaldssæk|livol|"
-    r"tandpleje|hårpleje|kropspleje|bodylotion|vaskemiddel|opvask",
+    r"tandpleje|hårpleje|kropspleje|bodylotion|vaskemiddel|opvask|piratos",
     re.IGNORECASE,
 )
 # Aviser uden madvarer springes over (Bilka har fx legetøjs- og elektronikkataloger).

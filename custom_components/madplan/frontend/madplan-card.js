@@ -1260,7 +1260,7 @@ class MadplanPanel extends MadplanCard {
       const a = s.attributes;
       farve = this._farve(a);
       logo = a.butik_logo ? `<span class="hlogo"><img src="${esc(a.butik_logo)}" alt=""></span>` : "";
-      under = `${esc(a.butik)}${a.uge ? ` · uge ${esc(a.uge)}` : ""}${a.periode ? ` · ${esc(a.periode)}` : ""}`;
+      under = `${esc(a.salling_butik || a.butik)}${a.uge ? ` · uge ${esc(a.uge)}` : ""}${a.periode ? ` · ${esc(a.periode)}` : ""}`;
       const n = this._hass.states[a.personer_entitet]?.state;
       const dage = (a.dag_entiteter || []).map((e) => this._hass.states[e]);
       if (this._dagValgt == null) {

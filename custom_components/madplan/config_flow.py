@@ -10,7 +10,20 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import BUTIKKER, CONF_AI_ENTITY, CONF_BUTIK, CONF_INDKOBSLISTE, CONF_NOTIFY, DOMAIN, STANDARD_BUTIK
+from . import kilder
+from .const import (
+    BUTIKKER,
+    CONF_AI_ENTITY,
+    CONF_BUTIK,
+    CONF_INDKOBSLISTE,
+    CONF_NOTIFY,
+    CONF_SALLING_BUTIK,
+    CONF_SALLING_BUTIK_NAVN,
+    CONF_SALLING_NOEGLE,
+    DOMAIN,
+    SALLING,
+    STANDARD_BUTIK,
+)
 
 INDSTILLINGER = {
     vol.Required(CONF_AI_ENTITY): selector.EntitySelector(selector.EntitySelectorConfig(domain="ai_task")),
@@ -62,12 +75,64 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MadplanOptionsFlow(OptionsFlow):
-    """Ret indstillinger bagefter."""
+    """Ret indstillinger bagefter. Netto, føtex og Bilka kan få en Salling-nøgle til rigtige priser."""
+
+    _data: dict[str, Any]
+    _butikker: list[dict]
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        butik = self.config_entry.data.get(CONF_BUTIK)
+        felter = dict(INDSTILLINGER)
+        if butik in SALLING:
+            felter[vol.Optional(CONF_SALLING_NOEGLE)] = selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
+        fejl: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            noegle = (user_input.pop(CONF_SALLING_NOEGLE, None) or "").strip()
+            if not noegle or butik not in SALLING:
+                return self.async_create_entry(data=user_input)
+            brand, _, radius = SALLING[butik]
+            try:
+                self._butikker = await kilder.hent_salling_butikker(
+                    self.hass, noegle, brand, self.hass.config.latitude, self.hass.config.longitude, radius
+                )
+            except Exception:  # noqa: BLE001 - forkert nøgle eller Salling nede
+                fejl["base"] = "salling_fejl"
+            else:
+                if self._butikker:
+                    self._data = {**user_input, CONF_SALLING_NOEGLE: noegle}
+                    return await self.async_step_butik()
+                fejl["base"] = "ingen_butikker"
         return self.async_show_form(
             step_id="init",
-            data_schema=self.add_suggested_values_to_schema(vol.Schema(INDSTILLINGER), self.config_entry.options),
+            data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), user_input or self.config_entry.options),
+            errors=fejl,
+        )
+
+    async def async_step_butik(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Vælg butikken; listen er de nærmeste ved hjemmets placering i Home Assistant."""
+        if user_input is not None:
+            valgt = next((b for b in self._butikker if b["id"] == user_input[CONF_SALLING_BUTIK]), {})
+            navn = valgt.get("navn") or ""
+            return self.async_create_entry(
+                data={**self._data, CONF_SALLING_BUTIK: user_input[CONF_SALLING_BUTIK], CONF_SALLING_BUTIK_NAVN: navn}
+            )
+        nu = self.config_entry.options.get(CONF_SALLING_BUTIK)
+        valg = [
+            selector.SelectOptionDict(
+                value=b["id"], label=f"{b['navn']}" + (f" ({b['km']:.1f} km)" if isinstance(b.get("km"), (int, float)) else "")
+            )
+            for b in self._butikker
+        ]
+        standard = nu if any(v["value"] == nu for v in valg) else valg[0]["value"]
+        return self.async_show_form(
+            step_id="butik",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SALLING_BUTIK, default=standard): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=valg, mode=selector.SelectSelectorMode.DROPDOWN)
+                    )
+                }
+            ),
         )

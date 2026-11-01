@@ -8,6 +8,7 @@ AI-forbruget, fordi hele sortimentet ikke skal sendes med.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 import math
 import re
 
@@ -45,6 +46,7 @@ _SYNONYM = {
 # Hele søgeord, AI'en typisk skriver, og hvad REMA kalder varen (ellers rammes fx "Tun i olie" for "olie").
 _UDTRYK = {
     "mælk": "letmælk",
+    "pasta": ("pasta skruer", "fusilli", "penne"),
     "ris": "jasmin ris",
     "olie": "rapsolie",
     "madolie": "rapsolie",
@@ -121,14 +123,36 @@ _BASISVARER = (
     "æbler", "bananer", "appelsiner", "pærer", "frosne grøntsager", "wokgrøntsager", "grøntsagsblanding",
     "frosne ærter", "pommes frites", "kartoffelbåde", "hummus", "oliven",
 )
+# Varenavne med disse (sidste led) er en anden slags ret end råvaren - "Kylling-baconsalat" er ikke kylling.
+_ANDEN_RET = (
+    "salat", "suppe", "sauce", "dressing", "pizza", "horn", "sandwich", "tærte", "chips", "snack", "pålæg",
+    "postej", "paté", "instant", "burger", "nuggets", "smørepålæg", "spread",
+)
+_FARVER = {"rød", "røde", "grøn", "grønne", "sort", "sorte", "hvid", "hvide", "gul", "gule", "brun", "brune"}
+
+
+def _anden_ret(soeg_ord: list[str], navn: list[str]) -> bool:
+    return any(
+        w.endswith(k) and not any(q.endswith(k) for q in soeg_ord) for w in navn for k in _ANDEN_RET
+    )
+
+
+def _ny_farve(soeg_ord: list[str], navn: list[str]) -> bool:
+    """Søgningen er faldet tilbage til ét ord: "sorte bønner" må ikke blive til "grønne bønner"."""
+    return any(w in _FARVER and w not in soeg_ord for w in navn) and any(q in _FARVER for q in soeg_ord)
+
+
 # Ord, der er for brede til at søge på alene ("taco krydderi" må ikke blive til pebernødkrydderi).
-_GENERISK = {"krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld"}
-_BOEJNING = ("e", "r", "er", "en", "n", "ne", "et", "s", "erne")
+_GENERISK = {
+    "krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld",
+    "tern", "skiver", "strimler", "stykker",
+}
+_BOEJNING = ("e", "r", "er", "en", "n", "ne", "s", "erne")
 # Ord der beskriver mængde eller emballage og ikke står i varenavnene.
 _FYLD = {"og", "med", "i", "til", "af", "på", "en", "et", "frisk", "friske", "dåse", "glas", "pakke", "pose", "stk"}
 _FYLD |= {"frosne", "frossen", "frosset", "dybfrosne", "blandede"}
 # Ord i varenavnet, der ikke gør varen til noget andet ("Øko. tomater", "Citron spanien kl. 1").
-_NEUTRAL = (_FYLD - {"glas", "dåse"}) | {"m", "øko", "økologisk", "økologiske", "kl", "dansk", "danske", "spanien", "danmark", "holland"}
+_NEUTRAL = (_FYLD - {"glas", "dåse"}) | {"skiver", "tern", "strimler", "stykker", "kogt", "kogte", "m", "øko", "økologisk", "økologiske", "kl", "dansk", "danske", "spanien", "danmark", "holland"}
 
 
 def stoerrelse(tekst: str) -> tuple[float, str] | None:
@@ -161,6 +185,8 @@ def _score(soeg: list[str], navn: list[str]) -> int | None:
     """
     brugt: set[int] = set()
     sammensat = 0
+    # Ord efter "m." er tilbehør: "Tortelloni m. skinke" er ikke skinke.
+    med = next((i for i, w in enumerate(navn) if w in ("m", "med")), len(navn))
     for t in soeg:
         bedst = None
         for i, w in enumerate(navn):
@@ -169,6 +195,8 @@ def _score(soeg: list[str], navn: list[str]) -> int | None:
                 bedst = (i, p)
         if bedst is None:
             return None
+        if bedst[0] > med:
+            return None  # kun tilbehøret passer ("Kyllingebryst m. chili" er ikke chili)
         brugt.add(bedst[0])
         sammensat += bedst[1]
     ekstra = sum(1 for i, w in enumerate(navn) if i not in brugt and w not in _NEUTRAL)
@@ -245,13 +273,15 @@ def _variant(soegeord: str, v: dict) -> bool:
 _navne_cache: dict[tuple, list[str]] = {}
 
 
-def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
-    """REMA's navne på basisvarerne, så AI'en kan vælge et præcist navn i stedet for at gætte."""
+def navneliste(
+    katalog: dict[str, dict], dato: datetime.date, pris: Callable[[str, dict], float | None] | None = None
+) -> list[str]:
+    """Butikkens navne på basisvarerne, så AI'en kan vælge et præcist navn i stedet for at gætte."""
     noegle = (id(katalog), len(katalog), dato)
     if noegle not in _navne_cache:
         navne: dict[str, str] = {}
         for ord_ in _BASISVARER:
-            if vid := find_vare(katalog, ord_, dato):
+            if vid := find_vare(katalog, ord_, dato, pris=pris):
                 navn = " ".join(katalog[vid]["navn"].split())
                 navne.setdefault(_noegle(navn), navn)
         _navne_cache.clear()
@@ -343,6 +373,7 @@ def find_vare(
     dato: datetime.date,
     behov: tuple[float, str] | None = None,
     kun_mad: bool = True,
+    pris: Callable[[str, dict], float | None] | None = None,
 ) -> str | None:
     """Id på den billigste passende vare, eller None.
 
@@ -351,39 +382,79 @@ def find_vare(
 
     Står søgeordet præcis som et varenavn (AI'en vælger fra navnelisten), bruges det direkte;
     ellers søges der på ordene.
+
+    pris(id, vare) giver varens pris (standard: REMA's katalogpris). Den kaldes kun for de bedste
+    kandidater, så et opslag pr. vare (Salling) ikke sker for hele kataloget.
     """
+    # Opslag pr. vare (Salling) begrænses til de 6 mest oplagte; REMA's priser er lokale, så alle tjekkes.
+    maks = 6 if pris else None
+    pris = pris or (lambda _vid, v: kilder.rema_pris(v, dato))
     noegle = _noegle(soegeord)
     praecis = [
-        ((_pris_for(pris, v["str"], behov)[0], _variant(soegeord, v), _pris_for(pris, v["str"], behov)[1]), vid)
+        vid
         for vid, v in katalog.items()
-        if _noegle(v["navn"]) == noegle
-        and not _stykvare(v["str"])
-        and _passer_type(soegeord, v)
-        and (pris := kilder.rema_pris(v, dato))
+        if _noegle(v["navn"]) == noegle and not _stykvare(v["str"]) and _passer_type(soegeord, v)
     ]
-    if praecis:
-        return min(praecis)[1]
-    soegeord = _UDTRYK.get(" ".join((soegeord or "").lower().split()), soegeord)
-    ord_ = [_SYNONYM.get(o, o) for o in _ord(soegeord) if o not in _FYLD] or _ord(soegeord)
-    if not ord_:
+    if praecis and (vid := _billigst(katalog, praecis, soegeord, behov, pris, maks)):
+        return vid
+    # Faste oversættelser er lavet til REMA's navne; i andre kataloger kan det oprindelige ord passe bedre,
+    # så alle bud prøves, og det bedste match vinder (oversættelsen ved lige godt match).
+    oversat = _UDTRYK.get(" ".join((soegeord or "").lower().split()), ())
+    bud = [*([oversat] if isinstance(oversat, str) else oversat), soegeord]
+    ordlister = [o for o in ([_SYNONYM.get(w, w) for w in _ord(b) if w not in _FYLD] or _ord(b) for b in bud) if o]
+    if not ordlister:
         return None
     # Først alle ord, derefter kun hovedordet: det sidste ("friske champignon" -> "champignon"),
     # medmindre det er et bredt ord som "krydderi" - så det første.
-    hoved = next((o for o in reversed(ord_) if o not in _GENERISK), None)
-    for forsoeg in (ord_, [hoved]) if len(ord_) > 1 and hoved else (ord_,):
-        kandidater: list[tuple[int, tuple[bool, bool, float], str]] = []
-        for vid, v in katalog.items():
-            if (kun_mad and IKKE_MAD.search(v["navn"])) or _stykvare(v["str"]) or not _passer_type(soegeord, v):
-                continue
-            s = _score(forsoeg, _ord(v["navn"]))
-            if s is None or not (pris := kilder.rema_pris(v, dato)):
-                continue
-            enhed_forkert, koster = _pris_for(pris, v["str"], behov)
-            kandidater.append((s, (enhed_forkert, _variant(soegeord, v), koster), vid))
-        if kandidater:
-            bedste = min(k[0] for k in kandidater)
-            return min((k for k in kandidater if k[0] == bedste), key=lambda k: k[1])[2]
+    # Det oprindelige ord får 1 strafpoint, når der findes en oversættelse - den er testet mod REMA.
+    straf = [0] * (len(ordlister) - 1) + [1 if len(ordlister) > 1 else 0]
+    hele = [(o, soegeord, straf[i]) for i, o in enumerate(ordlister)]
+    alle_ord = [w for o in ordlister for w in o]
+    hoveder = []
+    for o in ordlister:
+        hoved = next((w for w in reversed(o) if w not in _GENERISK), None)
+        if len(o) > 1 and hoved:
+            hoveder.append(([hoved], soegeord, 0))
+    for runde in (hele, hoveder):
+        point: dict[str, int] = {}
+        for forsoeg, tekst, ekstra in runde:
+            for vid, v in katalog.items():
+                if (kun_mad and IKKE_MAD.search(v["navn"])) or _stykvare(v["str"]) or not _passer_type(tekst, v):
+                    continue
+                navn = _ord(v["navn"])
+                if _anden_ret(alle_ord, navn) or (runde is hoveder and _ny_farve(alle_ord, navn)):
+                    continue
+                # "hakket kylling" må ikke blive til en hel kylling.
+                if runde is hoveder and "hakket" in alle_ord and not {"hakket", "hakkede"} & set(navn):
+                    continue
+                if (s := _score(forsoeg, navn)) is not None and s + ekstra < point.get(vid, 99):
+                    point[vid] = s + ekstra
+        # De bedst matchende navne først; priserne slås kun op for dem.
+        for s in sorted(set(point.values())):
+            if vid := _billigst(katalog, [v for v, p in point.items() if p == s], soegeord, behov, pris, maks):
+                return vid
     return None
+
+
+def _billigst(
+    katalog: dict[str, dict],
+    vids: list[str],
+    soegeord: str,
+    behov: tuple[float, str] | None,
+    pris: Callable[[str, dict], float | None],
+    maks: int | None = None,
+) -> str | None:
+    """Den billigste af nogle lige gode kandidater (rigtig enhed og almindelig udgave først)."""
+    # Korteste navne først (mest almindelige), og højst 'maks' prisopslag.
+    vids = sorted(vids, key=lambda vid: (_variant(soegeord, katalog[vid]), len(katalog[vid]["navn"])))[:maks]
+    bud = []
+    for vid in vids:
+        v = katalog[vid]
+        if not (p := pris(vid, v)):
+            continue
+        enhed_forkert, koster = _pris_for(p, v["str"], behov)
+        bud.append(((enhed_forkert, _variant(soegeord, v), koster), vid))
+    return min(bud)[1] if bud else None
 
 
 def _stykvare(strr: str) -> bool:

@@ -29,13 +29,26 @@
         "data": {
           "ai_entity": "AI-agent (ai_task)",
           "indkobsliste": "Indkøbsliste (valgfri)",
-          "notify_service": "Notify-service til mail (valgfri)"
+          "notify_service": "Notify-service til mail (valgfri)",
+          "salling_noegle": "Salling Group-nøgle (valgfri)"
         },
         "data_description": {
           "indkobsliste": "Manglende varer lægges på denne liste, når du sender indkøbslisten.",
-          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter."
+          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter.",
+          "salling_noegle": "Kun Netto, føtex og Bilka: rigtige priser fra din egen butik i stedet for ca.-priser. Gratis nøgle fra developer.sallinggroup.dev – se README."
+        }
+      },
+      "butik": {
+        "title": "Din butik",
+        "description": "Butikkerne nærmest hjemmets placering i Home Assistant.",
+        "data": {
+          "salling_butik": "Butik"
         }
       }
+    },
+    "error": {
+      "salling_fejl": "Nøglen virkede ikke. Tjek at den er rigtig, og at din app har adgang til Stores, Products EAN og Recommendations API.",
+      "ingen_butikker": "Der blev ikke fundet butikker i nærheden af hjemmets placering."
     }
   },
   "services": {

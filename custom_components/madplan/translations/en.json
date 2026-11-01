@@ -29,13 +29,26 @@
         "data": {
           "ai_entity": "AI agent (ai_task)",
           "indkobsliste": "Shopping list (optional)",
-          "notify_service": "Notify service for e-mail (optional)"
+          "notify_service": "Notify service for e-mail (optional)",
+          "salling_noegle": "Salling Group API key (optional)"
         },
         "data_description": {
           "indkobsliste": "Missing items are added to this list when you send the shopping list.",
-          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes."
+          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes.",
+          "salling_noegle": "Netto, føtex and Bilka only: real prices from your own store instead of estimates. Free key from developer.sallinggroup.dev – see the README."
+        }
+      },
+      "butik": {
+        "title": "Your store",
+        "description": "The stores nearest your home location in Home Assistant.",
+        "data": {
+          "salling_butik": "Store"
         }
       }
+    },
+    "error": {
+      "salling_fejl": "The key did not work. Check that it is correct and that the app has access to the Stores, Products EAN and Recommendations APIs.",
+      "ingen_butikker": "No stores were found near your home location."
     }
   },
   "services": {
