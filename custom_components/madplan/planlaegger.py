@@ -322,7 +322,14 @@ class Madplan:
             "højst 60 min søndag og lørdag), børnevenlige og smage godt. Byg retterne primært på "
             f"ugens tilbudsvarer fra {self.butik_navn} (T:) og supplér med almindelige varer (R:). "
             "Brug KUN vare-id'er fra listen. "
-            "Varier proteinet: mindst én fiskeret og én vegetarret om ugen, og samme protein højst to "
+            + (
+                ""
+                if self.er_rema
+                else "R:-priserne er kun cirkapriser fra en anden kæde, så brug tilbudsvarer (T:) til så mange "
+                "ingredienser som muligt – altid til kød, fisk, ost og grøntsager, når der findes et passende "
+                "tilbud – og R:-varer kun til det, der ikke er på tilbud. "
+            )
+            + "Varier proteinet: mindst én fiskeret og én vegetarret om ugen, og samme protein højst to "
             "gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
             "BUDGET: sigt efter højst 15 kr pr. person pr. ret. Undgå dyre varer (and, mørbrad, "
             "oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør retten billig.\n"
@@ -425,6 +432,9 @@ class Madplan:
     def _totaler(self) -> None:
         varer = self.plan.get("varer", [])
         self.plan["total"] = round(sum(v["pris"] for v in varer if not v.get("hjemme")))
+        # Delt op i butikkens rigtige priser og cirkapriser (kun uden for REMA).
+        self.plan["total_ca"] = round(sum(v["pris"] for v in varer if not v.get("hjemme") and v.get("anslaaet")))
+        self.plan["total_alle_ca"] = round(sum(v["pris"] for v in varer if v.get("anslaaet")))
         self.plan["sparet"] = round(sum(v["pris"] for v in varer if v.get("hjemme")))
         self.plan["antal_mangler"] = sum(1 for v in varer if not v.get("hjemme"))
 
@@ -454,7 +464,9 @@ class Madplan:
         return (
             f"Madplan uge {self.plan.get('uge', '')} ({periode}) · {self.plan.get('personer', '')} personer\n\n"
             + "\n".join(retter)
-            + f"\n\nINDKØB · {len(mangler)} varer · ca. {self.plan.get('total', 0)} kr\n"
+            + f"\n\nINDKØB · {len(mangler)} varer · ca. {self.plan.get('total', 0)} kr"
+            + (f" (heraf ca. {self.plan['total_ca']} kr anslået)" if self.plan.get("total_ca") else "")
+            + "\n"
             + f"🏷️ = på tilbud i {self.butik_navn}" + ("" if self.er_rema else " · ca. = anslået pris") + "\n\n"
             + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler)
             + "\n\n\nOPSKRIFTER\n"

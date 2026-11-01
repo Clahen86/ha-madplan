@@ -200,7 +200,7 @@ class MadplanCard extends HTMLElement {
             style="--b:${esc(a.butik_farve || "var(--primary-color)")}">
           ${a.butik_logo ? `<img src="${esc(a.butik_logo)}" alt="">` : `<ha-icon icon="mdi:store"></ha-icon>`}
           <span class="bnavn">${esc(a.butik)}</span>
-          <span class="btotal">${a.antal_retter ? kr(a.total_alle) : "–"}</span>
+          <span class="btotal">${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}` : "–"}</span>
           ${billigst ? `<span class="billigst">Billigst</span>` : ""}
         </button>`;
       })
@@ -220,10 +220,11 @@ class MadplanCard extends HTMLElement {
         </div>
       </div>
       <div class="tal">
-        <div class="stor"><b>${kr(s.state)}</b><small>at købe</small></div>
+        <div class="stor"><b>${a.pris_ca ? "ca. " : ""}${kr(s.state)}</b><small>at købe</small></div>
         <div><b>${esc(String(a.pr_kuvert || 0).replace(".", ","))} kr</b><small>pr. kuvert</small></div>
         ${a.sparet ? `<div><b>${kr(a.sparet)}</b><small>har I hjemme</small></div>` : ""}
       </div>
+      ${this._fordeling(a)}
       ${arbejder ? `<div class="arbejder"><div class="streg"></div></div>` : ""}
       ${status ? `<div class="status ${arbejder ? "" : "fejl"}"><ha-icon icon="${arbejder ? "mdi:chef-hat" : "mdi:information-outline"}"></ha-icon>${esc(status)}</div>` : ""}
       <div class="handlinger">
@@ -236,6 +237,18 @@ class MadplanCard extends HTMLElement {
         }
         ${this._knap("ny", "Ny madplan", "mdi:auto-fix", "lys")}
       </div>
+    </div>`;
+  }
+
+  /** Hvor meget af prisen der er butikkens egne priser, og hvor meget der er cirkapriser. */
+  _fordeling(a) {
+    if (!a.pris_ca) return "";
+    const ialt = (a.pris_praecis || 0) + a.pris_ca;
+    const pct = ialt ? Math.round(((a.pris_praecis || 0) / ialt) * 100) : 0;
+    return `<div class="fordeling">
+      <div class="fbar"><div style="width:${pct}%"></div></div>
+      <div class="ftekst"><span><i class="prik fuld"></i>${kr(a.pris_praecis)} tilbudspriser</span>
+        <span><i class="prik"></i>ca. ${kr(a.pris_ca)} anslået</span></div>
     </div>`;
   }
 
@@ -322,7 +335,7 @@ class MadplanCard extends HTMLElement {
       <div class="sektion"><ha-icon icon="mdi:cart-outline"></ha-icon><span>Indkøb</span>
         <span class="mangler">${mangler.length} varer · ${kr(s.state)}</span></div>
       <div class="hjaelp">Tryk på det, I har hjemme, så trækkes det fra.${
-        s.attributes.anslaaede_priser ? " Priser uden for tilbud er cirkapriser." : ""
+        s.attributes.anslaaede_priser ? ` Priser med "ca." er anslået; tilbudspriser er ${esc(s.attributes.butik)}s egne.` : ""
       }</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
       ${mangler.map(linje).join("")}
@@ -410,6 +423,13 @@ const CSS = `
   .tal b { font-size: 18px; }
   .tal .stor b { font-size: 30px; line-height: 1.1; }
   .tal small { color: inherit; opacity: .8; }
+  .fordeling { margin-top: 10px; font-size: 13px; }
+  .fbar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.3); overflow: hidden; }
+  .fbar div { height: 100%; background: var(--brand-tekst); border-radius: 3px; }
+  .ftekst { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 4px; opacity: .9; }
+  .ftekst span { display: inline-flex; align-items: center; gap: 5px; }
+  .prik { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.4); display: inline-block; }
+  .prik.fuld { background: var(--brand-tekst); }
   .arbejder { height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; margin-top: 10px; }
   .streg { height: 100%; width: 40%; background: var(--brand-tekst); border-radius: 2px; animation: glid 1.4s ease-in-out infinite; }
   @keyframes glid { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
