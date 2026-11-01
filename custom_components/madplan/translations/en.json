@@ -6,9 +6,13 @@
         "description": "Weekly dinner plan based on this week's offers.",
         "data": {
           "ai_entity": "AI agent (ai_task)",
-          "indkobsliste": "Shopping list",
-          "personer": "Number of people",
-          "butik": "Store"
+          "butik": "Store",
+          "indkobsliste": "Shopping list (optional)",
+          "notify_service": "Notify service for e-mail (optional)"
+        },
+        "data_description": {
+          "indkobsliste": "Missing items are added to this list when you send the shopping list.",
+          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes."
         }
       }
     },
@@ -22,9 +26,13 @@
         "title": "Madplan",
         "data": {
           "ai_entity": "AI agent (ai_task)",
-          "indkobsliste": "Shopping list",
-          "personer": "Number of people",
-          "butik": "Store"
+          "butik": "Store",
+          "indkobsliste": "Shopping list (optional)",
+          "notify_service": "Notify service for e-mail (optional)"
+        },
+        "data_description": {
+          "indkobsliste": "Missing items are added to this list when you send the shopping list.",
+          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes."
         }
       }
     }
@@ -34,6 +42,36 @@
       "options": {
         "rema1000": "REMA 1000"
       }
+    }
+  },
+  "services": {
+    "ny_plan": {
+      "name": "New meal plan",
+      "description": "Creates a new plan for the week."
+    },
+    "byt_ret": {
+      "name": "Swap dish",
+      "description": "Finds a new dish for one day.",
+      "fields": {
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        }
+      }
+    },
+    "fjern_ret": {
+      "name": "Remove dish",
+      "description": "No dinner that day.",
+      "fields": {
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        }
+      }
+    },
+    "overfoer": {
+      "name": "Send shopping list",
+      "description": "Sends missing items to the shopping list and/or e-mail."
     }
   }
 }

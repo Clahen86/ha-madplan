@@ -6,13 +6,19 @@
         "description": "Ugentlig aftensmadsplan ud fra ugens tilbud.",
         "data": {
           "ai_entity": "AI-agent (ai_task)",
-          "indkobsliste": "Indkøbsliste",
-          "personer": "Antal personer",
-          "butik": "Butik"
+          "butik": "Butik",
+          "indkobsliste": "Indkøbsliste (valgfri)",
+          "notify_service": "Notify-service til mail (valgfri)"
+        },
+        "data_description": {
+          "indkobsliste": "Manglende varer lægges på denne liste, når du sender indkøbslisten.",
+          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter."
         }
       }
     },
-    "abort": { "already_configured": "Madplan er allerede sat op." }
+    "abort": {
+      "already_configured": "Madplan er allerede sat op."
+    }
   },
   "options": {
     "step": {
@@ -20,14 +26,52 @@
         "title": "Madplan",
         "data": {
           "ai_entity": "AI-agent (ai_task)",
-          "indkobsliste": "Indkøbsliste",
-          "personer": "Antal personer",
-          "butik": "Butik"
+          "butik": "Butik",
+          "indkobsliste": "Indkøbsliste (valgfri)",
+          "notify_service": "Notify-service til mail (valgfri)"
+        },
+        "data_description": {
+          "indkobsliste": "Manglende varer lægges på denne liste, når du sender indkøbslisten.",
+          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter."
         }
       }
     }
   },
   "selector": {
-    "butik": { "options": { "rema1000": "REMA 1000" } }
+    "butik": {
+      "options": {
+        "rema1000": "REMA 1000"
+      }
+    }
+  },
+  "services": {
+    "ny_plan": {
+      "name": "Ny madplan",
+      "description": "Laver en ny plan for ugen."
+    },
+    "byt_ret": {
+      "name": "Byt ret",
+      "description": "Finder en ny ret til én dag.",
+      "fields": {
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        }
+      }
+    },
+    "fjern_ret": {
+      "name": "Fjern ret",
+      "description": "Ingen aftensmad den dag.",
+      "fields": {
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        }
+      }
+    },
+    "overfoer": {
+      "name": "Send indkøbsliste",
+      "description": "Sender de manglende varer til indkøbslisten og/eller mail."
+    }
   }
 }
