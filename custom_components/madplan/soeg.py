@@ -164,6 +164,20 @@ def ligner(a: str, b: str) -> bool:
     return False
 
 
+def _noegle(navn: str) -> str:
+    return " ".join((navn or "").lower().split())
+
+
+def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
+    """REMA's varenavne (madvarer med pris) til AI'en, så den kan vælge et præcist navn i stedet for at gætte."""
+    navne: dict[str, str] = {}
+    for v in katalog.values():
+        if IKKE_MAD.search(v["navn"]) or _stykvare(v["str"]) or not kilder.rema_pris(v, dato):
+            continue
+        navne.setdefault(_noegle(v["navn"]), " ".join(v["navn"].split()))
+    return sorted(navne.values(), key=str.lower)
+
+
 def find_vare(
     katalog: dict[str, dict],
     soegeord: str,
@@ -175,7 +189,18 @@ def find_vare(
 
     behov = (mængde, enhed) for hele ugen: så vælges den vare, der dækker behovet billigst,
     i stedet for bare den billigste pakning.
+
+    Står søgeordet præcis som et varenavn (AI'en vælger fra navnelisten), bruges det direkte;
+    ellers søges der på ordene.
     """
+    noegle = _noegle(soegeord)
+    praecis = [
+        (_pris_for(pris, v["str"], behov), vid)
+        for vid, v in katalog.items()
+        if _noegle(v["navn"]) == noegle and not _stykvare(v["str"]) and (pris := kilder.rema_pris(v, dato))
+    ]
+    if praecis:
+        return min(praecis)[1]
     soegeord = _UDTRYK.get(" ".join((soegeord or "").lower().split()), soegeord)
     ord_ = [_SYNONYM.get(o, o) for o in _ord(soegeord) if o not in _FYLD] or _ord(soegeord)
     if not ord_:

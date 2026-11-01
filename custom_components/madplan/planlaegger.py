@@ -394,14 +394,14 @@ class Madplan:
         return (
             "Ud over aftensmaden skal familien bruge varer til hvert behov herunder. Vælg konkrete, almindelige "
             "varer, som familien vil kunne lide, og brug så vidt muligt tilbudsvarer (T:id fra listen). Er der "
-            "ikke et passende tilbud, så skriv varen som 'S:søgeord' (et kort, almindeligt dansk varenavn uden "
-            "mærke og mængde, fx 'S:leverpostej'). Hold det billigt, og vælg højst 3-4 forskellige varer pr. "
+            "ikke et passende tilbud, så skriv varen som 'S:navn' med et navn præcis fra listen ALMINDELIGE VARER "
+            "(fx 'S:Leverpostej'), eller et kort, almindeligt dansk varenavn, hvis den ikke findes der. Hold det billigt, og vælg højst 3-4 forskellige varer pr. "
             f"behov. Behov: {'; '.join(behov)}"
         )
 
     @staticmethod
     def _behov_skema() -> str:
-        return '"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "S:søgeord", "hvorfor": str (kort)}]'
+        return '"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "S:navn", "hvorfor": str (kort)}]'
 
     def _gem_behov(self, varer: list[dict], behov: list[str], start: datetime.date) -> None:
         nye = []
@@ -533,10 +533,13 @@ class Madplan:
         raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
 
     def _vare_tekst(self) -> str:
-        """Kun ugens tilbud. Resten skriver AI'en som søgeord, og de slås op i REMA's katalog
-        bagefter - hele sortimentet i hvert kald ville bruge ca. 50.000 tokens."""
+        """Ugens tilbud og en ren navneliste over almindelige varer. Pris og størrelse slås op
+        bagefter - hele sortimentet med priser i hvert kald ville bruge ca. 50.000 tokens."""
         linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
         linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in self.tilbud.items()]
+        start = datetime.date.fromisoformat(self.plan["start"]) if self.plan.get("start") else dt_util.now().date()
+        linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
+        linjer.append("; ".join(soeg.navneliste(self.katalog, start)))
         return "\n".join(linjer)
 
     def _find_vare(self, vare: Any, dato: datetime.date, behov: tuple[float, str] | None, kun_mad: bool = True) -> str:
@@ -639,8 +642,9 @@ class Madplan:
             f"servering på hverdage, højst {max(60, r['max_tid'])} min søndag og lørdag), børnevenlige og "
             "smage godt. Byg retterne primært på "
             f"ugens tilbudsvarer fra {self.butik_navn} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
-            "du som 'S:søgeord': et kort, almindeligt dansk varenavn, som det står i et supermarked, uden mærke "
-            "og mængde (fx 'S:hakkede tomater', 'S:piskefløde', 'S:basmati ris', 'S:løg', 'S:letmælk'). "
+            "du som 'S:navn', hvor navn står PRÆCIS som på listen ALMINDELIGE VARER (fx 'S:Hakkede tomater', "
+            "'S:Piskefløde 36%', 'S:Basmati ris'). Kun hvis varen slet ikke findes på listen, skriver du et kort, "
+            "almindeligt dansk varenavn uden mærke og mængde. "
             + (
                 ""
                 if self.er_rema
@@ -670,9 +674,9 @@ class Madplan:
         return (
             '{"navn": str, "kort": str (én linje), "tid_min": int, "sundhed": str (kort), '
             '"vegetar": bool, "fisk": bool, '
-            '"hovedvare": "T:id" eller "S:søgeord", "trin": [str], '
+            '"hovedvare": "T:id" eller "S:navn", "trin": [str], '
             '"ingredienser": [{"navn": str, "pr_person": number, "enhed": "g"|"ml"|"stk", '
-            '"vare": "T:id" eller "S:søgeord", "pakke": number, "basis": bool}]}'
+            '"vare": "T:id" eller "S:navn", "pakke": number, "basis": bool}]}'
         )
 
     # ------------------------------------------------------------------ beregning
