@@ -310,8 +310,9 @@ class Madplan:
                     self._regler()
                     + f"Lav ÉN aftensret til {n} personer i dag.\n"
                     + (
-                        f"Familien har allerede: {', '.join(har)}. Byg retten på så mange af dem som muligt, og sæt "
-                        "'har': true på de ingredienser, de har. De skal ikke købes.\n"
+                        f"Familien har allerede: {', '.join(har)}. Retten SKAL bruge det, familien har (alle tingene, "
+                        "hvis de passer sammen). Sæt 'har': true KUN på de ingredienser, der står på den liste - "
+                        "alt andet skal købes og har 'har': false.\n"
                         if har
                         else ""
                     )
@@ -345,7 +346,10 @@ class Madplan:
             enhed = ing.get("enhed", "")
             vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
             linjer.append(f"{vis} {ing.get('navn', '')}".strip())
-            if ing.get("har") or ing.get("basis") or not (info := self._slaa_op(ing.get("vare"), dato)):
+            # Det, familien har, afgøres af deres egen liste - ikke af AI'ens 'har', som kan tage fejl.
+            navn_ing = str(ing.get("navn", ""))
+            ing["har"] = any(soeg.ligner(navn_ing, h) or soeg.ligner(h, navn_ing) for h in har)
+            if ing["har"] or ing.get("basis") or not (info := self._slaa_op(ing.get("vare"), dato)):
                 continue
             navn, strr, enhedspris, _, tilbud = info
             k = koeb.setdefault(ing["vare"], {"navn": navn, "str": strr, "enhedspris": enhedspris, "tilbud": tilbud,
