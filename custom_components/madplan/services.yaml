@@ -22,3 +22,15 @@ fjern_ret:
 overfoer:
   fields:
     entity_id: *madplan
+tilfoej_behov:
+  fields:
+    entity_id: *madplan
+    tekst: &tekst
+      required: true
+      example: "pålæg"
+      selector:
+        text:
+fjern_behov:
+  fields:
+    entity_id: *madplan
+    tekst: *tekst

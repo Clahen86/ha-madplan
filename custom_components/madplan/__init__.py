@@ -27,6 +27,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 KORT_URL = "/madplan/madplan-card.js"
 SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id})
+BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): vol.All(cv.string, vol.Length(min=2, max=80))})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
@@ -66,10 +67,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def overfoer(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_overfoer()
 
+    async def tilfoej_behov(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
+
+    async def fjern_behov(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_fjern_behov(call.data["tekst"])
+
     hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "overfoer", overfoer, schema=SKEMA)
+    hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=BEHOV_SKEMA)
+    hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     return True
 
 

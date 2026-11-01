@@ -80,13 +80,20 @@ class Madplan:
         andre = [e.runtime_data.personer for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
+        self.behov = data.get("behov", [])
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
 
     async def _gem(self) -> None:
         await self._store.async_save(
-            {"plan": self.plan, "historik": self.historik, "personer": self.personer, "butik_info": self.butik_info}
+            {
+                "plan": self.plan,
+                "historik": self.historik,
+                "personer": self.personer,
+                "butik_info": self.butik_info,
+                "behov": self.behov,
+            }
         )
 
     def opdater(self) -> None:
@@ -134,6 +141,16 @@ class Madplan:
                 await self._gem()
                 self.opdater()
                 _LOGGER.info("Madplan lavet for %s - %s", start, slut)
+                # Faste behov (pålæg, madpakker …) får nye tilbud hver uge.
+                if self.behov:
+                    self._status("Finder tilbud til jeres ekstra varer …")
+                    try:
+                        await self._loes_behov(self.behov)
+                    except Exception as e:  # noqa: BLE001 - planen er lavet; kun ekstra fejlede
+                        _LOGGER.warning("Ekstra varer fejlede: %s", e)
+                    self.plan["status"] = "Klar"
+                    await self._gem()
+                    self.opdater()
             except Exception as e:  # noqa: BLE001 - vises i status på dashboardet
                 _LOGGER.exception("Madplan fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -199,10 +216,16 @@ class Madplan:
             self.opdater()
 
     async def async_saet_personer(self, antal: int) -> None:
+        gammel = self.personer
         self.personer = max(1, int(antal))
         if self.plan.get("retter") and not self.optaget:
             await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
             self._beregn()
+        # Ekstra varer skaleres med antal personer.
+        for e in self.plan.get("ekstra", []):
+            e["antal"] = max(1, round(e["antal"] * self.personer / max(1, gammel)))
+            e["pris"] = round(e["antal"] * e["enhedspris"], 2)
+        self._totaler()
         await self._gem()
         self.opdater()
 
@@ -215,9 +238,104 @@ class Madplan:
         await self._gem()
         self.opdater()
 
+    async def async_tilfoej_behov(self, tekst: str) -> None:
+        """Fx "pålæg" eller "frugt til madpakker": AI vælger tilbudsvarer til en uge."""
+        tekst = tekst.strip()
+        if not tekst or self.optaget:
+            return
+        async with self._laas:
+            try:
+                if tekst.lower() not in (b.lower() for b in self.behov):
+                    self.behov.append(tekst)
+                self._status(f"Finder tilbud på {tekst} …")
+                await self._loes_behov([tekst])
+                self.plan["status"] = "Klar"
+                await self._gem()
+                self.opdater()
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.exception("Ekstra vare fejlede")
+                self._status(f"Fejl: {str(e)[:120]}")
+
+    async def async_fjern_behov(self, tekst: str) -> None:
+        self.behov = [b for b in self.behov if b.lower() != tekst.strip().lower()]
+        self.plan["ekstra"] = [e for e in self.plan.get("ekstra", []) if e["behov"].lower() != tekst.strip().lower()]
+        self._totaler()
+        await self._gem()
+        self.opdater()
+
+    async def async_saet_ekstra(self, uid: str, hjemme: bool | None = None, slet: bool = False) -> None:
+        """Afkryds eller slet én ekstra vare."""
+        ekstra = self.plan.get("ekstra", [])
+        if slet:
+            self.plan["ekstra"] = [e for e in ekstra if e["uid"] != uid]
+        else:
+            for e in ekstra:
+                if e["uid"] == uid:
+                    e["hjemme"] = bool(hjemme)
+        self._totaler()
+        await self._gem()
+        self.opdater()
+
+    async def _loes_behov(self, behov: list[str]) -> None:
+        if self.plan.get("start"):
+            start = datetime.date.fromisoformat(self.plan["start"])
+            await self._hent_data(start, start + datetime.timedelta(days=6))
+        else:
+            start, slut = self._plan_uge()
+            await self._hent_data(start, slut, nye_tilbud=True)
+            self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
+        n = self.personer
+        instr = (
+            f"Du hjælper en dansk familie på {n} personer med indkøb i {self.butik_navn} til en hel uge "
+            "ud over aftensmaden. For hvert behov herunder: vælg konkrete, almindelige varer, som familien "
+            "vil kunne lide, og brug så vidt muligt tilbudsvarer (T:). Brug kun R:-varer, hvis der ikke er "
+            "et passende tilbud. Vælg gerne flere forskellige varer pr. behov (fx flere slags pålæg eller "
+            "frugt), men hold det billigt. 'antal' er antal pakninger, så det rækker en uge for "
+            f"{n} personer (madpakker: 5 hverdage). Brug KUN vare-id'er fra listen.\n"
+            f"Behov: {'; '.join(behov)}\n"
+            'Svar KUN med JSON: {"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "R:id", '
+            '"antal": int, "hvorfor": str (kort)}]}\n\n' + self._vare_tekst(start)
+        )
+        svar = await self._spoerg_ai("Madplan ekstra varer", instr)
+        nye = []
+        for i, v in enumerate(svar.get("varer", [])):
+            info = self._slaa_op(v.get("vare"), start)
+            if not info:
+                continue
+            navn, strr, enhedspris, _, tilbud = info
+            antal = max(1, int(v.get("antal") or 1))
+            # AI'en staver ikke altid behovet præcis som brugeren; brug brugerens ord.
+            b = str(v.get("behov") or "").lower()
+            hoerer_til = next((x for x in behov if x.lower() == b), None) or next(
+                (x for x in behov if b and (x.lower() in b or b in x.lower())), behov[0]
+            )
+            nye.append(
+                {
+                    "uid": f"{v['vare']}-{int(time.time())}-{i}",
+                    "key": v["vare"],
+                    "behov": hoerer_til,
+                    "navn": navn,
+                    "str": strr,
+                    "antal": antal,
+                    "enhedspris": enhedspris,
+                    "pris": round(antal * enhedspris, 2),
+                    "tilbud": tilbud,
+                    "anslaaet": not tilbud and not self.er_rema,
+                    "hvorfor": v.get("hvorfor", ""),
+                    "hjemme": False,
+                }
+            )
+        if not nye:
+            raise HomeAssistantError(f"Fandt ingen varer til {', '.join(behov)}")
+        # Behov, der løses igen, erstatter deres gamle varer.
+        loest = {b.lower() for b in behov}
+        self.plan["ekstra"] = [e for e in self.plan.get("ekstra", []) if e["behov"].lower() not in loest] + nye
+        self._totaler()
+
     async def async_overfoer(self) -> None:
         """Lægger manglende varer på indkøbslisten og/eller sender dem som besked."""
         mangler = [v for v in self.plan.get("varer", []) if not v.get("hjemme")]
+        mangler += [e for e in self.plan.get("ekstra", []) if not e.get("hjemme")]
         opts = self.entry.options
         try:
             if liste := opts.get(CONF_INDKOBSLISTE):
@@ -444,6 +562,9 @@ class Madplan:
         self.plan["total_alle_ca"] = round(sum(v["pris"] for v in varer if v.get("anslaaet")))
         self.plan["sparet"] = round(sum(v["pris"] for v in varer if v.get("hjemme")))
         self.plan["antal_mangler"] = sum(1 for v in varer if not v.get("hjemme"))
+        ekstra = self.plan.get("ekstra", [])
+        self.plan["ekstra_total"] = round(sum(e["pris"] for e in ekstra if not e.get("hjemme")))
+        self.plan["ekstra_ca"] = round(sum(e["pris"] for e in ekstra if not e.get("hjemme") and e.get("anslaaet")))
 
     def _besked(self, mangler: list[dict]) -> str:
         try:
@@ -468,6 +589,15 @@ class Madplan:
             blok += ["", "Sådan gør du:"]
             blok += [f"{n}. {t}" for n, t in enumerate(r.get("trin", []), start=1)]
             opskrifter.append("\n".join(blok))
+        ekstra = [v for v in mangler if "behov" in v]
+        mangler = [v for v in mangler if "behov" not in v]
+        ekstra_tekst = ""
+        if ekstra:
+            ekstra_tekst = f"\n\nEKSTRA · {len(ekstra)} varer · ca. {self.plan.get('ekstra_total', 0)} kr\n"
+            for behov in dict.fromkeys(e["behov"] for e in ekstra):
+                ekstra_tekst += f"\n{behov.capitalize()}:\n" + "\n".join(
+                    f"☐ {vare_tekst(e)}  {pris_tekst(e, 0)}" for e in ekstra if e["behov"] == behov
+                )
         return (
             f"Madplan uge {self.plan.get('uge', '')} ({periode}) · {self.plan.get('personer', '')} personer\n\n"
             + "\n".join(retter)
@@ -476,6 +606,7 @@ class Madplan:
             + "\n"
             + f"🏷️ = på tilbud i {self.butik_navn}" + ("" if self.er_rema else " · ca. = anslået pris") + "\n\n"
             + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler)
+            + ekstra_tekst
             + "\n\n\nOPSKRIFTER\n"
             + "\n\n".join(opskrifter)
         )

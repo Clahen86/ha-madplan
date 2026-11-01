@@ -12,7 +12,7 @@ from .planlaegger import pris_tekst, vare_tekst
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities([MadplanVarer(entry.runtime_data)])
+    async_add_entities([MadplanVarer(entry.runtime_data), MadplanEkstra(entry.runtime_data)])
 
 
 class MadplanVarer(MadplanEntity, TodoListEntity):
@@ -37,3 +37,37 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         await self.madplan.async_saet_hjemme(item.uid, item.status == TodoItemStatus.COMPLETED)
+
+
+class MadplanEkstra(MadplanEntity, TodoListEntity):
+    """Varer til ugens øvrige behov (pålæg, madpakker …). Afkrydset = har det. Kan slettes."""
+
+    _attr_name = "Ekstra varer"
+    _attr_icon = "mdi:basket-plus-outline"
+    _attr_supported_features = (
+        TodoListEntityFeature.UPDATE_TODO_ITEM
+        | TodoListEntityFeature.DELETE_TODO_ITEM
+        | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+    )
+
+    def __init__(self, madplan) -> None:
+        super().__init__(madplan, "ekstra")
+
+    @property
+    def todo_items(self) -> list[TodoItem]:
+        return [
+            TodoItem(
+                summary=vare_tekst(e),
+                uid=e["uid"],
+                status=TodoItemStatus.COMPLETED if e.get("hjemme") else TodoItemStatus.NEEDS_ACTION,
+                description=f"{pris_tekst(e)} · {e['behov']}",
+            )
+            for e in self.madplan.plan.get("ekstra", [])
+        ]
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        await self.madplan.async_saet_ekstra(item.uid, hjemme=item.status == TodoItemStatus.COMPLETED)
+
+    async def async_delete_todo_items(self, uids: list[str]) -> None:
+        for uid in uids:
+            await self.madplan.async_saet_ekstra(uid, slet=True)

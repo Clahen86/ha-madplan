@@ -30,12 +30,25 @@ class MadplanCard extends HTMLElement {
   setConfig(config) {
     this._cfg = { titel: "Ugens madplan", vis_indkob: true, ...config };
     this._varer = [];
+    this._ekstra = [];
+    this._behovTekst = this._behovTekst || "";
     this._fane = this._fane || "ing";
     this._visHjemme = false;
     this._bekraeft = null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this.shadowRoot.addEventListener("click", (ev) => this._klik(ev));
+      this.shadowRoot.addEventListener("input", (ev) => {
+        if (ev.target.name === "behov") this._behovTekst = ev.target.value;
+      });
+      this.shadowRoot.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const tekst = this._behovTekst.trim();
+        if (tekst.length < 2) return;
+        this._kald("madplan", "tilfoej_behov", { entity_id: this._valgt, tekst });
+        this._behovTekst = "";
+        this._tegn();
+      });
     }
     this._sidst = null;
   }
@@ -45,8 +58,7 @@ class MadplanCard extends HTMLElement {
     const planer = this._planer();
     if (!this._valgt || !planer.includes(this._valgt)) this._valgt = planer[0];
     const p = hass.states[this._valgt];
-    const varer = p?.attributes.varer_entitet;
-    if (this._cfg.vis_indkob && varer !== this._varerId) this._abonner(varer);
+    if (this._cfg.vis_indkob && p && this._listeNoegle(p.attributes) !== this._lister) this._abonner(p.attributes);
     // Tegn kun igen, når madplanens egne enheder ændrer sig.
     const ids = [...planer];
     if (p) ids.push(p.attributes.personer_entitet, ...(p.attributes.dag_entiteter || []));
@@ -57,11 +69,8 @@ class MadplanCard extends HTMLElement {
   }
 
   connectedCallback() {
-    if (this._hass && this._varerId && !this._unsub) {
-      const id = this._varerId;
-      this._varerId = null;
-      this._abonner(id);
-    }
+    const p = this._hass?.states[this._valgt];
+    if (p && this._cfg?.vis_indkob && !this._unsubs?.length) this._abonner(p.attributes);
   }
 
   disconnectedCallback() {
@@ -84,25 +93,41 @@ class MadplanCard extends HTMLElement {
       .sort();
   }
 
-  _afmeld() {
-    if (this._unsub) this._unsub.then((u) => u()).catch(() => {});
-    this._unsub = null;
+  _listeNoegle(a) {
+    return `${a.varer_entitet}|${a.ekstra_entitet}`;
   }
 
-  _abonner(entity) {
+  _afmeld() {
+    for (const u of this._unsubs || []) u.then((f) => f()).catch(() => {});
+    this._unsubs = [];
+  }
+
+  /** Lyt på butikkens to lister: aftensmadens varer og ekstra varer. */
+  _abonner(a) {
     this._afmeld();
-    this._varerId = entity;
+    this._lister = this._listeNoegle(a);
+    this._varerId = a.varer_entitet;
+    this._ekstraId = a.ekstra_entitet;
     this._varer = [];
-    if (!entity || !this.isConnected) return;
-    this._unsub = this._hass.connection
-      .subscribeMessage(
-        (msg) => {
-          this._varer = msg.items || [];
-          this._tegn();
-        },
-        { type: "todo/item/subscribe", entity_id: entity },
-      )
-      .catch(() => (this._unsub = null));
+    this._ekstra = [];
+    if (!this.isConnected) return;
+    for (const [id, felt] of [
+      [this._varerId, "_varer"],
+      [this._ekstraId, "_ekstra"],
+    ]) {
+      if (!id) continue;
+      this._unsubs.push(
+        this._hass.connection
+          .subscribeMessage(
+            (msg) => {
+              this[felt] = msg.items || [];
+              this._tegn();
+            },
+            { type: "todo/item/subscribe", entity_id: id },
+          )
+          .catch(() => () => {}),
+      );
+    }
   }
 
   _kald(domain, service, data = {}) {
@@ -115,7 +140,7 @@ class MadplanCard extends HTMLElement {
     const h = el.dataset.h;
     const dag = Number(el.dataset.dag || 0);
     const id = `${h}-${dag}`;
-    if (["ny", "byt", "fjern", "send"].includes(h) && this._bekraeft !== id) {
+    if (["ny", "byt", "fjern", "send", "fjernbehov"].includes(h) && this._bekraeft !== id) {
       this._bekraeft = id;
       clearTimeout(this._timer);
       this._timer = setTimeout(() => {
@@ -133,7 +158,7 @@ class MadplanCard extends HTMLElement {
       case "butik":
         this._valgt = el.dataset.id;
         this._dagValgt = null;
-        this._abonner(this._hass.states[this._valgt]?.attributes.varer_entitet);
+        if (this._hass.states[this._valgt]) this._abonner(this._hass.states[this._valgt].attributes);
         break;
       case "dag":
         this._dagValgt = dag - 1;
@@ -178,17 +203,33 @@ class MadplanCard extends HTMLElement {
         this._visHjemme = !this._visHjemme;
         break;
       case "vare": {
-        const v = this._varer.find((x) => x.uid === el.dataset.uid);
+        const ekstra = el.dataset.liste === "ekstra";
+        const v = (ekstra ? this._ekstra : this._varer).find((x) => x.uid === el.dataset.uid);
         if (v)
           this._kald("todo", "update_item", {
-            entity_id: this._varerId,
+            entity_id: ekstra ? this._ekstraId : this._varerId,
             item: v.uid,
             status: v.status === "completed" ? "needs_action" : "completed",
           });
         break;
       }
+      case "slet":
+        ev.stopPropagation();
+        this._kald("todo", "remove_item", { entity_id: this._ekstraId, item: el.dataset.uid });
+        break;
+      case "fjernbehov":
+        this._kald("madplan", "fjern_behov", { entity_id: plan, tekst: el.dataset.tekst });
+        break;
     }
     this._tegn();
+  }
+
+  _fokuser() {
+    const i = this.shadowRoot.querySelector('input[name="behov"]');
+    if (i) {
+      i.focus();
+      i.setSelectionRange(i.value.length, i.value.length);
+    }
   }
 
   _personer() {
@@ -348,16 +389,7 @@ class MadplanCard extends HTMLElement {
     const mangler = varer.filter((v) => v.status !== "completed");
     const hjemme = varer.filter((v) => v.status === "completed");
     const pct = varer.length ? Math.round((hjemme.length / varer.length) * 100) : 0;
-    const linje = (v) => {
-      const h = v.status === "completed";
-      const tilbud = v.summary.startsWith("🏷️");
-      const navn = v.summary.replace(/^🏷️\s*/, "");
-      const pris = (v.description || "").replace(".00", "").replace(".", ",");
-      return `<div class="vare ${h ? "hjemme" : ""}" data-h="vare" data-uid="${esc(v.uid)}">
-        <span class="tjek">${h ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</span>
-        <span class="vnavn">${esc(navn)}${tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span>
-        <span class="vpris">${esc(pris)}</span></div>`;
-    };
+    const linje = (v) => this._vareLinje(v, "varer");
     return `<div class="indkob">
       <div class="sektion"><ha-icon icon="mdi:cart-outline"></ha-icon><span>Indkøb</span>
         <span class="mangler">${mangler.length} varer · ${kr(s.state)}</span></div>
@@ -372,7 +404,59 @@ class MadplanCard extends HTMLElement {
              ${this._visHjemme ? hjemme.map(linje).join("") : ""}`
           : ""
       }
+      ${this._ekstraSektion(s)}
       <div class="knapper">${this._knap("send", "Send indkøbsliste", "mdi:send", "fuld")}</div>
+    </div>`;
+  }
+
+  _vareLinje(v, liste) {
+    const h = v.status === "completed";
+    const tilbud = v.summary.startsWith("🏷️");
+    const navn = v.summary.replace(/^🏷️\s*/, "");
+    const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
+    return `<div class="vare ${h ? "hjemme" : ""}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}">
+      <span class="tjek">${h ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</span>
+      <span class="vnavn">${esc(navn)}${tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span>
+      <span class="vpris">${esc(pris)}</span>
+      ${liste === "ekstra" ? `<button class="slet" data-h="slet" data-uid="${esc(v.uid)}" aria-label="Fjern"><ha-icon icon="mdi:close"></ha-icon></button>` : ""}
+    </div>`;
+  }
+
+  /** Ekstra varer ud over aftensmaden: man skriver et behov, og AI finder tilbud. */
+  _ekstraSektion(s) {
+    if (!this._ekstraId) return "";
+    const a = s.attributes;
+    const behov = a.behov || [];
+    const mangler = this._ekstra.filter((v) => v.status !== "completed");
+    const gruppe = (b) => {
+      const varer = this._ekstra.filter((v) => (v.description || "").split(" · ")[1] === b);
+      if (!varer.length) return "";
+      return `<div class="gruppe">${esc(b.charAt(0).toUpperCase() + b.slice(1))}</div>${varer
+        .map((v) => this._vareLinje(v, "ekstra"))
+        .join("")}`;
+    };
+    const finder = (a.status || "").startsWith("Finder tilbud");
+    return `<div class="ekstra">
+      <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Ekstra</span>
+        ${this._ekstra.length ? `<span class="mangler">${mangler.length} varer · ${a.ekstra_ca ? "ca. " : ""}${kr(a.ekstra_total)}</span>` : ""}</div>
+      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv fx pålæg, rugbrød eller frugt til madpakker, så finder den tilbud til ${esc(
+        this._personer(),
+      )} personer. Det huskes til de næste uger.</div>
+      <form class="behov-form"><input name="behov" autocomplete="off" placeholder="Fx pålæg eller frugt til madpakker"
+          value="${esc(this._behovTekst)}"><button type="submit" ${finder ? "disabled" : ""}>
+          <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:magnify"}"></ha-icon>${finder ? "Søger …" : "Find tilbud"}</button></form>
+      ${
+        behov.length
+          ? `<div class="chips">${behov
+              .map((b, i) => {
+                const bek = this._bekraeft === `fjernbehov-${i + 1}`;
+                return `<button class="chip-behov ${bek ? "bekraeft" : ""}" data-h="fjernbehov" data-dag="${i + 1}" data-tekst="${esc(b)}">
+                  ${bek ? "Fjern?" : esc(b)}<ha-icon icon="mdi:close"></ha-icon></button>`;
+              })
+              .join("")}</div>`
+          : ""
+      }
+      ${behov.map(gruppe).join("")}
     </div>`;
   }
 
@@ -400,6 +484,7 @@ class MadplanCard extends HTMLElement {
     const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
     const uge = this.shadowRoot.querySelector(".uge");
     const rul = uge ? uge.scrollLeft : null;
+    const fokus = this.shadowRoot.activeElement?.name === "behov";
     this.shadowRoot.innerHTML = `<style>${CSS}</style>
       <ha-card style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
         ${this._butikker(planer)}
@@ -411,6 +496,7 @@ class MadplanCard extends HTMLElement {
                <small>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</small></div></div>`
         }
       </ha-card>`;
+    if (fokus) this._fokuser();
     const nyUge = this.shadowRoot.querySelector(".uge");
     if (nyUge) {
       if (rul !== null) nyUge.scrollLeft = rul;
@@ -547,6 +633,23 @@ const CSS = `
   .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--brand);
     color: var(--brand-tekst); vertical-align: middle; margin-left: 4px; }
   .vpris { color: var(--secondary-text-color); white-space: nowrap; font-size: 14px; }
+  .ekstra { margin-top: 22px; padding-top: 16px; border-top: 2px solid var(--divider-color); }
+  .behov-form { display: flex; gap: 8px; margin: 8px 0; }
+  .behov-form input { flex: 1; min-width: 0; padding: 10px 14px; border-radius: 22px; border: 1px solid var(--divider-color);
+    background: var(--card-background-color); color: var(--primary-text-color); font: inherit; outline: none; }
+  .behov-form input:focus { border-color: var(--brand); }
+  .behov-form button { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 22px; padding: 0 14px;
+    background: var(--brand); color: var(--brand-tekst); font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .behov-form button[disabled] { opacity: .6; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 6px; }
+  .chip-behov { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px 5px 12px; border-radius: 16px;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; font-size: 13px; }
+  .chip-behov ha-icon { --mdc-icon-size: 14px; opacity: .6; }
+  .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
+  .gruppe { margin: 14px 0 2px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+    color: var(--secondary-text-color); }
+  .slet { border: none; background: none; cursor: pointer; color: var(--secondary-text-color); padding: 4px; display: grid; }
+  .slet ha-icon { --mdc-icon-size: 16px; }
   .vis-hjemme { display: flex; align-items: center; gap: 4px; border: none; background: none; padding: 12px 0 4px;
     cursor: pointer; color: var(--secondary-text-color); font-weight: 500; }
 
@@ -655,7 +758,8 @@ class MadplanPanel extends MadplanCard {
         krop = `${this._top(s, n)}${this._ugeListe(dage)}`;
       }
     }
-    const mangler = this._varer.filter((v) => v.status !== "completed").length;
+    const mangler = [...this._varer, ...this._ekstra].filter((v) => v.status !== "completed").length;
+    const fokus = this.shadowRoot.activeElement?.name === "behov";
     this.shadowRoot.innerHTML = `<style>${CSS}${PANEL_CSS}</style>
       <div class="app" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
         <header class="bar"><ha-menu-button></ha-menu-button><div class="bar-titel">Madplan</div></header>
@@ -678,6 +782,7 @@ class MadplanPanel extends MadplanCard {
       m.narrow = this._narrow;
     }
     this.shadowRoot.querySelector(".indhold").scrollTop = rul;
+    if (fokus) this._fokuser();
   }
 }
 

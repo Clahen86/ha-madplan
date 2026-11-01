@@ -86,6 +86,34 @@
           "description": "The meal plan to act on. Can be left out if there is only one store."
         }
       }
+    },
+    "tilfoej_behov": {
+      "name": "Add extra need",
+      "description": "Finds offers for a need besides dinner and adds them to the Extra items list. The need is remembered for coming weeks.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "tekst": {
+          "name": "Need",
+          "description": "E.g. \"cold cuts\" or \"fruit for packed lunches\"."
+        }
+      }
+    },
+    "fjern_behov": {
+      "name": "Remove extra need",
+      "description": "Removes the need and its items.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "tekst": {
+          "name": "Need",
+          "description": "E.g. \"cold cuts\" or \"fruit for packed lunches\"."
+        }
+      }
     }
   }
 }

@@ -86,6 +86,34 @@
           "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
         }
       }
+    },
+    "tilfoej_behov": {
+      "name": "Tilføj ekstra behov",
+      "description": "Finder tilbudsvarer til et behov ud over aftensmaden og lægger dem på listen Ekstra varer. Behovet huskes til de næste uger.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "tekst": {
+          "name": "Behov",
+          "description": "Fx \"pålæg\" eller \"frugt og grønt til madpakker\"."
+        }
+      }
+    },
+    "fjern_behov": {
+      "name": "Fjern ekstra behov",
+      "description": "Fjerner behovet og dets varer.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "tekst": {
+          "name": "Behov",
+          "description": "Fx \"pålæg\" eller \"frugt og grønt til madpakker\"."
+        }
+      }
     }
   }
 }
