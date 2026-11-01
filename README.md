@@ -10,15 +10,16 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 
 ## Det kan den
 
-- **Ugens madplan** for 7 dage, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10.
+- **Ugens madplan**, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10. Laves den midt på ugen, planlægges kun fra i dag til lørdag.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.").
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
+- **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen.
 - **Familiens regler**: budget, økologi, allergier, ting I vil undgå, yndlingsretter, antal vegetar- og fiskeretter, maks tid på hverdage, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
-- **Eget punkt i sidemenuen**, der virker som en app på telefonen. Tre designs og frit valg af farve.
+- **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail.
 
 <p align="center"><img src="docs/designs.jpg" alt="Tre designs: Farverig, Lys og Mørk" width="100%"></p>
@@ -37,7 +38,7 @@ REMA 1000, Netto, føtex, Bilka, Lidl, 365discount, Kvickly, SuperBrugsen, Brugs
 Ja, med Googles gratis Gemini-nøgle. Integrationen er bygget til at bruge så få AI-kald som muligt:
 
 - AI'en får kun ugens tilbud. Andre varer slås op i REMA 1000's katalog af selve integrationen.
-- En ny madplan med ekstra varer er **ét** kald. Byt ret og nye ekstra varer er ét kald hver.
+- En ny madplan med ekstra varer er **ét** kald. Byt ret, nye ekstra varer og Én ret er ét kald hver.
 - Mængder, priser, personer, gæster, regler og indkøbsliste koster ingen kald.
 
 Gemini's gratis plan har et loft på antal kald om dagen. Almindelig brug ligger langt under det, men mange tests i træk kan ramme loftet. Så skriver Madplan, at kvoten er brugt op, og den virker igen næste dag.
@@ -94,6 +95,7 @@ For hver butik:
 | `madplan.tilfoej_behov` / `madplan.fjern_behov` | Ekstra varer, fx `tekst: ["pålæg", "frugt"]`. |
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
+| `madplan.en_ret` | Én ret fra køleskabet, fx `har: ["kylling", "ris"]`. |
 | `madplan.gem_regler` | Familiens regler. |
 | `madplan.overfoer` | Send indkøbslisten. |
 
