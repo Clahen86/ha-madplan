@@ -100,6 +100,21 @@ gem_regler:
           min: 10
           max: 180
           unit_of_measurement: min
+    max_tid_weekend:
+      selector:
+        number:
+          min: 10
+          max: 300
+          unit_of_measurement: min
+    husstand:
+      selector:
+        select:
+          options: ["boernefamilie", "voksne"]
+    koekkener:
+      example: ["italiensk", "asiatisk"]
+      selector:
+        text:
+          multiple: true
     faste_dage:
       example: '[{"dag": 5, "ret": "pizza"}]'
       selector:
@@ -180,3 +195,11 @@ dag_mail:
   fields:
     entity_id: *madplan
     dag: *dag
+rester:
+  fields:
+    entity_id: *madplan
+    dag: *dag
+    til:
+      default: true
+      selector:
+        boolean:

@@ -184,6 +184,20 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "ny_plan", { entity_id: plan, handler: this._handler || a.handler_standard || "i_dag" });
         this._handler = null;
         break;
+      case "rester": {
+        // På restedagen (eller en dobbeltportion) fortrydes; ellers laves dagens ret til 2 dage.
+        const da = this._hass.states[(a.dag_entiteter || [])[dag - 1]]?.attributes || {};
+        this._kald("madplan", "rester", { entity_id: plan, dag, til: !da.dobbelt }).catch(() => {});
+        break;
+      }
+      case "fridag": {
+        const fri = new Set((a.regler || {}).fri_dage || []);
+        const i = Number(el.dataset.i);
+        if (fri.has(i)) fri.delete(i);
+        else if (fri.size < 6) fri.add(i);
+        this._gemRegler({ fri_dage: [...fri].sort() });
+        break;
+      }
       case "handler":
         this._handler = el.dataset.v;
         break;
@@ -314,11 +328,14 @@ class MadplanCard extends HTMLElement {
       case "rstep": {
         const r = a.regler || {};
         const felt = el.dataset.felt;
-        const [min, max, trin] = { vegetar: [0, 7, 1], fisk: [0, 7, 1], max_tid: [15, 120, 5] }[felt];
+        const [min, max, trin] = { vegetar: [0, 7, 1], fisk: [0, 7, 1], max_tid: [15, 120, 5], max_tid_weekend: [15, 240, 15] }[felt];
         const ny = Math.min(max, Math.max(min, Number(r[felt] || 0) + Number(el.dataset.d) * trin));
         this._gemRegler({ [felt]: ny });
         break;
       }
+      case "rvalg":
+        this._gemRegler({ [el.dataset.felt]: el.dataset.v });
+        break;
       case "rtoggle":
         this._gemRegler({ [el.dataset.felt]: !(a.regler || {})[el.dataset.felt] });
         break;
@@ -405,6 +422,23 @@ class MadplanCard extends HTMLElement {
 
   _farve(a) {
     return this._udseende?.farve || a.butik_farve || "#3f51b5";
+  }
+
+  /** "Lav til 2 dage": dobbelt portion i dag, rester i morgen - eller fortryd. */
+  _resterKnap(a, i, dage) {
+    if (a.rester_fra) return this._knap("rester", "Fortryd rester", "mdi:undo", "graa", i);
+    if (a.dobbelt) return this._knap("rester", "Kun 1 dag", "mdi:undo", "graa", i + 1);
+    const naeste = dage[i + 1]?.attributes;
+    if (i >= 6 || !naeste || naeste.forbi || naeste.rester_fra) return "";
+    return this._knap("rester", "Lav til 2 dage", "mdi:pot-mix-outline", "graa", i + 1);
+  }
+
+  /** Hvilke dage næste plan skal lave aftensmad til (fx ikke onsdag, hvor I spiser ude). Huskes. */
+  _dageValg(a) {
+    const fri = new Set((a.regler || {}).fri_dage || []);
+    return `<div class="dagevalg"><span>Planen laves for</span><div>${KORT.map(
+      (k, i) => `<button class="${fri.has(i) ? "" : "til"}" data-h="fridag" data-i="${i}" aria-pressed="${!fri.has(i)}" title="${DAGE[i]}">${k.slice(0, 2)}</button>`,
+    ).join("")}</div></div>`;
   }
 
   /** Hvornår der handles: tilbuddene i den nye plan skal gælde den dag. */
@@ -1032,6 +1066,7 @@ class MadplanPanel extends MadplanCard {
                <button data-h="plus" aria-label="Flere">+</button></div>`
             : ""
         }
+        ${this._dageValg(a)}
         ${this._handlerValg(a)}
         ${this._knap("ny", "Ny madplan", "mdi:auto-fix", "stor")}
       </div>
@@ -1060,8 +1095,8 @@ class MadplanPanel extends MadplanCard {
         const dato = (a.dato_kort || "").split("/")[0];
         return `<button class="dagrad ${a.fjernet ? "fjernet" : ""} ${a.dato && a.dato < idag ? "forbi" : ""}" data-h="aabn" data-dag="${i + 1}">
           <span class="datoblok"><small>${KORT[i]}</small><b>${esc(dato)}</b></span>
-          <span class="rtekst"><span class="rnavn">${a.forbi ? "Før planen" : a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
-            ${a.forbi ? `<span class="rinfo">Planen blev lavet senere</span>` : a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}</span>`}</span>
+          <span class="rtekst"><span class="rnavn">${a.forbi ? "Før planen" : a.fjernet ? esc(d.state || "Ingen aftensmad") : esc(d.state)}</span>
+            ${a.forbi ? `<span class="rinfo">Planen blev lavet senere</span>` : a.fjernet ? `<span class="rinfo">Spiser ude</span>` : a.rester_fra ? `<span class="rinfo">Rester fra ${esc(a.rester_fra.toLowerCase())} · intet at købe</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}${a.dobbelt ? ` · <b class="gaest">2 dage</b>` : ""}</span>`}</span>
           ${this._billede(a, "rbillede")}
         </button>`;
       })
@@ -1090,13 +1125,14 @@ class MadplanPanel extends MadplanCard {
       ${a.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(a.sundhed)}</div>` : ""}
       ${this._dagPersoner(a, i + 1)}
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser
-          <small>${esc(a.personer ?? this._personer())} personer</small></div>
+          <small>${esc(a.personer ?? this._personer())} personer${a.dobbelt ? " · 2 dage" : ""}</small></div>
         <ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
         <ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
       <div class="knapper">
         ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", i + 1)}
         ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", i + 1)}
+        ${this._resterKnap(a, i, dage)}
         ${this._hass.states[this._valgt]?.attributes.har_mail ? this._knap("dagmail", "Send på mail", "mdi:email-outline", "graa", i + 1) : ""}
       </div>
     </article>`;
@@ -1127,7 +1163,12 @@ class MadplanPanel extends MadplanCard {
           value="${esc(this._inputs.r_budget ?? r.budget ?? "")}"><span>kr. pr. uge</span></label>
       </section>
       <section class="rkort">
+        <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:account-group-outline"></ha-icon></span><span class="rnavn2"><b>Husstand</b><small>Børnevenlige retter?</small></span>
+          <div class="handler">${[["boernefamilie", "Børn"], ["voksne", "Voksne"]]
+            .map(([v, t]) => `<button class="${(r.husstand || "boernefamilie") === v ? "valgt" : ""}" data-h="rvalg" data-felt="husstand" data-v="${v}">${t}</button>`)
+            .join("")}</div></div>
         <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:timer-outline"></ha-icon></span><span class="rnavn2"><b>Maks tid</b><small>På hverdage</small></span>${stepper("max_tid", " min")}</div>
+        <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:pot-steam-outline"></ha-icon></span><span class="rnavn2"><b>Maks tid weekend</b><small>Plads til gryderetter</small></span>${stepper("max_tid_weekend", " min")}</div>
         <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:sprout"></ha-icon></span><span class="rnavn2"><b>Vegetarretter</b><small>Mindst pr. uge</small></span>${stepper("vegetar", "")}</div>
         <div class="rlinje"><span class="rikon blaa"><ha-icon icon="mdi:fish"></ha-icon></span><span class="rnavn2"><b>Fiskeretter</b><small>Mindst pr. uge</small></span>${stepper("fisk", "")}</div>
         <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:leaf"></ha-icon></span><span class="rnavn2"><b>Økologi</b><small>Når prisforskellen er lille</small></span>
@@ -1136,6 +1177,7 @@ class MadplanPanel extends MadplanCard {
       ${liste("allergier", "mdi:alert-octagon-outline", "Allergier", "Må aldrig indgå", "Fx nødder", "roed")}
       ${liste("undgaa", "mdi:thumb-down-outline", "Undgå", "Det vil I ikke have", "Fx svampe eller lever")}
       ${liste("favoritter", "mdi:heart-outline", "Yndlingsretter", "Kommer med en gang imellem", "Fx lasagne", "lyseroed")}
+      ${liste("koekkener", "mdi:earth", "Yndlingskøkkener", "Ugen varieres mellem dem", "Fx italiensk, asiatisk")}
       <section class="rkort">
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:calendar-star"></ha-icon></span><span><b>Faste dage</b><small>Fx fredag er pizzadag</small></span></div>
         ${faste
@@ -1592,6 +1634,12 @@ const PANEL_CSS = `
   .koebrad { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--divider-color); font-size: 14px; }
   .koebrad b { white-space: nowrap; font-weight: 600; }
   .enknapper { display: flex; gap: 8px; margin-top: 10px; }
+  .dagevalg { flex-basis: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .dagevalg > span { color: var(--secondary-text-color); }
+  .dagevalg > div { display: flex; gap: 4px; }
+  .dagevalg button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--divider-color); cursor: pointer; font: inherit;
+    font-size: 12px; font-weight: 700; background: var(--card-background-color); color: var(--secondary-text-color); text-decoration: line-through; }
+  .dagevalg button.til { background: var(--brand); border-color: var(--brand); color: var(--brand-tekst); text-decoration: none; }
   .handler { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 20px; background: var(--secondary-background-color);
     font-size: 13px; }
   .handler span { padding: 0 8px 0 6px; color: var(--secondary-text-color); }

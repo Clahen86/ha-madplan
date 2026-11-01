@@ -12,7 +12,7 @@
         },
         "data_description": {
           "indkobsliste": "Missing items are added to this list when you send the shopping list.",
-          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes.",
+          "notify_service": "One or more, e.g. notify.madplan_mail and notify.mobile_app_… for both phones in the household.",
           "butik": "Offers come from eTilbudsavis. Outside REMA 1000, prices of items not on offer are estimates."
         }
       }
@@ -34,7 +34,7 @@
         },
         "data_description": {
           "indkobsliste": "Missing items are added to this list when you send the shopping list.",
-          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes.",
+          "notify_service": "One or more, e.g. notify.madplan_mail and notify.mobile_app_… for both phones in the household.",
           "salling_noegle": "Netto, føtex and Bilka only: real prices from your own store instead of estimates. Free key from developer.sallinggroup.dev – see the README."
         }
       },
@@ -193,6 +193,22 @@
         "krav": {
           "name": "Other requirements",
           "description": "E.g. free-range eggs and organic milk."
+        },
+        "max_tid_weekend": {
+          "name": "Max time at weekends",
+          "description": "Minutes on Saturday and Sunday (stews, lasagne …)."
+        },
+        "husstand": {
+          "name": "Household",
+          "description": "boernefamilie (family with children) or voksne (adults only)."
+        },
+        "koekkener": {
+          "name": "Favourite cuisines",
+          "description": "E.g. Italian, Asian."
+        },
+        "fri_dage": {
+          "name": "Days off",
+          "description": "0 = Sunday … 6 = Saturday."
         }
       }
     },
@@ -325,6 +341,24 @@
         "entity_id": {
           "name": "Meal plan",
           "description": "The meal plan to act on. Can be left out if there is only one store."
+        }
+      }
+    },
+    "rester": {
+      "name": "Cook for 2 days",
+      "description": "Doubles the amount for one day's dish; the next day becomes leftovers with nothing to buy.",
+      "fields": {
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        },
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "til": {
+          "name": "On",
+          "description": "Off undoes it, and the next day gets its own dish back."
         }
       }
     }

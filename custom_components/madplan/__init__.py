@@ -45,6 +45,10 @@ REGLER_SKEMA = vol.Schema(
         vol.Optional("vegetar"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
         vol.Optional("fisk"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
         vol.Optional("max_tid"): vol.All(vol.Coerce(int), vol.Range(min=10, max=180)),
+        vol.Optional("max_tid_weekend"): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
+        vol.Optional("husstand"): vol.In(["boernefamilie", "voksne"]),
+        vol.Optional("koekkener"): _LISTE,
+        vol.Optional("fri_dage"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=0, max=6))]),
         vol.Optional("faste_dage"): vol.All(
             cv.ensure_list,
             [
@@ -80,6 +84,7 @@ EN_RET_SKEMA = SKEMA.extend(
 )
 EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
+RESTER_SKEMA = DAG_SKEMA.extend({vol.Optional("til", default=True): cv.boolean})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
@@ -124,6 +129,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def tilfoej_behov(call: ServiceCall) -> None:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
+
+    async def rester(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_rester(call.data["dag"], call.data["til"])
 
     async def dag_personer(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_dag_personer(call.data["dag"], call.data["personer"])
@@ -180,6 +188,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "en_ret_mail", en_ret_mail, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "dag_mail", dag_mail, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
+    hass.services.async_register(DOMAIN, "rester", rester, schema=RESTER_SKEMA)
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)

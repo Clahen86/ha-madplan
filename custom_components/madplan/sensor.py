@@ -80,7 +80,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "en_ret_status": self.madplan.en_ret_status,
             # Hvilke knapper "Én ret" kan vise.
             "har_indkobsliste": bool(self.madplan.entry.options.get("indkobsliste")),
-            "har_mail": bool(self.madplan.entry.options.get("notify_service")),
+            "har_mail": bool(self.madplan._notify_tjenester()),
             # Afkrydset i to-do-listerne er enten "i kurven" eller "har hjemme"; kortet skal kende forskel.
             "kurv": [v["key"] for v in p.get("varer", []) if v.get("kurv")]
             + [e["uid"] for e in p.get("ekstra", []) if e.get("kurv")],
@@ -134,6 +134,8 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "dag": DAGE[self._i],
             "personer": n,
             "gaester": bool(r.get("personer")),
+            "dobbelt": bool(r.get("dobbelt")),
+            "rester_fra": DAGE[r["rester_fra"]] if isinstance(r.get("rester_fra"), int) else None,
             "fjernet": bool(r.get("fjernet")),
             "forbi": bool(r.get("forbi")),
             "dato": r.get("_dato"),

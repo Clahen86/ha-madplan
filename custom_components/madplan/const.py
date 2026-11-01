@@ -26,7 +26,11 @@ STANDARD_REGLER = {
     "vegetar": 0,  # mindst så mange vegetarretter om ugen
     "fisk": 0,
     "max_tid": 40,  # minutter på hverdage
+    "max_tid_weekend": 60,  # lørdag og søndag - fx til gryderetter og lasagne
+    "husstand": "boernefamilie",  # eller "voksne"
+    "koekkener": [],  # yndlingskøkkener, fx ["italiensk", "asiatisk"]
     "faste_dage": [],  # [{"dag": 5, "ret": "pizza"}], dag som indeks i DAGE
+    "fri_dage": [],  # dage uden madlavning (fx spiser ude onsdag), indeks i DAGE
     "krav": "",
 }
 

@@ -28,7 +28,8 @@ from .const import (
 INDSTILLINGER = {
     vol.Required(CONF_AI_ENTITY): selector.EntitySelector(selector.EntitySelectorConfig(domain="ai_task")),
     vol.Optional(CONF_INDKOBSLISTE): selector.EntitySelector(selector.EntitySelectorConfig(domain="todo")),
-    vol.Optional(CONF_NOTIFY): selector.TextSelector(),
+    # Én eller flere, fx notify.madplan_mail og begge telefoner.
+    vol.Optional(CONF_NOTIFY): selector.TextSelector(selector.TextSelectorConfig(multiple=True)),
 }
 
 
@@ -104,9 +105,12 @@ class MadplanOptionsFlow(OptionsFlow):
                     self._data = {**user_input, CONF_SALLING_NOEGLE: noegle}
                     return await self.async_step_butik()
                 fejl["base"] = "ingen_butikker"
+        forslag = dict(user_input or self.config_entry.options)
+        if isinstance(forslag.get(CONF_NOTIFY), str):  # gemt som én tekst før 1.1.0
+            forslag[CONF_NOTIFY] = [t.strip() for t in forslag[CONF_NOTIFY].split(",") if t.strip()]
         return self.async_show_form(
             step_id="init",
-            data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), user_input or self.config_entry.options),
+            data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), forslag),
             errors=fejl,
         )
 

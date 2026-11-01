@@ -146,7 +146,7 @@ class Madplan:
         if not retter:
             return []
         ud: list[str] = []
-        aktive = [(i, ret) for i, ret in enumerate(retter) if not ret.get("fjernet")]
+        aktive = [(i, ret) for i, ret in enumerate(retter) if not ret.get("fjernet") and ret.get("rester_fra") is None]
         forbudt = [(o, "allergi") for o in r["allergier"]] + [(o, "undgå") for o in r["undgaa"]]
         for i, ret in aktive:
             tekst = " ".join([ret.get("navn", "")] + [str(x.get("navn", "")) for x in ret.get("ingredienser", [])]).lower()
@@ -155,6 +155,8 @@ class Madplan:
                     ud.append(f"{DAGE[i]}: indeholder {ord_} ({slags})")
             if 1 <= i <= 5 and int(ret.get("tid_min") or 0) > r["max_tid"]:
                 ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r['max_tid']} på hverdage)")
+            elif i in (0, 6) and int(ret.get("tid_min") or 0) > r.get("max_tid_weekend", 60):
+                ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r.get('max_tid_weekend', 60)} i weekenden)")
         for felt, navn in (("vegetar", "vegetarretter"), ("fisk", "fiskeretter")):
             if not any(felt in ret for _, ret in aktive):
                 continue  # planen er lavet, før retterne blev markeret
@@ -205,27 +207,41 @@ class Madplan:
                 # Midt på ugen planlægges kun fra i dag; dagene før står som "forbi".
                 # Planen begynder på indkøbsdagen; dagene før står som "før planen".
                 fra = max(0, min(6, (dag - start).days))
-                antal = 7 - fra
+                # Dage uden madlavning (fx spiser ude onsdag) planlægges ikke - det sparer også AI'en.
+                fri = {int(d) for d in self.regler.get("fri_dage") or []}
+                dage = [i for i in range(fra, 7) if i not in fri]
+                if not dage:
+                    raise HomeAssistantError("Alle dage er slået fra - vælg mindst én dag")
+                antal = len(dage)
+                datoer = ", ".join(f"{DAGE[i]} {(start + datetime.timedelta(days=i)).isoformat()}" for i in dage)
                 # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
                 behov = list(self.behov)
                 instr = (
                     self._regler()
-                    + f"Lav {antal} aftensmåltider for {DAGE[fra]} "
-                    + f"{(start + datetime.timedelta(days=fra)).isoformat()} til {DAGE[6]} {slut.isoformat()}.\n"
+                    + f"Lav {antal} aftensmåltider for {datoer}.\n"
                     + (f"Undgå disse retter fra de seneste uger: {', '.join(undgaa)}.\n" if undgaa else "")
                     + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov else "")
                     + f'Svar KUN med JSON: {{"retter": [{antal} x '
                     + self._ret_skema()
                     + "]"
                     + (", " + self._behov_skema() if behov else "")
-                    + f"}} med retterne i rækkefølge {DAGE[fra].lower()} til lørdag.\n\n"
+                    + "} med retterne i samme rækkefølge som dagene.\n\n"
                 )
                 svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
                 nye = svar.get("retter", [])[:antal]
                 if len(nye) < antal:
                     raise HomeAssistantError(f"AI gav kun {len(nye)} retter")
                 await self.hass.async_add_executor_job(self._find_varer, nye, start)
-                retter = [{"navn": "Før planen", "fjernet": True, "forbi": True} for _ in range(fra)] + nye
+                ai_retter = iter(nye)
+                retter = [
+                    {"navn": "Før planen", "fjernet": True, "forbi": True}
+                    if i < fra
+                    else {"navn": "Spiser ude", "fjernet": True, "fri": True, "kort": "Slået fra i planen.",
+                          "trin": [], "ingredienser": []}
+                    if i in fri
+                    else next(ai_retter)
+                    for i in range(7)
+                ]
                 self.plan = {
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
@@ -292,6 +308,7 @@ class Madplan:
                     ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
                 await self.hass.async_add_executor_job(self._find_varer, [ret], start)
                 self.plan["salling_priser"] = self._salling_priser
+                self._ophaev_rester(dag - 1)
                 self.plan["retter"][dag - 1] = ret
                 self._beregn()
                 self._gem_historik()
@@ -454,8 +471,7 @@ class Madplan:
 
     async def _send_ret(self, navn: str, n: int, tid: Any, koeb: list[dict], ingredienser: list[str],
                         trin: list[str], har: list[str] | None) -> None:
-        notify = self.entry.options.get(CONF_NOTIFY)
-        if not notify:
+        if not self._notify_tjenester():
             raise HomeAssistantError("Vælg en notify-tjeneste (fx mail) under integrationens indstillinger")
         total = round(sum(v["kr"] for v in koeb))
         ca = any(v["ca"] for v in koeb)
@@ -468,20 +484,83 @@ class Madplan:
             + "\nIngredienser:\n" + "\n".join(f"• {x}" for x in ingredienser)
             + "\n\nSådan gør du:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(trin, start=1))
         )
-        domaene, _, tjeneste = notify.partition(".")
-        await self.hass.services.async_call(
-            domaene, tjeneste, {"title": f"Indkøb til {navn}", "message": besked}, blocking=True
-        )
+        await self._send_besked(f"Indkøb til {navn}", besked)
+
+    def _notify_tjenester(self) -> list[str]:
+        """De valgte notify-tjenester - én eller flere (fx mail og begge telefoner)."""
+        v = self.entry.options.get(CONF_NOTIFY) or []
+        if isinstance(v, str):
+            v = v.split(",")
+        return [t.strip() for t in v if t and t.strip()]
+
+    async def _send_besked(self, titel: str, besked: str) -> None:
+        """Send til alle valgte modtagere. Fejler én, kommer de andre stadig frem."""
+        fejl = []
+        for t in self._notify_tjenester():
+            domaene, _, tjeneste = t.partition(".")
+            try:
+                await self.hass.services.async_call(
+                    domaene, tjeneste, {"title": titel, "message": besked}, blocking=True
+                )
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.warning("Kunne ikke sende til %s: %s", t, e)
+                fejl.append(t)
+        if fejl and len(fejl) == len(self._notify_tjenester()):
+            raise HomeAssistantError(f"Kunne ikke sende til {', '.join(fejl)}")
 
     def _en_status(self, tekst: str) -> None:
         self.en_ret_status = tekst
         self.opdater()
+
+    async def async_rester(self, dag: int, til: bool) -> None:
+        """Lav dagens ret til 2 dage: mængden fordobles, og næste dag bliver rester uden indkøb."""
+        retter = self.plan.get("retter") or []
+        i = dag - 1
+        if self.optaget or not 0 <= i < 6 or i + 1 >= len(retter) or retter[i].get("fjernet"):
+            raise HomeAssistantError("Retten kan ikke laves til 2 dage")
+        ret = retter[i]
+        if til and not ret.get("dobbelt"):
+            if retter[i + 1].get("rester_fra") is not None or retter[i + 1].get("forbi"):
+                raise HomeAssistantError(f"{DAGE[i + 1]} kan ikke blive restedag")
+            ret["dobbelt"] = True
+            retter[i + 1] = {
+                "navn": f"Rester: {ret.get('navn', '')}",
+                "rester_fra": i,
+                "kort": f"Rester fra {DAGE[i].lower()} - intet at købe.",
+                "tid_min": 10,
+                "hovedvare": ret.get("hovedvare"),
+                "vegetar": ret.get("vegetar"),
+                "fisk": ret.get("fisk"),
+                "trin": [f"Varm resterne fra {DAGE[i].lower()}, og server."],
+                "ingredienser": [],
+                "erstattet": retter[i + 1],
+            }
+        elif not til:
+            self._ophaev_rester(i)
+        await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
+        self._beregn()
+        await self._gem()
+        self.opdater()
+
+    def _ophaev_rester(self, i: int) -> None:
+        """Byttes, fjernes eller fortrydes en dobbeltportion, får næste dag sin gamle ret igen - og omvendt."""
+        retter = self.plan.get("retter") or []
+        ret = retter[i]
+        if ret.get("dobbelt"):
+            ret.pop("dobbelt", None)
+            if i + 1 < len(retter) and retter[i + 1].get("rester_fra") == i:
+                retter[i + 1] = retter[i + 1].get("erstattet") or {
+                    "navn": "Ingen aftensmad", "fjernet": True, "trin": [], "ingredienser": []
+                }
+        if (fra := ret.get("rester_fra")) is not None and 0 <= fra < len(retter):
+            retter[fra].pop("dobbelt", None)
 
     async def async_fjern_ret(self, dag: int) -> None:
         """Ingen aftensmad den dag (ude, rester osv.). 'Byt ret' giver en ret igen."""
         if self.optaget or not self.plan.get("retter") or not 1 <= dag <= 7:
             return
         async with self._laas:
+            self._ophaev_rester(dag - 1)
             self.plan["retter"][dag - 1] = {
                 "navn": "Ingen aftensmad",
                 "fjernet": True,
@@ -682,16 +761,9 @@ class Madplan:
                         {"entity_id": liste, "item": vare_tekst(v), "description": pris_tekst(v)},
                         blocking=True,
                     )
-            if notify := opts.get(CONF_NOTIFY):
-                domaene, _, tjeneste = notify.partition(".")
-                await self.hass.services.async_call(
-                    domaene,
-                    tjeneste,
-                    {
-                        "title": f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}",
-                        "message": self._besked(mangler),
-                    },
-                    blocking=True,
+            if self._notify_tjenester():
+                await self._send_besked(
+                    f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}", self._besked(mangler)
                 )
             self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer)")
         except HomeAssistantError as e:
@@ -954,11 +1026,14 @@ class Madplan:
             varieret.append(f"mindst {r['fisk']} fiskeret{'ter' if r['fisk'] > 1 else ''}")
         if r["vegetar"]:
             varieret.append(f"mindst {r['vegetar']} vegetarret{'ter' if r['vegetar'] > 1 else ''}")
+        boern = r.get("husstand", "boernefamilie") == "boernefamilie"
+        koekkener = ", ".join(r.get("koekkener") or []) or "dansk, italiensk, asiatisk, mexicansk osv."
         return (
-            "Du er en dansk madplanlægger for en børnefamilie. Retterne skal være: billige, nemme, "
+            f"Du er en dansk madplanlægger for {'en børnefamilie' if boern else 'en husstand med voksne'}. "
+            "Retterne skal være: billige, nemme, "
             f"forholdsvis sunde (grøntsager i hver ret), hurtige (højst {r['max_tid']} min fra start til "
-            f"servering på hverdage, højst {max(60, r['max_tid'])} min søndag og lørdag), børnevenlige og "
-            "smage godt. Byg retterne primært på "
+            f"servering på hverdage, højst {r.get('max_tid_weekend', 60)} min søndag og lørdag), "
+            f"{'børnevenlige og ' if boern else ''}smage godt. Byg retterne primært på "
             f"ugens tilbudsvarer fra {self.butik_navn} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
             "du som 'S:navn', hvor navn står PRÆCIS som på listen ALMINDELIGE VARER (fx 'S:Hakkede tomater', "
             "'S:Piskefløde 36%', 'S:Basmati ris'). Kun hvis varen slet ikke findes på listen, skriver du et kort, "
@@ -972,13 +1047,15 @@ class Madplan:
             )
             + "Varier proteinet"
             + (f": {' og '.join(varieret)} om ugen, og" if varieret else ":")
-            + " samme protein højst to gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
+            + f" samme protein højst to gange. Varier også køkkenet ({koekkener}).\n"
+            + "Genbrug gerne den samme vare i flere retter (fx resten af en pakke hakket kød, fløde, ost eller "
+            "grøntsager), så der bliver mindst muligt tilovers, og indkøbslisten bliver kort.\n"
             + self._familiens_regler()
             + "Undgå dyre varer (and, mørbrad, oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør "
             "retten billig.\n"
             "TID: 'tid_min' er den samlede tid fra start til servering og skal være realistisk. Vælg "
-            "kun retter, der reelt kan nås inden for tidsgrænsen (fx ikke flæskesteg eller gryderetter "
-            "med lang simretid).\n"
+            "kun retter, der reelt kan nås inden for tidsgrænsen for den dag (gryderetter, lasagne og "
+            "steg kun, når der er tid nok).\n"
             "For hver ingrediens: 'pr_person' er mængden pr. person, 'enhed' er g, ml eller stk, og "
             "'pakke' er hvor meget af samme enhed der er i varens pakning (læs størrelsen på tilbud; for S:-varer "
             "en almindelig pakningsstørrelse). "
@@ -1028,7 +1105,8 @@ class Madplan:
             pris = 0.0
             linjer = []
             # Gæster en enkelt dag: den dag har sit eget antal personer.
-            n_ret = int(ret.get("personer") or n)
+            # Dobbeltportion: der laves også til resterne næste dag.
+            n_ret = int(ret.get("personer") or n) * (2 if ret.get("dobbelt") else 1)
             for ing in ret.get("ingredienser", []):
                 try:
                     mgd = float(ing.get("pr_person") or 0) * n_ret
@@ -1165,7 +1243,12 @@ class Madplan:
     def _gem_historik(self) -> None:
         h = [u for u in self.historik if u.get("start") != self.plan["start"]]
         h.append(
-            {"start": self.plan["start"], "retter": [r.get("navn", "") for r in self.plan["retter"] if not r.get("fjernet")]}
+            {
+                "start": self.plan["start"],
+                "retter": [
+                    r.get("navn", "") for r in self.plan["retter"] if not r.get("fjernet") and r.get("rester_fra") is None
+                ],
+            }
         )
         self.historik = h[-HISTORIK_UGER:]
 

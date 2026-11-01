@@ -18,10 +18,12 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
+- **Vælg dage**: slå dage fra (fx når I spiser ude onsdag), så planen kun laves for resten.
+- **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
 - **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
-- **Familiens regler**: budget, økologi, allergier, ting I vil undgå, yndlingsretter, antal vegetar- og fiskeretter, maks tid på hverdage, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
+- **Familiens regler**: husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingsretter og -køkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
 - **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Tre designs og frit valg af farve.
-- **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail.
+- **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail – også til flere modtagere (fx begge telefoner).
 
 <p align="center"><img src="docs/designs.jpg" alt="Tre designs: Farverig, Lys og Mørk" width="100%"></p>
 
@@ -99,6 +101,7 @@ For hver butik:
 | `madplan.ny_plan` | Ny plan (alle butikker, hvis `entity_id` udelades). |
 | `madplan.byt_ret` / `madplan.fjern_ret` | Byt eller fjern én dags ret (`dag`: 1 = søndag … 7 = lørdag). |
 | `madplan.dag_personer` | Antal personer én dag (0 = som resten af ugen). |
+| `madplan.rester` | Lav én dags ret til 2 dage (`til: false` fortryder). |
 | `madplan.tilfoej_behov` / `madplan.fjern_behov` | Ekstra varer, fx `tekst: ["pålæg", "frugt"]`. |
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
