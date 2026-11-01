@@ -86,6 +86,17 @@ _UDTRYK = {
     "snackgulerødder": "gulerødder",
     "gulerodsstave": "gulerødder",
 }
+# Tilbud, der ikke bruges til aftensmad. De sorteres fra i madplanens prompt (ikke ved ekstra varer),
+# så store kæder som føtex og Bilka ikke får et for langt svar fra AI'en.
+IKKE_AFTENSMAD = re.compile(
+    r"\bis\b|flødeis|juice|drik|sodavand|kildevand|danskvand|mineralvand|brus|saft|smoothie|shot|kakao|kaffe|espresso|cappuccino|"
+    r"slik|chokolade|vingummi|lakrids|bolsjer|karamel|kiks|kage|cookie|muffin|croissant|wienerbrød|snack|"
+    r"chips|popcorn|müsli|granola|cornflakes|marmelade|nutella|dessert|budding|konfekt|\bøl\b|pilsner|"
+    r"\bipa\b|cider|\bvin\b|rosé|champagne|alkoholfri|likør|bitter|cola|energi|baby|grød|tyggegummi|"
+    r"pastiller|vitamin|kosttilskud|\d+[.,]?\d*\s*%\s*vol|pålæg|leverpostej|spegepølse|rullepølse|skyr\b.*\b(?:vanilje|jordbær|hindbær|blåbær)",
+    re.IGNORECASE,
+)
+
 # Basisvarer til aftensmad. AI'en får REMA's navne på dem, så den kan skrive et præcist navn.
 # (Hele sortimentet er for langt: Gemini rammer sit loft for svarets længde.)
 _BASISVARER = (

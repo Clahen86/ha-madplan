@@ -390,7 +390,9 @@ class Madplan:
             f"Du hjælper en dansk familie med indkøb i {self.butik_navn}. {self._behov_regler(behov)}\n"
             "Svar KUN med JSON: {" + self._behov_skema() + "}\n\n"
         )
-        svar = await self._spoerg("Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste))
+        svar = await self._spoerg(
+            "Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste, aftensmad=False)
+        )
         self._gem_behov(svar.get("varer", []), behov, start)
 
     @staticmethod
@@ -549,10 +551,17 @@ class Madplan:
             await asyncio.sleep(65 if kvote else 20 + forsoeg * 20)
         raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
 
-    def _vare_tekst(self, liste: bool = True) -> str:
-        """Ugens tilbud og REMA's navne på basisvarerne. Pris og størrelse slås op bagefter."""
+    def _vare_tekst(self, liste: bool = True, aftensmad: bool = True) -> str:
+        """Ugens tilbud og REMA's navne på basisvarerne. Pris og størrelse slås op bagefter.
+
+        Uden liste (reserveforsøget efter et for langt svar) sendes også højst 150 tilbud."""
+        tilbud = [
+            (tid, t) for tid, t in self.tilbud.items() if not (aftensmad and soeg.IKKE_AFTENSMAD.search(t["navn"]))
+        ]
+        if not liste:
+            tilbud = tilbud[:150]
         linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
-        linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in self.tilbud.items()]
+        linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in tilbud]
         if liste and self._navne:
             linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
             linjer.append("; ".join(self._navne))
