@@ -295,6 +295,20 @@
           "description": "Rettens id."
         }
       }
+    },
+    "en_ret_mail": {
+      "name": "Send én ret på mail",
+      "description": "Sender det, der mangler til retten, og opskriften med den valgte notify-tjeneste.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
     }
   }
 }

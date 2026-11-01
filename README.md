@@ -18,7 +18,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
-- **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen.
+- **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
 - **Familiens regler**: budget, økologi, allergier, ting I vil undgå, yndlingsretter, antal vegetar- og fiskeretter, maks tid på hverdage, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
 - **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail.
@@ -32,7 +32,7 @@ REMA 1000, Netto, føtex, Bilka, Lidl, 365discount, Kvickly, SuperBrugsen, Brugs
 ## Krav
 
 - Home Assistant 2025.8 eller nyere.
-- En **AI Task**-enhed, fx fra Google Generative AI (Gemini), OpenAI eller Anthropic. Se [AI Task](https://www.home-assistant.io/integrations/ai_task/).
+- En **AI Task**-enhed, fx fra Google Generative AI (Gemini), OpenAI eller Anthropic. 👉 **[Guide: sæt gratis AI op med Gemini](docs/guide-ai.md)**
 
 ### Kan det gøres gratis?
 
@@ -66,14 +66,9 @@ Tilføj flere butikker ved at tilføje integrationen igen, eller tryk på butiks
 
 ### Rigtige priser i Netto, føtex og Bilka (valgfrit)
 
-Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Salling Group får Netto, føtex og Bilka rigtige priser fra den butik, du vælger:
+Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Salling Group får Netto, føtex og Bilka rigtige priser fra den butik, du vælger.
 
-1. Opret en gratis profil på [developer.sallinggroup.dev](https://developer.sallinggroup.dev).
-2. I API-kataloget: tryk **Request access** på **Stores API**, **Salling Group Products EAN API** og **Salling Group Recommendations API** (vælg *Production* og alle linjer).
-3. Opret en **Application** (type *Backend / Integration App*), sæt flueben ved alle linjer under *Scope*, og kopiér API-nøglen.
-4. I Home Assistant: **Madplan** (Netto, føtex eller Bilka) → **Konfigurer** → indsæt nøglen → vælg din butik. Listen er butikkerne nærmest hjemmets placering i Home Assistant.
-
-Nøglen er din egen og til ikke-kommerciel brug. Kan Salling ikke svare, bruger Madplan ca.-priser og viser en advarsel.
+👉 **[Guide: hent en Salling-nøgle trin for trin](docs/guide-salling.md)**
 
 ### Kort til dine egne dashboards
 
@@ -108,6 +103,7 @@ For hver butik:
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
 | `madplan.en_ret` | Én ret fra køleskabet, fx `har: ["kylling", "ris"]`. |
+| `madplan.en_ret_mail` / `madplan.en_ret_paa_listen` | Send det, der mangler til én ret, på mail eller indkøbslisten. |
 | `madplan.gem_regler` | Familiens regler. |
 | `madplan.overfoer` | Send indkøbslisten. |
 

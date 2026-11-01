@@ -266,6 +266,11 @@ class MadplanCard extends HTMLElement {
         this._enValgt = null;
         break;
       }
+      case "enmail": {
+        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        if (r) this._kald("madplan", "en_ret_mail", { entity_id: plan, id: r.id }).catch(() => {});
+        break;
+      }
       case "enliste": {
         const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
         if (r) this._kald("madplan", "en_ret_paa_listen", { entity_id: plan, id: r.id }).catch(() => {});
@@ -1160,7 +1165,8 @@ class MadplanPanel extends MadplanCard {
         valgt.koeb.length
           ? `<div class="kasse"><div class="overskrift"><ha-icon icon="mdi:cart-outline"></ha-icon>Skal købes<small>${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}</small></div>
               ${valgt.koeb.map((v) => `<div class="koebrad"><span>${esc(v.tekst.replace(/^🏷️\s*/, ""))}${v.tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span><b>${esc(v.pris)}</b></div>`).join("")}
-              ${this._knap("enliste", "Læg på indkøbslisten", "mdi:playlist-plus", "fuld lille")}</div>`
+              <div class="enknapper">${a.har_indkobsliste ? this._knap("enliste", "Til listen", "mdi:playlist-plus", "lille") : ""}
+                ${a.har_mail ? this._knap("enmail", "Send på mail", "mdi:email-outline", "lille") : ""}</div></div>`
           : ""
       }
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser<small>${esc(valgt.personer)} personer</small></div>
@@ -1543,7 +1549,8 @@ const PANEL_CSS = `
   .harliste ha-icon { color: #2e7d32; --mdc-icon-size: 18px; flex: none; }
   .koebrad { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--divider-color); font-size: 14px; }
   .koebrad b { white-space: nowrap; font-weight: 600; }
-  .kasse .knap.fuld { margin-top: 10px; }
+  .enknapper { display: flex; gap: 8px; margin-top: 10px; }
+  .enknapper .knap { flex: 1; justify-content: center; }
   .datoblok ha-icon { --mdc-icon-size: 18px; }
 
   /* Udseende */

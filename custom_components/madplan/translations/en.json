@@ -295,6 +295,20 @@
           "description": "The dish's id."
         }
       }
+    },
+    "en_ret_mail": {
+      "name": "Send one dish by e-mail",
+      "description": "Sends what is missing for the dish and the recipe with the chosen notify service.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
     }
   }
 }

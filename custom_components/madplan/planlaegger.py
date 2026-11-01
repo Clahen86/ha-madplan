@@ -412,6 +412,30 @@ class Madplan:
             )
         self._en_status(f"✅ {len(ret['koeb'])} varer lagt på indkøbslisten")
 
+    async def async_en_ret_mail(self, ret_id: str) -> None:
+        """Det, der mangler til én ret, og opskriften - sendt med den valgte notify-tjeneste (fx mail)."""
+        ret = next((r for r in self.en_ret if r["id"] == ret_id), None)
+        notify = self.entry.options.get(CONF_NOTIFY)
+        if not ret or not notify:
+            raise HomeAssistantError("Vælg en notify-tjeneste (fx mail) under integrationens indstillinger")
+        koeb = "\n".join(f"☐ {v['tekst']}  {v['pris']}" for v in ret["koeb"]) or "Intet – I har det hele 🎉"
+        besked = (
+            f"{ret['navn']} · {ret['personer']} personer · {ret.get('tid', '?')} min\n\n"
+            f"INDKØB · {self.butik_navn}"
+            + (f" · {'ca. ' if ret.get('koeb_ca') else ''}{ret['koeb_total']} kr" if ret["koeb"] else "")
+            + f"\n{koeb}\n"
+            + (f"\nDet har I: {', '.join(ret['har'])}\n" if ret.get("har") else "")
+            + "\nIngredienser:\n"
+            + "\n".join(f"• {x}" for x in ret["ingredienser"])
+            + "\n\nSådan gør du:\n"
+            + "\n".join(f"{i}. {t}" for i, t in enumerate(ret["trin"], start=1))
+        )
+        domaene, _, tjeneste = notify.partition(".")
+        await self.hass.services.async_call(
+            domaene, tjeneste, {"title": f"Indkøb til {ret['navn']}", "message": besked}, blocking=True
+        )
+        self._en_status("✅ Sendt på mail")
+
     def _en_status(self, tekst: str) -> None:
         self.en_ret_status = tekst
         self.opdater()

@@ -167,3 +167,7 @@ en_ret_paa_listen:
   fields:
     entity_id: *madplan
     id: *en_id
+en_ret_mail:
+  fields:
+    entity_id: *madplan
+    id: *en_id

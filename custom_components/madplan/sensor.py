@@ -77,6 +77,9 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "regler": self.madplan.regler,
             "en_ret": self.madplan.en_ret,
             "en_ret_status": self.madplan.en_ret_status,
+            # Hvilke knapper "Én ret" kan vise.
+            "har_indkobsliste": bool(self.madplan.entry.options.get("indkobsliste")),
+            "har_mail": bool(self.madplan.entry.options.get("notify_service")),
             # Afkrydset i to-do-listerne er enten "i kurven" eller "har hjemme"; kortet skal kende forskel.
             "kurv": [v["key"] for v in p.get("varer", []) if v.get("kurv")]
             + [e["uid"] for e in p.get("ekstra", []) if e.get("kurv")],
