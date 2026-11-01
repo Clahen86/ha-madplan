@@ -349,7 +349,7 @@ class Madplan:
             # Det, familien har, afgøres af deres egen liste - ikke af AI'ens 'har', som kan tage fejl.
             navn_ing = str(ing.get("navn", ""))
             ing["har"] = any(soeg.samme_vare(navn_ing, h) for h in har)
-            if ing["har"] or ing.get("basis") or not (info := self._slaa_op(ing.get("vare"), dato)):
+            if ing["har"] or _basis(ing) or not (info := self._slaa_op(ing.get("vare"), dato)):
                 continue
             navn, strr, enhedspris, _, tilbud = info
             k = koeb.setdefault(ing["vare"], {"navn": navn, "str": strr, "enhedspris": enhedspris, "tilbud": tilbud,
@@ -904,8 +904,8 @@ class Madplan:
                 # Uden for REMA er normalprisen kun et cirkatal.
                 f["ukendt"] = ing["vare"].startswith("S:")
                 f["anslaaet"] = not tilbud and not self.er_rema and not f["ukendt"]
-                f["basis"] = f["basis"] and bool(ing.get("basis"))
-                if not ing.get("basis") and (pakke > 0 or ing.get("pakke_ukendt")):
+                f["basis"] = f["basis"] and _basis(ing)
+                if not _basis(ing) and (pakke > 0 or ing.get("pakke_ukendt")):
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
                     pris += andel * enhedspris
@@ -1033,6 +1033,11 @@ def vare_tekst(v: dict) -> str:
     strr = strr.replace("LTR.", "l").replace("ML.", "ml").replace("STK.", "stk").strip()
     antal = f"{v['antal']} × " if v["antal"] > 1 else ""
     return f"{mark}{antal}{v['navn']} ({strr})" if strr else f"{mark}{antal}{v['navn']}"
+
+
+def _basis(ing: dict) -> bool:
+    """Basisvare (salt, olie, mel …): AI'en skal mene det, og navnet skal passe."""
+    return bool(ing.get("basis")) and soeg.er_basis(str(ing.get("navn", "")))
 
 
 def _soege_noegle(vare: Any) -> str:

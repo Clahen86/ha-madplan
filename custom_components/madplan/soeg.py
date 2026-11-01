@@ -259,6 +259,21 @@ def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
     return _navne_cache[noegle]
 
 
+# Basisvarer, de fleste har hjemme. AI'en markerer af og til ris, pasta eller gulerødder som basis,
+# så koden afgør det selv ud fra navnet.
+_BASIS = re.compile(
+    r"\bsalt\b|(?<!rød )(?<!gul )(?<!grøn )(?<!orange )\bpeber\b(?!frugt)|sort peber|\bolie\b|olivenolie|rapsolie|madolie|\bmel\b|hvedemel|sukker|"
+    r"krydderi|karry\b|paprika|spidskommen|oregano|timian|basilikum tørret|kanel|chiliflager|stødt|tørret|"
+    r"bouillon|\bfond\b|eddike|sojasauce|soja\b|ketchup|sennep|honning|bagepulver|natron|\bgær\b|"
+    r"majsstivelse|maizena|smør\b|margarine|vand\b",
+    re.IGNORECASE,
+)
+
+
+def er_basis(navn: str) -> bool:
+    return bool(_BASIS.search(navn or ""))
+
+
 # Beskrivende ord, der ikke siger, hvilken vare det er ("hakket oksekød" og "hakkede tomater" er forskellige).
 _BESKRIVENDE = {
     "hakket", "hakkede", "hk", "frisk", "friske", "dansk", "danske", "økologisk", "økologiske", "øko", "rema",
