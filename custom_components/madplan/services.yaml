@@ -128,3 +128,14 @@ marker:
 toem_kurv:
   fields:
     entity_id: *madplan
+dag_personer:
+  fields:
+    entity_id: *madplan
+    dag: *dag
+    personer:
+      required: true
+      example: 8
+      selector:
+        number:
+          min: 0
+          max: 30

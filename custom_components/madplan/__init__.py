@@ -69,6 +69,7 @@ MARKER_SKEMA = SKEMA.extend(
     }
 )
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
+DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
 
@@ -111,6 +112,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
 
+    async def dag_personer(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_dag_personer(call.data["dag"], call.data["personer"])
+
     async def marker(call: ServiceCall) -> None:
         d = call.data
         await _madplaner(call)[0].async_marker(d["liste"], d["uid"], d["felt"], d["vaerdi"])
@@ -138,6 +142,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=NYE_BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "gem_regler", gem_regler, schema=REGLER_SKEMA)
     hass.services.async_register(DOMAIN, "marker", marker, schema=MARKER_SKEMA)
+    hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)

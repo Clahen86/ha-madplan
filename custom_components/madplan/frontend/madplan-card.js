@@ -54,6 +54,7 @@ class MadplanCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._udseende === undefined) this._hentUdseende();
     const planer = this._planer();
     if (!this._valgt || !planer.includes(this._valgt)) this._valgt = planer[0];
     const p = hass.states[this._valgt];
@@ -222,6 +223,19 @@ class MadplanCard extends HTMLElement {
           vaerdi: !el.classList.contains("til"),
         });
         break;
+      case "dpers": {
+        const da = this._hass.states[(a.dag_entiteter || [])[dag - 1]]?.attributes || {};
+        const d = Number(el.dataset.d);
+        const ny = d === 0 ? 0 : Math.min(30, Math.max(1, Number(da.personer || n) + d));
+        this._kald("madplan", "dag_personer", { entity_id: plan, dag, personer: ny === n ? 0 : ny });
+        break;
+      }
+      case "design":
+        this._gemUdseende({ design: el.dataset.v });
+        break;
+      case "farve":
+        this._gemUdseende({ farve: el.dataset.v || null });
+        break;
       case "toemkurv":
         this._kald("madplan", "toem_kurv", { entity_id: plan });
         break;
@@ -316,6 +330,38 @@ class MadplanCard extends HTMLElement {
       i.focus();
       if (i.setSelectionRange && i.type !== "number") i.setSelectionRange(i.value.length, i.value.length);
     }
+  }
+
+  /** Design og farve gemmes på HA-brugeren, så valget følger med på alle enheder. */
+  _hentUdseende() {
+    this._udseende = {};
+    this._hass.connection
+      .sendMessagePromise({ type: "frontend/get_user_data", key: "madplan_udseende" })
+      .then((r) => {
+        this._udseende = r?.value || {};
+        this._tegn();
+      })
+      .catch(() => {});
+  }
+
+  _gemUdseende(aendring) {
+    this._udseende = { ...this._udseende, ...aendring };
+    this._hass.connection
+      .sendMessagePromise({ type: "frontend/set_user_data", key: "madplan_udseende", value: this._udseende })
+      .catch(() => {});
+  }
+
+  _farve(a) {
+    return this._udseende?.farve || a.butik_farve || "#3f51b5";
+  }
+
+  /** Antal personer én dag - fx når der kommer gæster. */
+  _dagPersoner(a, dag) {
+    return `<div class="dagpers ${a.gaester ? "gaester" : ""}"><ha-icon icon="mdi:account-group"></ha-icon>
+      <span class="dptekst">${a.gaester ? "Gæster i dag" : "Personer i dag"}</span>
+      <div class="stepper"><button data-h="dpers" data-dag="${dag}" data-d="-1" aria-label="Færre">−</button>
+        <span>${esc(a.personer ?? this._personer())}</span><button data-h="dpers" data-dag="${dag}" data-d="1" aria-label="Flere">+</button></div>
+      ${a.gaester ? `<button class="nulstil" data-h="dpers" data-dag="${dag}" data-d="0">Som resten af ugen</button>` : ""}</div>`;
   }
 
   _personer() {
@@ -442,9 +488,9 @@ class MadplanCard extends HTMLElement {
     const trin = `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>`;
     // I panelet er der plads til både ingredienser og fremgangsmåde; i kortet bruges faner.
     const liste = this._fuld
-      ? `<div class="overskrift">Ingredienser · ${esc(this._personer())} personer</div>${ing}
+      ? `${this._dagPersoner(a, dag)}<div class="overskrift">Ingredienser · ${esc(a.personer ?? this._personer())} personer</div>${ing}
          <div class="overskrift">Sådan gør du</div>${trin}`
-      : `<div class="faner">
+      : `${this._dagPersoner(a, dag)}<div class="faner">
           <button class="${this._fane === "ing" ? "aktiv" : ""}" data-h="fane" data-fane="ing">Ingredienser</button>
           <button class="${this._fane === "trin" ? "aktiv" : ""}" data-h="fane" data-fane="trin">Sådan gør du</button>
         </div>${this._fane === "ing" ? ing : trin}`;
@@ -608,7 +654,7 @@ class MadplanCard extends HTMLElement {
       return;
     }
     const a = s.attributes;
-    const farve = a.butik_farve || "#3f51b5";
+    const farve = this._farve(a);
     const n = this._hass.states[a.personer_entitet]?.state;
     const dage = (a.dag_entiteter || []).map((e) => this._hass.states[e]);
     const idag = idagIso();
@@ -777,6 +823,19 @@ const CSS = `
   .kurvstatus > span { display: inline-flex; align-items: center; gap: 6px; }
   .kurvstatus ha-icon { --mdc-icon-size: 18px; color: #2e7d32; }
   .knap.lille { padding: 6px 12px; font-size: 13px; }
+  .dagpers { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; padding: 8px 10px; border-radius: 18px;
+    background: var(--secondary-background-color); }
+  .dagpers > ha-icon { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .dagpers .dptekst { flex: 1; font-weight: 600; }
+  .dagpers.gaester { background: color-mix(in srgb, var(--brand) 14%, transparent); }
+  .dagpers .stepper { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 20px; background: var(--card-background-color); }
+  .dagpers .stepper button { width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; font-size: 18px;
+    background: var(--secondary-background-color); color: var(--primary-text-color); }
+  .dagpers .stepper span { min-width: 24px; text-align: center; font-weight: 800; }
+  .dagpers .nulstil { flex-basis: 100%; border: none; background: none; color: var(--secondary-text-color); font: inherit; font-size: 13px;
+    text-align: right; cursor: pointer; text-decoration: underline; padding: 0; }
+  .gaest { display: inline-flex; align-items: center; gap: 2px; color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .gaest ha-icon { --mdc-icon-size: 14px; }
   .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--brand);
     color: var(--brand-tekst); vertical-align: middle; margin-left: 4px; }
   .vpris { color: var(--secondary-text-color); white-space: nowrap; font-size: 14px; }
@@ -914,7 +973,7 @@ class MadplanPanel extends MadplanCard {
         <span class="atekst2"><span class="etiket"><ha-icon icon="mdi:star-four-points"></ha-icon>I aften</span>
           <span class="anavn">${esc(d.state)}</span>
           <span class="ameta"><span><ha-icon icon="mdi:timer-outline"></ha-icon>${esc(a.tid ?? "?")} min</span>
-            <span><ha-icon icon="mdi:cash"></ha-icon>${kr(a.pris)}</span></span></span>
+            <span><ha-icon icon="mdi:cash"></ha-icon>${kr(a.pris)}</span>${a.gaester ? `<span><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)} pers.</span>` : ""}</span></span>
         <ha-icon class="pil" icon="mdi:arrow-right"></ha-icon></button>`;
     }
     html += `<div class="afsnit">Ugens retter</div><div class="dagliste">${dage
@@ -925,7 +984,7 @@ class MadplanPanel extends MadplanCard {
         return `<button class="dagrad ${a.fjernet ? "fjernet" : ""} ${a.dato && a.dato < idag ? "forbi" : ""}" data-h="aabn" data-dag="${i + 1}">
           <span class="datoblok"><small>${KORT[i]}</small><b>${esc(dato)}</b></span>
           <span class="rtekst"><span class="rnavn">${a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
-            ${a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}</span>`}</span>
+            ${a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}</span>`}</span>
           ${this._billede(a, "rbillede")}
         </button>`;
       })
@@ -952,8 +1011,9 @@ class MadplanPanel extends MadplanCard {
         <span><ha-icon icon="mdi:account"></ha-icon>${esc(String(a.pr_person ?? "?").replace(".", ","))} kr/pers.</span>
       </div>
       ${a.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(a.sundhed)}</div>` : ""}
+      ${this._dagPersoner(a, i + 1)}
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser
-          <small>${esc(this._personer())} personer</small></div>
+          <small>${esc(a.personer ?? this._personer())} personer</small></div>
         <ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
         <ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
@@ -1011,6 +1071,42 @@ class MadplanPanel extends MadplanCard {
       <section class="rkort">
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:text-box-outline"></ha-icon></span><span><b>Andre krav</b><small>Gemmes, når du trykker udenfor</small></span></div>
         <textarea name="r_krav" rows="3" placeholder="Fx frilandsæg og økologisk mælk. Børnene kan ikke lide stærk mad.">${esc(this._inputs.r_krav ?? r.krav ?? "")}</textarea>
+      </section>
+      ${this._udseendeKort(a)}`;
+  }
+
+  /** Udseende: kun for den, der er logget ind - ikke en del af familiens regler. */
+  _udseendeKort(a) {
+    const u = this._udseende || {};
+    const design = u.design || "farverig";
+    const farver = [
+      ["#2e7d32", "Grøn"],
+      ["#1565c0", "Blå"],
+      ["#6a1b9a", "Lilla"],
+      ["#ef6c00", "Orange"],
+      ["#c2185b", "Pink"],
+      ["#00897b", "Petrol"],
+      ["#37474f", "Grafit"],
+    ];
+    const designs = [
+      ["farverig", "Farverig"],
+      ["lys", "Lys"],
+      ["moerk", "Mørk"],
+    ];
+    return `<section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:palette-outline"></ha-icon></span><span><b>Udseende</b><small>Kun for dig – følger din bruger</small></span></div>
+        <div class="designs">${designs
+          .map(([v, navn]) => `<button class="dvalg dv-${v} ${design === v ? "valgt" : ""}" data-h="design" data-v="${v}" aria-pressed="${design === v}">
+              <span class="dmini"><span class="dtop"><i></i><i></i></span><span class="dkrop"><i></i><i></i></span></span><span>${navn}</span></button>`)
+          .join("")}</div>
+        <div class="farver">
+          <button class="fvalg butik ${!u.farve ? "valgt" : ""}" data-h="farve" data-v="" style="--f:${esc(a.butik_farve || "#3f51b5")}" aria-label="Butikkens farve">
+            ${a.butik_logo ? `<img src="${esc(a.butik_logo)}" alt="">` : ""}</button>
+          ${farver
+            .map(([f, navn]) => `<button class="fvalg ${u.farve === f ? "valgt" : ""}" data-h="farve" data-v="${f}" style="--f:${f}" aria-label="${navn}"></button>`)
+            .join("")}
+        </div>
+        <div class="fhjaelp">${u.farve ? "Egen farve" : "Butikkens egen farve"}</div>
       </section>`;
   }
 
@@ -1058,7 +1154,7 @@ class MadplanPanel extends MadplanCard {
         <a class="knap stor" href="${tilfoejUrl}"><ha-icon icon="mdi:plus"></ha-icon>Tilføj butik</a></div>`;
     } else {
       const a = s.attributes;
-      farve = a.butik_farve || farve;
+      farve = this._farve(a);
       logo = a.butik_logo ? `<span class="hlogo"><img src="${esc(a.butik_logo)}" alt=""></span>` : "";
       under = `${esc(a.butik)}${a.uge ? ` · uge ${esc(a.uge)}` : ""}${a.periode ? ` · ${esc(a.periode)}` : ""}`;
       const n = this._hass.states[a.personer_entitet]?.state;
@@ -1085,7 +1181,7 @@ class MadplanPanel extends MadplanCard {
     }
     const mangler = [...this._varer, ...this._ekstra].filter((v) => v.status !== "completed").length;
     this.shadowRoot.innerHTML = `<style>${CSS}${PANEL_CSS}</style>
-      <div class="app" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
+      <div class="app design-${esc(this._udseende?.design || "farverig")}" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
         <header class="hero">
           <div class="hrad">
             <ha-menu-button></ha-menu-button>${logo}
@@ -1311,6 +1407,45 @@ const PANEL_CSS = `
   .rkort textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--divider-color);
     font: inherit; resize: vertical; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }
   @container (max-width: 400px) { .topfaner button span:not(.badge) { font-size: 13px; } .topfaner button { gap: 4px; padding: 10px 2px; } }
+
+  /* Udseende */
+  .designs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .dvalg { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; border-radius: 18px; cursor: pointer;
+    border: 2px solid transparent; background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; font-weight: 600; }
+  .dvalg.valgt { border-color: var(--brand); }
+  .dmini { width: 100%; height: 64px; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; background: var(--primary-background-color); }
+  .dtop { height: 26px; display: flex; gap: 4px; align-items: center; padding: 0 6px;
+    background: linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand) 62%, #000)); }
+  .dtop i { height: 8px; flex: 1; border-radius: 4px; background: rgba(255,255,255,.5); }
+  .dtop i:first-child { background: #fff; }
+  .dkrop { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+  .dkrop i { height: 10px; border-radius: 4px; background: var(--card-background-color); }
+  .dv-lys .dtop { background: var(--card-background-color); border-bottom: 1px solid var(--divider-color); }
+  .dv-lys .dtop i { background: var(--secondary-background-color); }
+  .dv-lys .dtop i:first-child { background: var(--brand); }
+  .dv-moerk .dtop { background: #18181b; }
+  .dv-moerk .dtop i { background: #3a3a40; }
+  .dv-moerk .dtop i:first-child { background: var(--brand); }
+  .farver { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .fvalg { width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--card-background-color); cursor: pointer; padding: 0;
+    background: var(--f); box-shadow: 0 0 0 2px transparent; display: grid; place-items: center; overflow: hidden; }
+  .fvalg.valgt { box-shadow: 0 0 0 2px var(--f); }
+  .fvalg.butik { background: #fff; box-shadow: 0 0 0 1px var(--divider-color); }
+  .fvalg.butik.valgt { box-shadow: 0 0 0 2px var(--f); }
+  .fvalg img { width: 80%; height: 80%; object-fit: contain; }
+  .fhjaelp { font-size: 13px; color: var(--secondary-text-color); margin-top: 8px; }
+
+  /* Design: Lys - hvid top, farven kun som accent */
+  .design-lys .hero { background: var(--card-background-color); color: var(--primary-text-color); box-shadow: 0 2px 14px rgba(0,0,0,.06); }
+  .design-lys .hplus, .design-lys .bchip { background: var(--secondary-background-color); }
+  .design-lys .bchip.valgt, .design-lys .topfaner button.aktiv { background: var(--brand); color: var(--brand-tekst); }
+  .design-lys .topfaner { background: var(--secondary-background-color); }
+  .design-lys .hlogo { box-shadow: 0 0 0 1px var(--divider-color); }
+  /* Design: Mørk - mørk top med farven i faner og knapper */
+  .design-moerk .hero { background: radial-gradient(circle at 85% -20%, color-mix(in srgb, var(--brand) 45%, transparent), transparent 55%),
+      linear-gradient(160deg, #222226, #0e0e11); color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+  .design-moerk .bchip.valgt, .design-moerk .topfaner button.aktiv { background: var(--brand); color: var(--brand-tekst); }
+  .design-moerk .topfaner { background: rgba(255,255,255,.08); }
 
   .velkommen { text-align: center; padding: 40px 20px; }
   .velkommen > ha-icon { --mdc-icon-size: 56px; color: var(--brand); }

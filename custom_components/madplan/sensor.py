@@ -119,9 +119,11 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         r = self._ret()
-        n = self.madplan.plan.get("personer") or self.madplan.personer
+        n = r.get("personer") or self.madplan.plan.get("personer") or self.madplan.personer
         return {
             "dag": DAGE[self._i],
+            "personer": n,
+            "gaester": bool(r.get("personer")),
             "fjernet": bool(r.get("fjernet")),
             "dato": r.get("_dato"),
             "dato_kort": _kort_dato(r.get("_dato")),

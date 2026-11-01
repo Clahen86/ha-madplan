@@ -214,6 +214,24 @@
           "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
         }
       }
+    },
+    "dag_personer": {
+      "name": "Personer én dag",
+      "description": "Antal personer til én dags aftensmad, fx når der kommer gæster. Mængder og indkøbsliste følger med.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        },
+        "personer": {
+          "name": "Personer",
+          "description": "0 = som resten af ugen."
+        }
+      }
     }
   }
 }

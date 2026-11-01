@@ -214,6 +214,24 @@
           "description": "The meal plan to act on. Can be left out if there is only one store."
         }
       }
+    },
+    "dag_personer": {
+      "name": "People on one day",
+      "description": "Number of people for one day's dinner, e.g. with guests. Quantities and the shopping list follow.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        },
+        "personer": {
+          "name": "People",
+          "description": "0 = same as the rest of the week."
+        }
+      }
     }
   }
 }

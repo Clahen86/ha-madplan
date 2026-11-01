@@ -245,6 +245,8 @@ class Madplan:
                 ret = await self._spoerg_ai("Madplan byt ret", instr)
                 if "retter" in ret:
                     ret = ret["retter"][0]
+                if gammel_ret.get("personer"):
+                    ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
                 self._find_varer([ret], start)
                 self.plan["retter"][dag - 1] = ret
                 self._beregn()
@@ -280,6 +282,21 @@ class Madplan:
             await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
             self._beregn()
         self._totaler()
+        await self._gem()
+        self.opdater()
+
+    async def async_dag_personer(self, dag: int, antal: int) -> None:
+        """Antal personer én dag (fx gæster). 0 eller det normale antal = følg resten af ugen."""
+        retter = self.plan.get("retter") or []
+        if not 1 <= dag <= len(retter) or self.optaget:
+            return
+        ret = retter[dag - 1]
+        if antal and antal != self.personer:
+            ret["personer"] = int(antal)
+        else:
+            ret.pop("personer", None)
+        await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
+        self._beregn()
         await self._gem()
         self.opdater()
 
@@ -673,9 +690,11 @@ class Madplan:
         for i, ret in enumerate(self.plan["retter"]):
             pris = 0.0
             linjer = []
+            # Gæster en enkelt dag: den dag har sit eget antal personer.
+            n_ret = int(ret.get("personer") or n)
             for ing in ret.get("ingredienser", []):
                 try:
-                    mgd = float(ing.get("pr_person") or 0) * n
+                    mgd = float(ing.get("pr_person") or 0) * n_ret
                     pakke = float(ing.get("pakke") or 0)
                 except (TypeError, ValueError):
                     mgd, pakke = 0.0, 0.0
@@ -760,7 +779,8 @@ class Madplan:
             blok = [
                 "─" * 30,
                 f"{DAGE[i].upper()}: {r.get('navn', '')}",
-                f"⏱️ {r.get('tid_min', '?')} min · 💰 ca. {r.get('_pris', '?')} kr",
+                f"⏱️ {r.get('tid_min', '?')} min · 💰 ca. {r.get('_pris', '?')} kr"
+                + (f" · 👥 {r['personer']} personer" if r.get("personer") else ""),
                 "",
                 "Ingredienser:",
             ]
