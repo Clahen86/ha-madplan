@@ -46,6 +46,8 @@ MIN_TILBUD = 20
 MAKS_EKSTRA_BUTIKKER = 2
 # En anden butik bruges kun til mindst så mange forskellige varer - ellers købes de i hovedbutikken.
 MIN_PR_BUTIK = 3
+# En vare byttes til en anden butik, når den er mindst så meget billigere pr. kg/stk.
+MIN_BESPARELSE = 0.10
 # Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
 SAMMENLIGN = (
     "hakket oksekød", "hakket grisekød", "hakket kylling", "kyllingebryst", "kyllingelår", "hel kylling", "laks",
@@ -253,6 +255,8 @@ class Madplan:
                 if self.ekstra_butikker:
                     self._saml_butikker(nye)
                 await self.hass.async_add_executor_job(self._find_varer, nye, start)
+                if self.ekstra_butikker:
+                    await self.hass.async_add_executor_job(self._billigere_andre_steder, nye, dag)
                 ai_retter = iter(nye)
                 retter = [
                     {"navn": "Før planen", "fjernet": True, "forbi": True}
@@ -1072,6 +1076,58 @@ class Madplan:
             return []
         return ["", "SAMMENLIGNING – billigste tilbud pr. kg/stk i hver butik (brug det billigste, når forskellen er "
                 "mærkbar):", *linjer[:14]]
+
+    def _billigere_andre_steder(self, retter: list[dict], dato: datetime.date) -> None:
+        """Byt en vare til samme slags tilbud i en anden valgt butik, når det er mindst 10 % billigere pr. kg/stk.
+        AI'en er forsigtig med andre butikker; her sammenligner koden selv. Bagefter samles indkøbet igen."""
+
+        def kilopris(vare_id: str) -> tuple[float, str] | None:
+            info = self._slaa_op(vare_id, dato)
+            s = soeg.stoerrelse(info[1]) if info else None
+            return (info[2] / s[0], s[1]) if info and s and info[2] else None
+
+        andre = {
+            b: {tid: t for tid, t in self.tilbud.items() if t.get("butik") == b and t.get("pris")}
+            for b in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER]
+        }
+        byttet = 0
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                v = str(ing.get("vare") or "")
+                if _basis(ing) or self._anden_butik(v) or not (nu := kilopris(v)):
+                    continue
+                bedst = None
+                for egne in andre.values():
+
+                    def pris(tid: str, t: dict) -> float | None:
+                        s = soeg.stoerrelse(t["str"])
+                        return float(t["pris"]) / s[0] if s and s[1] == nu[1] else None
+
+                    tid = soeg.find_vare(egne, str(ing.get("navn", "")), dato, pris=pris)
+                    if tid and soeg.samme_vare(str(ing.get("navn", "")), egne[tid]["navn"]) and (p := pris(tid, egne[tid])):
+                        if p <= nu[0] * (1 - MIN_BESPARELSE) and (bedst is None or p < bedst[0]):
+                            bedst = (p, tid)
+                if bedst:
+                    ing["_foer"] = (v, ing.get("pakke"))
+                    ing["vare"] = f"T:{bedst[1]}"
+                    s = soeg.stoerrelse(self.tilbud[bedst[1]]["str"])
+                    if s and s[1] == ing.get("enhed"):
+                        ing["pakke"] = s[0]
+                    byttet += 1
+        if byttet:
+            _LOGGER.info("%s varer er billigere i en anden butik", byttet)
+        # En butik med under 3 varer er ikke turen værd: byttede varer går tilbage.
+        pr_butik: dict[str, set[str]] = {}
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                if self._anden_butik(v := str(ing.get("vare") or "")):
+                    pr_butik.setdefault(self.tilbud[v[2:]]["butik"], set()).add(v)
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                v = str(ing.get("vare") or "")
+                if "_foer" in ing and len(pr_butik.get(self.tilbud.get(v[2:], {}).get("butik"), ())) < MIN_PR_BUTIK:
+                    ing["vare"], ing["pakke"] = ing["_foer"]
+                ing.pop("_foer", None)
 
     def _saml_butikker(self, retter: list[dict]) -> None:
         """En tur i en anden butik for 1-2 varer er ikke det værd: de varer købes i hovedbutikken i stedet.
