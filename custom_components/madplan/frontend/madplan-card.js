@@ -138,6 +138,20 @@ class MadplanCard extends HTMLElement {
       case "dag":
         this._dagValgt = dag - 1;
         break;
+      case "aabn":
+        this._dagValgt = dag - 1;
+        this._side = "ret";
+        this._tilTop = true;
+        break;
+      case "side":
+        this._side = el.dataset.side;
+        this._tilTop = true;
+        break;
+      case "forrige":
+      case "naeste":
+        this._dagValgt = (this._dagValgt + (h === "naeste" ? 1 : 6)) % 7;
+        this._tilTop = true;
+        break;
       case "fane":
         this._fane = el.dataset.fane;
         break;
@@ -175,6 +189,11 @@ class MadplanCard extends HTMLElement {
       }
     }
     this._tegn();
+  }
+
+  _personer() {
+    const a = this._hass.states[this._valgt]?.attributes || {};
+    return Math.round(Number(this._hass.states[a.personer_entitet]?.state || a.personer || 0));
   }
 
   _knap(h, tekst, ikon, klasse = "", dag = 0) {
@@ -292,10 +311,16 @@ class MadplanCard extends HTMLElement {
         <div class="knapper">${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", dag)}</div>
       </div>`;
     }
-    const liste =
-      this._fane === "ing"
-        ? `<ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`
-        : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>`;
+    const ing = `<ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+    const trin = `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>`;
+    // I panelet er der plads til både ingredienser og fremgangsmåde; i kortet bruges faner.
+    const liste = this._fuld
+      ? `<div class="overskrift">Ingredienser · ${esc(this._personer())} personer</div>${ing}
+         <div class="overskrift">Sådan gør du</div>${trin}`
+      : `<div class="faner">
+          <button class="${this._fane === "ing" ? "aktiv" : ""}" data-h="fane" data-fane="ing">Ingredienser</button>
+          <button class="${this._fane === "trin" ? "aktiv" : ""}" data-h="fane" data-fane="trin">Sådan gør du</button>
+        </div>${this._fane === "ing" ? ing : trin}`;
     return `<div class="detalje">
       <div class="hero">${a.billede ? `<img src="${esc(a.billede)}" alt="">` : `<ha-icon icon="mdi:food"></ha-icon>`}
         <span class="dagmaerke">${DAGE[i]} ${esc(a.dato_kort || "")}</span></div>
@@ -308,10 +333,6 @@ class MadplanCard extends HTMLElement {
           <span><ha-icon icon="mdi:account"></ha-icon>${esc(String(a.pr_person ?? "?").replace(".", ","))} kr/pers.</span>
         </div>
         ${a.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(a.sundhed)}</div>` : ""}
-        <div class="faner">
-          <button class="${this._fane === "ing" ? "aktiv" : ""}" data-h="fane" data-fane="ing">Ingredienser</button>
-          <button class="${this._fane === "trin" ? "aktiv" : ""}" data-h="fane" data-fane="trin">Sådan gør du</button>
-        </div>
         ${liste}
         <div class="knapper">
           ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", dag)}
@@ -499,6 +520,7 @@ const CSS = `
   .trin li { display: flex; gap: 10px; padding: 6px 0; counter-increment: t; }
   .trin li::before { content: counter(t); flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--brand);
     color: var(--brand-tekst); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+  .overskrift { font-weight: 600; font-size: 15px; margin: 18px 0 4px; }
   .tom-dag { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; }
   .tom-dag > ha-icon { --mdc-icon-size: 36px; color: var(--secondary-text-color); }
   .tom-dag .knapper { margin: 0 0 0 auto; }
@@ -532,11 +554,190 @@ const CSS = `
   .tom > ha-icon { --mdc-icon-size: 40px; color: var(--brand, var(--primary-color)); }
 `;
 
-customElements.define("madplan-card", MadplanCard);
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "madplan-card",
-  name: "Madplan",
-  description: "Ugens madplan med opskrifter og indkøbsliste – for én eller flere butikker.",
-  preview: false,
-});
+/** Sidepanel: Madplan som en app med faner i bunden. Registreres automatisk af integrationen. */
+class MadplanPanel extends MadplanCard {
+  constructor() {
+    super();
+    this.setConfig({});
+    this._side = "uge";
+    this._fuld = true;
+  }
+
+  set narrow(v) {
+    this._narrow = v;
+    const m = this.shadowRoot?.querySelector("ha-menu-button");
+    if (m) m.narrow = v;
+  }
+
+  set panel(_v) {}
+
+  set route(_v) {}
+
+  set hass(hass) {
+    super.hass = hass;
+    const m = this.shadowRoot?.querySelector("ha-menu-button");
+    if (m) m.hass = hass;
+  }
+
+  _ugeListe(dage) {
+    const idag = idagIso();
+    return `<div class="dagliste">${dage
+      .map((d, i) => {
+        if (!d) return "";
+        const a = d.attributes;
+        const erIdag = a.dato === idag;
+        return `<button class="dagrad ${erIdag ? "idag" : ""} ${a.fjernet ? "fjernet" : ""}" data-h="aabn" data-dag="${i + 1}">
+          <span class="rbillede">${
+            a.fjernet
+              ? `<ha-icon icon="mdi:silverware-variant"></ha-icon>`
+              : a.billede
+                ? `<img src="${esc(a.billede)}" alt="" loading="lazy">`
+                : `<ha-icon icon="mdi:food"></ha-icon>`
+          }</span>
+          <span class="rtekst">
+            <span class="rdag">${DAGE[i]} ${esc(a.dato_kort || "")}${erIdag ? " · I aften" : ""}</span>
+            <span class="rnavn">${a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
+            ${a.fjernet ? "" : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}</span>`}
+          </span>
+          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>`;
+      })
+      .join("")}</div>`;
+  }
+
+  _ret(dage) {
+    const i = this._dagValgt;
+    const a = dage[i]?.attributes || {};
+    return `<div class="retnav">
+        <button data-h="forrige" aria-label="Forrige dag"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
+        <span>${DAGE[i]} ${esc(a.dato_kort || "")}</span>
+        <button data-h="naeste" aria-label="Næste dag"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
+      </div>${this._dag(dage[i], i)}`;
+  }
+
+  _fane(side, tekst, ikon, antal = 0) {
+    return `<button class="${this._side === side ? "aktiv" : ""}" data-h="side" data-side="${side}">
+      <span class="ikonramme"><ha-icon icon="${ikon}"></ha-icon></span>${tekst}
+      ${antal ? `<span class="badge">${antal}</span>` : ""}</button>`;
+  }
+
+  _tegn() {
+    if (!this._hass || !this.shadowRoot) return;
+    const planer = this._planer();
+    const s = this._hass.states[this._valgt];
+    const gammel = this.shadowRoot.querySelector(".indhold");
+    const rul = gammel && !this._tilTop ? gammel.scrollTop : 0;
+    this._tilTop = false;
+    const tilfoej = `<a class="tilfoej" href="/config/integrations/dashboard/add?domain=madplan"><ha-icon icon="mdi:plus"></ha-icon>Butik</a>`;
+    let farve = "#3f51b5";
+    let krop;
+    if (!s) {
+      krop = `<div class="tom"><ha-icon icon="mdi:storefront-outline"></ha-icon><div><b>Vælg din første butik</b><br>
+        <small>Madplanen laves ud fra ugens tilbud i den butik, du vælger.</small><br>${tilfoej}</div></div>`;
+    } else {
+      const a = s.attributes;
+      farve = a.butik_farve || farve;
+      const n = this._hass.states[a.personer_entitet]?.state;
+      const dage = (a.dag_entiteter || []).map((e) => this._hass.states[e]);
+      if (this._dagValgt == null) {
+        const i = dage.findIndex((d) => d?.attributes.dato === idagIso());
+        this._dagValgt = i >= 0 ? i : 0;
+      }
+      const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
+      if (!harPlan) {
+        krop = `${this._top(s, n)}<div class="tom"><ha-icon icon="mdi:chef-hat"></ha-icon><div><b>Ingen madplan endnu</b><br>
+          <small>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</small></div></div>`;
+      } else if (this._side === "ret") {
+        krop = this._ret(dage);
+      } else if (this._side === "indkob") {
+        krop = this._indkob(s);
+      } else {
+        krop = `${this._top(s, n)}${this._ugeListe(dage)}`;
+      }
+    }
+    const mangler = this._varer.filter((v) => v.status !== "completed").length;
+    this.shadowRoot.innerHTML = `<style>${CSS}${PANEL_CSS}</style>
+      <div class="app" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
+        <header class="bar"><ha-menu-button></ha-menu-button><div class="bar-titel">Madplan</div></header>
+        ${s ? `<div class="butikbar">${planer.length > 1 ? this._butikker(planer) : ""}${tilfoej}</div>` : ""}
+        <main class="indhold"><div class="ramme">${krop}</div></main>
+        ${
+          s
+            ? `<nav class="bund">${this._fane("uge", "Uge", "mdi:calendar-week")}${this._fane("ret", "Opskrift", "mdi:chef-hat")}${this._fane(
+                "indkob",
+                "Indkøb",
+                "mdi:cart-outline",
+                mangler,
+              )}</nav>`
+            : ""
+        }
+      </div>`;
+    const m = this.shadowRoot.querySelector("ha-menu-button");
+    if (m) {
+      m.hass = this._hass;
+      m.narrow = this._narrow;
+    }
+    this.shadowRoot.querySelector(".indhold").scrollTop = rul;
+  }
+}
+
+const PANEL_CSS = `
+  :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
+  .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; }
+  .bar { display: flex; align-items: center; height: 56px; padding: 0 4px; flex: none;
+    background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff); }
+  .bar-titel { font-size: 20px; font-weight: 400; margin-left: 12px; }
+  .butikbar { display: flex; align-items: center; gap: 8px; flex: none; padding-right: 12px; }
+  .butikbar .butikker { flex: 1; padding-bottom: 4px; }
+  .butikbar .butikker + .tilfoej { margin: 12px 0 0; }
+  .butikbar > .tilfoej:only-child { margin: 12px 12px 0 auto; }
+  .tilfoej { display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; border-radius: 12px; flex: none;
+    border: 1px dashed var(--divider-color); color: var(--primary-text-color); text-decoration: none; font-weight: 500; margin-top: 8px; }
+  .indhold { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .ramme { max-width: 960px; margin: 0 auto; padding-bottom: 20px; }
+  .bund { flex: none; display: flex; background: var(--card-background-color); border-top: 1px solid var(--divider-color);
+    padding-bottom: env(safe-area-inset-bottom); }
+  .bund button { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 0 10px; border: none; background: none; color: var(--secondary-text-color); font-size: 12px; cursor: pointer; }
+  .bund button.aktiv { color: var(--primary-text-color); font-weight: 600; }
+  .ikonramme { display: flex; padding: 4px 20px; border-radius: 16px; transition: background .2s; }
+  .bund .aktiv .ikonramme { background: color-mix(in srgb, var(--brand) 25%, transparent); }
+  .bund ha-icon { --mdc-icon-size: 24px; }
+  .badge { position: absolute; top: 4px; left: calc(50% + 10px); background: #d32f2f; color: #fff; font-size: 10px;
+    font-weight: 700; border-radius: 9px; padding: 1px 5px; }
+  .dagliste { display: grid; gap: 10px; padding: 0 12px; }
+  @container (min-width: 720px) { .dagliste { grid-template-columns: 1fr 1fr; } }
+  .dagrad { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border-radius: 16px; text-align: left;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; }
+  .dagrad:active { transform: scale(.99); }
+  .dagrad.idag { border: 2px solid var(--brand); }
+  .dagrad.fjernet { opacity: .6; }
+  .rbillede { width: 72px; height: 72px; border-radius: 12px; background: #fff; display: grid; place-items: center;
+    overflow: hidden; flex: none; color: #bdbdbd; }
+  .rbillede img { width: 100%; height: 100%; object-fit: contain; }
+  .rbillede ha-icon { --mdc-icon-size: 32px; }
+  .rtekst { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .rdag { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--secondary-text-color); }
+  .idag .rdag { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .rnavn { font-weight: 600; font-size: 16px; line-height: 1.25; }
+  .rinfo { font-size: 13px; color: var(--secondary-text-color); }
+  .retnav { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px; font-weight: 600; font-size: 17px; }
+  .retnav button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--divider-color);
+    background: var(--card-background-color); cursor: pointer; display: grid; place-items: center; }
+  .retnav ha-icon { --mdc-icon-size: 24px; }
+  .ramme .indkob { margin-top: 12px; background: var(--card-background-color); border: 1px solid var(--divider-color); }
+  .ramme .detalje { background: var(--card-background-color); }
+`;
+
+
+if (!customElements.get("madplan-card")) {
+  customElements.define("madplan-card", MadplanCard);
+  customElements.define("madplan-panel", MadplanPanel);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "madplan-card",
+    name: "Madplan",
+    description: "Ugens madplan med opskrifter og indkøbsliste – for én eller flere butikker.",
+    preview: false,
+  });
+}

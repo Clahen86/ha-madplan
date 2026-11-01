@@ -12,7 +12,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
-from .const import IKKE_MAD, REMA_URL, TJEK_DEALER_URL, TJEK_URL
+from .const import (
+    IKKE_MAD,
+    IKKE_MAD_AVIS,
+    REMA_URL,
+    TJEK_CATALOGS_URL,
+    TJEK_DEALER_OFFERS_URL,
+    TJEK_DEALER_URL,
+    TJEK_URL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _HEADERS = {"User-Agent": "HomeAssistant-madplan"}
@@ -71,31 +79,55 @@ async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, sl
     vindue_fra = datetime.datetime.combine(fra, datetime.time(12, 0), tz)
     vindue_til = vindue_fra + datetime.timedelta(days=1)
     tilbud: dict[str, dict] = {}
-    for offset in range(0, 2000, 100):
-        d = await _hent_json(hass, TJEK_URL.format(dealer=dealer, offset=offset))
-        if not d:
-            break
-        for o in d:
-            try:
-                o_fra = datetime.datetime.fromisoformat(o["run_from"].replace("Z", "+00:00"))
-                o_til = datetime.datetime.fromisoformat(o["run_till"].replace("Z", "+00:00"))
-            except (KeyError, ValueError):
-                continue
-            if o_fra > vindue_fra or o_til < vindue_til or IKKE_MAD.search(o.get("heading", "")):
-                continue
-            q = o.get("quantity") or {}
-            size = (q.get("size") or {}).get("from")
-            unit = ((q.get("unit") or {}).get("symbol")) or ""
-            pieces = (q.get("pieces") or {}).get("from") or 1
-            tilbud[o["id"]] = {
-                "navn": o.get("heading", "").strip(),
-                "pris": (o.get("pricing") or {}).get("price"),
-                "str": f"{pieces} x {size} {unit}" if pieces and pieces > 1 else f"{size or ''} {unit}".strip(),
-                "billede": (o.get("images") or {}).get("view") or (o.get("images") or {}).get("thumb"),
-                "til": dt_util.as_local(o_til).date().isoformat(),
-            }
-        if len(d) < 100:
-            break
+    # Hent pr. avis: API'et bladrer højst 1000 tilbud, og fx Bilka har flere i alt.
+    aviser = await _hent_json(hass, TJEK_CATALOGS_URL.format(dealer=dealer)) or []
+    if not aviser:
+        # Nogle kæder (fx Løvbjerg) har kun løse tilbud uden avis.
+        aviser = [{"id": None, "run_from": vindue_fra.isoformat(), "run_till": vindue_til.isoformat()}]
+    set_foer: set[tuple] = set()
+    for avis in aviser:
+        try:
+            a_fra = datetime.datetime.fromisoformat(avis["run_from"].replace("Z", "+00:00"))
+            a_til = datetime.datetime.fromisoformat(avis["run_till"].replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        if a_fra > vindue_fra or a_til < vindue_til or IKKE_MAD_AVIS.search(avis.get("label") or ""):
+            continue
+        for offset in range(0, 1000, 100):
+            url = (
+                TJEK_URL.format(catalog=avis["id"], offset=offset)
+                if avis["id"]
+                else TJEK_DEALER_OFFERS_URL.format(dealer=dealer, offset=offset)
+            )
+            d = await _hent_json(hass, url)
+            for o in d or []:
+                try:
+                    o_fra = datetime.datetime.fromisoformat(o["run_from"].replace("Z", "+00:00"))
+                    o_til = datetime.datetime.fromisoformat(o["run_till"].replace("Z", "+00:00"))
+                except (KeyError, ValueError):
+                    continue
+                if o_fra > vindue_fra or o_til < vindue_til or IKKE_MAD.search(o.get("heading", "")):
+                    continue
+                q = o.get("quantity") or {}
+                size = (q.get("size") or {}).get("from")
+                unit = ((q.get("unit") or {}).get("symbol")) or ""
+                pieces = (q.get("pieces") or {}).get("from") or 1
+                navn = o.get("heading", "").strip()
+                pris = (o.get("pricing") or {}).get("price")
+                strr = f"{pieces} x {size} {unit}" if pieces and pieces > 1 else f"{size or ''} {unit}".strip()
+                # Samme vare i flere aviser (fx én avis pr. butik hos ABC Lavpris) tælles én gang.
+                if (navn, pris, strr) in set_foer:
+                    continue
+                set_foer.add((navn, pris, strr))
+                tilbud[o["id"]] = {
+                    "navn": navn,
+                    "pris": pris,
+                    "str": strr,
+                    "billede": (o.get("images") or {}).get("view") or (o.get("images") or {}).get("thumb"),
+                    "til": dt_util.as_local(o_til).date().isoformat(),
+                }
+            if not d or len(d) < 100:
+                break
     return tilbud
 
 

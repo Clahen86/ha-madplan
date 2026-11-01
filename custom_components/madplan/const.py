@@ -31,7 +31,9 @@ BUTIKKER = {
 }
 STANDARD_BUTIK = "rema1000"
 
-TJEK_URL = "https://squid-api.tjek.com/v2/offers?dealer_ids={dealer}&country_id=DK&limit=100&offset={offset}"
+TJEK_CATALOGS_URL = "https://squid-api.tjek.com/v2/catalogs?dealer_ids={dealer}&country_id=DK&limit=100"
+TJEK_URL = "https://squid-api.tjek.com/v2/offers?catalog_ids={catalog}&limit=100&offset={offset}"
+TJEK_DEALER_OFFERS_URL = "https://squid-api.tjek.com/v2/offers?dealer_ids={dealer}&country_id=DK&limit=100&offset={offset}"
 TJEK_DEALER_URL = "https://squid-api.tjek.com/v2/dealers/{dealer}"
 REMA_URL = "https://api.digital.rema1000.dk/api/v3/products?per_page=100&page={side}"
 
@@ -47,6 +49,8 @@ IKKE_MAD = re.compile(
     r"rengøring|klud|svamp|affaldsposer|fryseposer|gave|blomst",
     re.IGNORECASE,
 )
+# Aviser uden madvarer springes over (Bilka har fx legetøjs- og elektronikkataloger).
+IKKE_MAD_AVIS = re.compile(r"non.?food|legetøj|beauty|vin|elektronik|prosonic|tekstil|bolig|have\b|jul\b|gaver", re.IGNORECASE)
 HISTORIK_UGER = 8
 UNDGAA_UGER = 4
 KATALOG_MAX_ALDER = 6 * 86400

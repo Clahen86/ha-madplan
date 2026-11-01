@@ -7,6 +7,7 @@ from pathlib import Path
 
 import voluptuous as vol
 
+from homeassistant.components import panel_custom
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -82,6 +83,16 @@ async def _registrer_kort(hass: HomeAssistant) -> None:
         [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True)]
     )
     add_extra_js_url(hass, f"{KORT_URL}?v={version}")
+    # Eget punkt i sidemenuen, så madplanen virker som en app uden opsætning af dashboards.
+    if "madplan" not in hass.data.get("frontend_panels", {}):
+        await panel_custom.async_register_panel(
+            hass,
+            webcomponent_name="madplan-panel",
+            frontend_url_path="madplan",
+            module_url=f"{KORT_URL}?v={version}",
+            sidebar_title="Madplan",
+            sidebar_icon="mdi:silverware-fork-knife",
+        )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> bool:
