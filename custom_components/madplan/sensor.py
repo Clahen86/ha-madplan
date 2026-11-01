@@ -85,6 +85,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "antal_retter": aktive,
             "retter": [r.get("navn", "") for r in retter],
             "lavet": p.get("lavet"),
+            "handl_senest": p.get("handl_senest"),
         }
 
 

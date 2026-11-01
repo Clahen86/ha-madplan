@@ -225,6 +225,7 @@ class MadplanCard extends HTMLElement {
         ${a.sparet ? `<div><b>${kr(a.sparet)}</b><small>har I hjemme</small></div>` : ""}
       </div>
       ${this._fordeling(a)}
+      ${a.handl_senest ? `<div class="senest"><ha-icon icon="mdi:calendar-clock"></ha-icon>Tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
       ${arbejder ? `<div class="arbejder"><div class="streg"></div></div>` : ""}
       ${status ? `<div class="status ${arbejder ? "" : "fejl"}"><ha-icon icon="${arbejder ? "mdi:chef-hat" : "mdi:information-outline"}"></ha-icon>${esc(status)}</div>` : ""}
       <div class="handlinger">
@@ -238,6 +239,11 @@ class MadplanCard extends HTMLElement {
         ${this._knap("ny", "Ny madplan", "mdi:auto-fix", "lys")}
       </div>
     </div>`;
+  }
+
+  _dato(iso) {
+    const d = new Date(`${iso}T12:00:00`);
+    return isNaN(d) ? iso : `${KORT[d.getDay()].toLowerCase()} ${d.getDate()}/${d.getMonth() + 1}`;
   }
 
   /** Hvor meget af prisen der er butikkens egne priser, og hvor meget der er cirkapriser. */
@@ -430,6 +436,7 @@ const CSS = `
   .ftekst span { display: inline-flex; align-items: center; gap: 5px; }
   .prik { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.4); display: inline-block; }
   .prik.fuld { background: var(--brand-tekst); }
+  .senest { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; opacity: .9; }
   .arbejder { height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; margin-top: 10px; }
   .streg { height: 100%; width: 40%; background: var(--brand-tekst); border-radius: 2px; animation: glid 1.4s ease-in-out infinite; }
   @keyframes glid { from { transform: translateX(-100%); } to { transform: translateX(250%); } }

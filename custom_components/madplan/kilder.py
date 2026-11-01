@@ -61,11 +61,15 @@ async def hent_rema_katalog(hass: HomeAssistant) -> dict[str, dict]:
 
 
 async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, slut: datetime.date) -> dict[str, dict]:
-    """Madvarer på tilbud fra eTilbudsavis, der gælder i hele resten af planugen."""
+    """Madvarer på tilbud fra eTilbudsavis på indkøbsdagen (planens start eller i dag).
+
+    Der handles ind én gang, så tilbuddet skal gælde den dag. Kæderne skifter avis på
+    forskellige ugedage, så det kan ikke kræves, at det gælder hele planugen.
+    """
     tz = dt_util.get_default_time_zone()
     fra = max(start, dt_util.now().date())
     vindue_fra = datetime.datetime.combine(fra, datetime.time(12, 0), tz)
-    vindue_til = datetime.datetime.combine(slut, datetime.time(12, 0), tz)
+    vindue_til = vindue_fra + datetime.timedelta(days=1)
     tilbud: dict[str, dict] = {}
     for offset in range(0, 2000, 100):
         d = await _hent_json(hass, TJEK_URL.format(dealer=dealer, offset=offset))
@@ -88,6 +92,7 @@ async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, sl
                 "pris": (o.get("pricing") or {}).get("price"),
                 "str": f"{pieces} x {size} {unit}" if pieces and pieces > 1 else f"{size or ''} {unit}".strip(),
                 "billede": (o.get("images") or {}).get("view") or (o.get("images") or {}).get("thumb"),
+                "til": dt_util.as_local(o_til).date().isoformat(),
             }
         if len(d) < 100:
             break

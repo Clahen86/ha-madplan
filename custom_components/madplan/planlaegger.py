@@ -71,10 +71,14 @@ class Madplan:
         return self._laas.locked()
 
     async def async_indlaes(self) -> None:
-        data = await self._store.async_load() or {}
+        data = await self._store.async_load()
+        self.ny = data is None
+        data = data or {}
         self.plan = data.get("plan", {})
         self.historik = data.get("historik", [])
-        self.personer = data.get("personer", STANDARD_PERSONER)
+        # En ny butik arver antal personer fra de andre butikker.
+        andre = [e.runtime_data.personer for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
+        self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
@@ -426,6 +430,9 @@ class Madplan:
         varer.sort(key=lambda v: (v["basis"], not v["tilbud"], v["navn"]))
         self.plan["varer"] = varer
         self.plan["personer"] = n
+        # Tilbuddene skal købes, før det første af dem udløber.
+        brugt = {k[2:] for k in forbrug if k.startswith("T:")}
+        self.plan["handl_senest"] = min((t["til"] for k, t in self.tilbud.items() if k in brugt and t.get("til")), default=None)
         self.plan["total_alle"] = round(sum(v["pris"] for v in varer))
         self._totaler()
 

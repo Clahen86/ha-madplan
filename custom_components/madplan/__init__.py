@@ -100,6 +100,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Hovedsensoren peger på de andre enheder; nu er de alle registreret.
     madplan.opdater()
+    if madplan.ny:
+        # Ny butik: lav den første plan med det samme, så kortet ikke står tomt.
+        entry.async_create_background_task(hass, madplan.async_ny_plan(), "madplan_foerste_plan")
     entry.async_on_unload(entry.add_update_listener(_opdateret))
     return True
 
