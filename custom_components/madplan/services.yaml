@@ -30,10 +30,15 @@ tilfoej_behov:
       example: "pålæg"
       selector:
         text:
+          multiple: true
 fjern_behov:
   fields:
     entity_id: *madplan
-    tekst: *tekst
+    tekst:
+      required: true
+      example: "pålæg"
+      selector:
+        text:
 ekstra_antal:
   fields:
     entity_id: *madplan
@@ -47,3 +52,55 @@ ekstra_antal:
         number:
           min: 1
           max: 50
+gem_regler:
+  fields:
+    budget:
+      example: 700
+      selector:
+        number:
+          min: 0
+          max: 10000
+          unit_of_measurement: kr
+    oeko:
+      selector:
+        boolean:
+    allergier:
+      example: ["nødder"]
+      selector:
+        text:
+          multiple: true
+    undgaa:
+      example: ["svampe"]
+      selector:
+        text:
+          multiple: true
+    favoritter:
+      example: ["lasagne"]
+      selector:
+        text:
+          multiple: true
+    vegetar:
+      selector:
+        number:
+          min: 0
+          max: 7
+    fisk:
+      selector:
+        number:
+          min: 0
+          max: 7
+    max_tid:
+      selector:
+        number:
+          min: 10
+          max: 180
+          unit_of_measurement: min
+    faste_dage:
+      example: '[{"dag": 5, "ret": "pizza"}]'
+      selector:
+        object:
+    krav:
+      example: "Frilandsæg og økologisk mælk"
+      selector:
+        text:
+          multiline: true

@@ -31,6 +31,7 @@ from .const import (
     KATALOG_MAX_ALDER,
     SIGNAL_OPDATERET,
     STANDARD_PERSONER,
+    STANDARD_REGLER,
     UNDGAA_UGER,
 )
 
@@ -47,7 +48,16 @@ class Madplan:
         self.butik_navn, self.dealer = BUTIKKER[self.butik]
         self.butik_info: dict[str, Any] = {"navn": self.butik_navn, "logo": None, "farve": None}
         # Fælles for alle butikker: ét REMA-katalog og ét AI-kald ad gangen.
-        faelles = hass.data.setdefault(DOMAIN, {"katalog_laas": asyncio.Lock(), "ai_laas": asyncio.Lock()})
+        faelles = hass.data.setdefault(
+            DOMAIN,
+            {
+                "katalog_laas": asyncio.Lock(),
+                "ai_laas": asyncio.Lock(),
+                "regler_store": Store(hass, 1, f"{DOMAIN}.regler"),
+                "regler": None,
+            },
+        )
+        self._faelles = faelles
         self._katalog_laas = faelles["katalog_laas"]
         self._ai_laas = faelles["ai_laas"]
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
@@ -80,6 +90,9 @@ class Madplan:
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
+        if self._faelles["regler"] is None:
+            gemt = await self._faelles["regler_store"].async_load() or {}
+            self._faelles["regler"] = {**STANDARD_REGLER, **gemt}
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -94,6 +107,48 @@ class Madplan:
                 "behov": self.behov,
             }
         )
+
+    @property
+    def regler(self) -> dict[str, Any]:
+        return self._faelles["regler"] or dict(STANDARD_REGLER)
+
+    async def async_gem_regler(self, nye: dict[str, Any]) -> None:
+        """Gemmer familiens regler (fælles for alle butikker). De bruges fra næste plan."""
+        regler = {**self.regler, **{k: v for k, v in nye.items() if k in STANDARD_REGLER}}
+        self._faelles["regler"] = regler
+        await self._faelles["regler_store"].async_save(regler)
+
+    def advarsler(self) -> list[str]:
+        """Hvor planen bryder familiens regler. Tjekkes i koden, så det ikke koster AI-kald."""
+        r = self.regler
+        retter = self.plan.get("retter") or []
+        if not retter:
+            return []
+        ud: list[str] = []
+        aktive = [(i, ret) for i, ret in enumerate(retter) if not ret.get("fjernet")]
+        forbudt = [(o, "allergi") for o in r["allergier"]] + [(o, "undgå") for o in r["undgaa"]]
+        for i, ret in aktive:
+            tekst = " ".join([ret.get("navn", "")] + [str(x.get("navn", "")) for x in ret.get("ingredienser", [])]).lower()
+            for ord_, slags in forbudt:
+                if ord_.strip() and re.search(rf"\b{re.escape(ord_.strip().lower())}", tekst):
+                    ud.append(f"{DAGE[i]}: indeholder {ord_} ({slags})")
+            if 1 <= i <= 5 and int(ret.get("tid_min") or 0) > r["max_tid"]:
+                ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r['max_tid']} på hverdage)")
+        for felt, navn in (("vegetar", "vegetarretter"), ("fisk", "fiskeretter")):
+            if not any(felt in ret for _, ret in aktive):
+                continue  # planen er lavet, før retterne blev markeret
+            antal = sum(1 for _, ret in aktive if ret.get(felt))
+            if r[felt] and antal < r[felt] and len(aktive) >= r[felt]:
+                ud.append(f"Kun {antal} {navn} (ønsket: {r[felt]})")
+        for fast in r["faste_dage"]:
+            i, ret_navn = int(fast.get("dag", -1)), str(fast.get("ret", "")).lower()
+            ord_ = [o for o in re.findall(r"\w{3,}", ret_navn)]
+            if 0 <= i < len(retter) and ord_ and not retter[i].get("fjernet"):
+                if not any(o in retter[i].get("navn", "").lower() for o in ord_):
+                    ud.append(f"{DAGE[i]}: skulle være {fast['ret']}")
+        if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
+            ud.append(f"Koster {self.plan['total_alle']} kr (budget {r['budget']} kr)")
+        return ud
 
     def opdater(self) -> None:
         async_dispatcher_send(self.hass, self.signal)
@@ -247,17 +302,18 @@ class Madplan:
         await self._gem()
         self.opdater()
 
-    async def async_tilfoej_behov(self, tekst: str) -> None:
-        """Fx "pålæg" eller "frugt til madpakker": AI vælger tilbudsvarer til en uge."""
-        tekst = tekst.strip()
-        if not tekst or self.optaget:
+    async def async_tilfoej_behov(self, tekster: list[str]) -> None:
+        """Fx "pålæg" og "frugt til madpakker": AI vælger tilbudsvarer - alle i ét kald."""
+        tekster = list(dict.fromkeys(t.strip() for t in tekster if t.strip()))
+        if not tekster or self.optaget:
             return
         async with self._laas:
             try:
-                if tekst.lower() not in (b.lower() for b in self.behov):
-                    self.behov.append(tekst)
-                self._status(f"Finder tilbud på {tekst} …")
-                await self._loes_behov([tekst])
+                for tekst in tekster:
+                    if tekst.lower() not in (b.lower() for b in self.behov):
+                        self.behov.append(tekst)
+                self._status(f"Finder tilbud på {', '.join(tekster)} …")
+                await self._loes_behov(tekster)
                 self.plan["status"] = "Klar"
                 await self._gem()
                 self.opdater()
@@ -495,11 +551,48 @@ class Madplan:
     def er_rema(self) -> bool:
         return self.butik == "rema1000"
 
+    def _familiens_regler(self) -> str:
+        """Familiens egne regler fra panelet, som tekst til AI'en."""
+        r = self.regler
+        n = self.personer
+        dele = []
+        if r["budget"]:
+            dele.append(
+                f"BUDGET: hele ugens aftensmad må højst koste {r['budget']} kr for {n} personer "
+                f"(ca. {r['budget'] / 7 / n:.0f} kr pr. person pr. ret)."
+            )
+        else:
+            dele.append("BUDGET: sigt efter højst 15 kr pr. person pr. ret.")
+        if r["allergier"]:
+            dele.append(f"ALLERGI – må ALDRIG indgå i nogen ret, heller ikke i saucer o.l.: {', '.join(r['allergier'])}.")
+        if r["undgaa"]:
+            dele.append(f"Familien vil ikke have: {', '.join(r['undgaa'])}.")
+        if r["oeko"]:
+            dele.append("Vælg økologiske varer, når prisforskellen er lille (skriv fx 'S:økologisk letmælk').")
+        if r["favoritter"]:
+            dele.append(
+                f"Familiens yndlingsretter – tag gerne 1-2 med, hvis de ikke var med de seneste uger: "
+                f"{', '.join(r['favoritter'])}."
+            )
+        if r["faste_dage"]:
+            faste = "; ".join(f"{DAGE[int(f['dag'])]}: {f['ret']}" for f in r["faste_dage"] if 0 <= int(f["dag"]) < 7)
+            dele.append(f"FASTE DAGE – disse dage SKAL have denne ret: {faste}.")
+        if r["krav"].strip():
+            dele.append(f"Andre krav fra familien: {r['krav'].strip()}")
+        return "\n".join(dele) + "\n"
+
     def _regler(self) -> str:
+        r = self.regler
+        varieret = []
+        if r["fisk"]:
+            varieret.append(f"mindst {r['fisk']} fiskeret{'ter' if r['fisk'] > 1 else ''}")
+        if r["vegetar"]:
+            varieret.append(f"mindst {r['vegetar']} vegetarret{'ter' if r['vegetar'] > 1 else ''}")
         return (
             "Du er en dansk madplanlægger for en børnefamilie. Retterne skal være: billige, nemme, "
-            "forholdsvis sunde (grøntsager i hver ret), hurtige (højst 40 min aktiv tid på hverdage, "
-            "højst 60 min søndag og lørdag), børnevenlige og smage godt. Byg retterne primært på "
+            f"forholdsvis sunde (grøntsager i hver ret), hurtige (højst {r['max_tid']} min fra start til "
+            f"servering på hverdage, højst {max(60, r['max_tid'])} min søndag og lørdag), børnevenlige og "
+            "smage godt. Byg retterne primært på "
             f"ugens tilbudsvarer fra {self.butik_navn} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
             "du som 'S:søgeord': et kort, almindeligt dansk varenavn, som det står i et supermarked, uden mærke "
             "og mængde (fx 'S:hakkede tomater', 'S:piskefløde', 'S:basmati ris', 'S:løg', 'S:letmælk'). "
@@ -510,10 +603,12 @@ class Madplan:
                 "ingredienser som muligt – altid til kød, fisk, ost og grøntsager, når der findes et passende "
                 "tilbud – og S:-varer kun til det, der ikke er på tilbud. "
             )
-            + "Varier proteinet: mindst én fiskeret og én vegetarret om ugen, og samme protein højst to "
-            "gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
-            "BUDGET: sigt efter højst 15 kr pr. person pr. ret. Undgå dyre varer (and, mørbrad, "
-            "oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør retten billig.\n"
+            + "Varier proteinet"
+            + (f": {' og '.join(varieret)} om ugen, og" if varieret else ":")
+            + " samme protein højst to gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
+            + self._familiens_regler()
+            + "Undgå dyre varer (and, mørbrad, oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør "
+            "retten billig.\n"
             "TID: 'tid_min' er den samlede tid fra start til servering og skal være realistisk. Vælg "
             "kun retter, der reelt kan nås inden for tidsgrænsen (fx ikke flæskesteg eller gryderetter "
             "med lang simretid).\n"
@@ -529,6 +624,7 @@ class Madplan:
     def _ret_skema() -> str:
         return (
             '{"navn": str, "kort": str (én linje), "tid_min": int, "sundhed": str (kort), '
+            '"vegetar": bool, "fisk": bool, '
             '"hovedvare": "T:id" eller "S:søgeord", "trin": [str], '
             '"ingredienser": [{"navn": str, "pr_person": number, "enhed": "g"|"ml"|"stk", '
             '"vare": "T:id" eller "S:søgeord", "pakke": number, "basis": bool}]}'

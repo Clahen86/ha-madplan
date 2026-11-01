@@ -97,7 +97,7 @@
         },
         "tekst": {
           "name": "Need",
-          "description": "E.g. \"cold cuts\" or \"fruit for packed lunches\"."
+          "description": "One or more needs, e.g. \"cold cuts\" and \"fruit for packed lunches\". Several are solved in one AI call."
         }
       }
     },
@@ -130,6 +130,52 @@
         "antal": {
           "name": "Quantity",
           "description": "Number of packages."
+        }
+      }
+    },
+    "gem_regler": {
+      "name": "Save the family's rules",
+      "description": "Rules for the meal plan, shared by all stores. Used from the next plan.",
+      "fields": {
+        "budget": {
+          "name": "Budget",
+          "description": "DKK per week for the whole family. Empty = no budget."
+        },
+        "oeko": {
+          "name": "Organic",
+          "description": "Choose organic items when the price difference is small."
+        },
+        "allergier": {
+          "name": "Allergies",
+          "description": "Must never be used."
+        },
+        "undgaa": {
+          "name": "Avoid",
+          "description": "Things the family doesn't want."
+        },
+        "favoritter": {
+          "name": "Favourite dishes",
+          "description": "Included now and then."
+        },
+        "vegetar": {
+          "name": "Vegetarian dishes",
+          "description": "At least this many per week."
+        },
+        "fisk": {
+          "name": "Fish dishes",
+          "description": "At least this many per week."
+        },
+        "max_tid": {
+          "name": "Max time on weekdays",
+          "description": "Minutes from start to serving."
+        },
+        "faste_dage": {
+          "name": "Fixed days",
+          "description": "E.g. [{\"dag\": 5, \"ret\": \"pizza\"}]; day 0 = Sunday … 6 = Saturday."
+        },
+        "krav": {
+          "name": "Other requirements",
+          "description": "E.g. free-range eggs and organic milk."
         }
       }
     }

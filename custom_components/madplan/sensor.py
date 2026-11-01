@@ -73,6 +73,8 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "varer_entitet": find("todo", "varer"),
             "ekstra_entitet": find("todo", "ekstra"),
             "behov": self.madplan.behov,
+            "regler": self.madplan.regler,
+            "advarsler": self.madplan.advarsler(),
             "ekstra_total": p.get("ekstra_total", 0),
             "ekstra_ca": p.get("ekstra_ca", 0),
             "status": p.get("status", "Ingen plan endnu"),

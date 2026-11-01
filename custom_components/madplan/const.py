@@ -10,6 +10,19 @@ CONF_NOTIFY = "notify_service"
 CONF_BUTIK = "butik"
 
 STANDARD_PERSONER = 4
+# Familiens regler for madplanen - fælles for alle butikker.
+STANDARD_REGLER = {
+    "budget": None,  # kr pr. uge for hele familien
+    "oeko": False,
+    "allergier": [],
+    "undgaa": [],
+    "favoritter": [],
+    "vegetar": 1,  # mindst så mange vegetarretter om ugen
+    "fisk": 1,
+    "max_tid": 40,  # minutter på hverdage
+    "faste_dage": [],  # [{"dag": 5, "ret": "pizza"}], dag som indeks i DAGE
+    "krav": "",
+}
 
 # Butik -> (navn, eTilbudsavis/Tjek dealer-id). Kun REMA har et åbent katalog med normalpriser;
 # for de andre kæder bruges REMA's normalpriser som cirkapris for varer, der ikke er på tilbud.

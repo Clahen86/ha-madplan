@@ -27,7 +27,36 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 KORT_URL = "/madplan/madplan-card.js"
 SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id})
-BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): vol.All(cv.string, vol.Length(min=2, max=80))})
+_TEKST = vol.All(cv.string, vol.Length(min=2, max=80))
+BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): _TEKST})
+# Flere behov på én gang løses i ét AI-kald.
+NYE_BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): vol.All(cv.ensure_list, [_TEKST], vol.Length(min=1, max=12))})
+_LISTE = vol.All(cv.ensure_list, [vol.All(cv.string, vol.Length(min=1, max=60))], vol.Length(max=30))
+REGLER_SKEMA = vol.Schema(
+    {
+        vol.Optional("budget"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=0, max=10000))),
+        vol.Optional("oeko"): cv.boolean,
+        vol.Optional("allergier"): _LISTE,
+        vol.Optional("undgaa"): _LISTE,
+        vol.Optional("favoritter"): _LISTE,
+        vol.Optional("vegetar"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
+        vol.Optional("fisk"): vol.All(vol.Coerce(int), vol.Range(min=0, max=7)),
+        vol.Optional("max_tid"): vol.All(vol.Coerce(int), vol.Range(min=10, max=180)),
+        vol.Optional("faste_dage"): vol.All(
+            cv.ensure_list,
+            [
+                vol.Schema(
+                    {
+                        vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=0, max=6)),
+                        vol.Required("ret"): vol.All(cv.string, vol.Length(min=1, max=60)),
+                    }
+                )
+            ],
+            vol.Length(max=7),
+        ),
+        vol.Optional("krav"): vol.All(cv.string, vol.Length(max=500)),
+    }
+)
 ANTAL_SKEMA = SKEMA.extend(
     {vol.Required("uid"): cv.string, vol.Required("antal"): vol.All(vol.Coerce(int), vol.Range(min=1, max=50))}
 )
@@ -74,6 +103,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
 
+    async def gem_regler(call: ServiceCall) -> None:
+        # Reglerne er fælles; alle butikkers sensorer viser dem og deres advarsler.
+        madplaner = _madplaner(call, alle=True)
+        await madplaner[0].async_gem_regler(dict(call.data))
+        for m in madplaner:
+            m.opdater()
+
     async def ekstra_antal(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_ekstra_antal(call.data["uid"], call.data["antal"])
 
@@ -84,7 +120,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "overfoer", overfoer, schema=SKEMA)
-    hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=BEHOV_SKEMA)
+    hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=NYE_BEHOV_SKEMA)
+    hass.services.async_register(DOMAIN, "gem_regler", gem_regler, schema=REGLER_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)
     return True

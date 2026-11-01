@@ -97,7 +97,7 @@
         },
         "tekst": {
           "name": "Behov",
-          "description": "Fx \"pålæg\" eller \"frugt og grønt til madpakker\"."
+          "description": "Ét eller flere behov, fx \"pålæg\" og \"frugt til madpakker\". Flere løses i ét AI-kald."
         }
       }
     },
@@ -130,6 +130,52 @@
         "antal": {
           "name": "Antal",
           "description": "Antal pakninger."
+        }
+      }
+    },
+    "gem_regler": {
+      "name": "Gem familiens regler",
+      "description": "Regler for madplanen, fælles for alle butikker. Bruges fra næste plan.",
+      "fields": {
+        "budget": {
+          "name": "Budget",
+          "description": "Kr. pr. uge for hele familien. Tom = intet budget."
+        },
+        "oeko": {
+          "name": "Økologi",
+          "description": "Vælg økologiske varer, når prisforskellen er lille."
+        },
+        "allergier": {
+          "name": "Allergier",
+          "description": "Må aldrig indgå."
+        },
+        "undgaa": {
+          "name": "Undgå",
+          "description": "Ting familien ikke vil have."
+        },
+        "favoritter": {
+          "name": "Yndlingsretter",
+          "description": "Kommer med en gang imellem."
+        },
+        "vegetar": {
+          "name": "Vegetarretter",
+          "description": "Mindst så mange om ugen."
+        },
+        "fisk": {
+          "name": "Fiskeretter",
+          "description": "Mindst så mange om ugen."
+        },
+        "max_tid": {
+          "name": "Maks tid på hverdage",
+          "description": "Minutter fra start til servering."
+        },
+        "faste_dage": {
+          "name": "Faste dage",
+          "description": "Fx [{\"dag\": 5, \"ret\": \"pizza\"}]; dag 0 = søndag … 6 = lørdag."
+        },
+        "krav": {
+          "name": "Andre krav",
+          "description": "Fx frilandsæg og økologisk mælk."
         }
       }
     }

@@ -31,23 +31,22 @@ class MadplanCard extends HTMLElement {
     this._cfg = { titel: "Ugens madplan", vis_indkob: true, ...config };
     this._varer = [];
     this._ekstra = [];
-    this._behovTekst = this._behovTekst || "";
+    this._inputs = this._inputs || {};
+    this._kladde = this._kladde || [];
     this._fane = this._fane || "ing";
     this._visHjemme = false;
     this._bekraeft = null;
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this.shadowRoot.addEventListener("click", (ev) => this._klik(ev));
+      // Det, man er ved at skrive, overlever, når kortet tegnes igen.
       this.shadowRoot.addEventListener("input", (ev) => {
-        if (ev.target.name === "behov") this._behovTekst = ev.target.value;
+        if (ev.target.name) this._inputs[ev.target.name] = ev.target.value;
       });
+      this.shadowRoot.addEventListener("change", (ev) => this._aendret(ev));
       this.shadowRoot.addEventListener("submit", (ev) => {
         ev.preventDefault();
-        const tekst = this._behovTekst.trim();
-        if (tekst.length < 2) return;
-        this._kald("madplan", "tilfoej_behov", { entity_id: this._valgt, tekst });
-        this._behovTekst = "";
-        this._tegn();
+        this._indsend(ev.target);
       });
     }
     this._sidst = null;
@@ -227,15 +226,82 @@ class MadplanCard extends HTMLElement {
       case "fjernbehov":
         this._kald("madplan", "fjern_behov", { entity_id: plan, tekst: el.dataset.tekst });
         break;
+      case "kladdefjern":
+        this._kladde.splice(Number(el.dataset.i), 1);
+        break;
+      case "findbehov": {
+        // Alt i kladden (og det, der står i feltet) løses i ét AI-kald.
+        const tekst = [...this._kladde, (this._inputs.behov || "").trim()].filter((t) => t.length >= 2);
+        if (tekst.length) this._kald("madplan", "tilfoej_behov", { entity_id: plan, tekst });
+        this._kladde = [];
+        this._inputs.behov = "";
+        break;
+      }
+      case "rstep": {
+        const r = a.regler || {};
+        const felt = el.dataset.felt;
+        const [min, max, trin] = { vegetar: [0, 7, 1], fisk: [0, 7, 1], max_tid: [15, 120, 5] }[felt];
+        const ny = Math.min(max, Math.max(min, Number(r[felt] || 0) + Number(el.dataset.d) * trin));
+        this._gemRegler({ [felt]: ny });
+        break;
+      }
+      case "rtoggle":
+        this._gemRegler({ [el.dataset.felt]: !(a.regler || {})[el.dataset.felt] });
+        break;
+      case "rfjern": {
+        const liste = [...((a.regler || {})[el.dataset.felt] || [])];
+        liste.splice(Number(el.dataset.i), 1);
+        this._gemRegler({ [el.dataset.felt]: liste });
+        break;
+      }
     }
     this._tegn();
   }
 
-  _fokuser() {
-    const i = this.shadowRoot.querySelector('input[name="behov"]');
+  /** Enter i et felt: et behov i kladden eller en ny ting på en af reglernes lister. */
+  _indsend(form) {
+    const a = this._hass.states[this._valgt]?.attributes || {};
+    const r = a.regler || {};
+    if (form.dataset.form === "behov") {
+      const tekst = (this._inputs.behov || "").trim();
+      if (tekst.length >= 2 && !this._kladde.some((k) => k.toLowerCase() === tekst.toLowerCase())) this._kladde.push(tekst);
+      this._inputs.behov = "";
+    } else if (form.dataset.form === "rliste") {
+      const felt = form.dataset.felt;
+      const tekst = (this._inputs[`r_${felt}`] || "").trim();
+      const liste = r[felt] || [];
+      if (tekst && !liste.some((x) => x.toLowerCase() === tekst.toLowerCase())) this._gemRegler({ [felt]: [...liste, tekst] });
+      this._inputs[`r_${felt}`] = "";
+    } else if (form.dataset.form === "rfast") {
+      const dag = Number(form.querySelector("select").value);
+      const ret = (this._inputs.r_fast || "").trim();
+      if (ret) this._gemRegler({ faste_dage: [...(r.faste_dage || []).filter((f) => f.dag !== dag), { dag, ret }] });
+      this._inputs.r_fast = "";
+    }
+    this._fokusNavn = form.querySelector("input")?.name;
+    this._tegn();
+  }
+
+  /** Felter, der gemmes, når man forlader dem (budget og andre krav). */
+  _aendret(ev) {
+    const navn = ev.target.name;
+    if (navn === "r_budget") {
+      const v = ev.target.value.trim();
+      this._gemRegler({ budget: v ? Math.max(0, Math.round(Number(v))) : null });
+    } else if (navn === "r_krav") {
+      this._gemRegler({ krav: ev.target.value.trim() });
+    }
+  }
+
+  _gemRegler(aendring) {
+    this._kald("madplan", "gem_regler", aendring);
+  }
+
+  _fokuser(navn) {
+    const i = navn && this.shadowRoot.querySelector(`[name="${navn}"]`);
     if (i) {
       i.focus();
-      i.setSelectionRange(i.value.length, i.value.length);
+      if (i.setSelectionRange && i.type !== "number") i.setSelectionRange(i.value.length, i.value.length);
     }
   }
 
@@ -458,16 +524,29 @@ class MadplanCard extends HTMLElement {
         .join("")}`;
     };
     const finder = (a.status || "").startsWith("Finder tilbud");
+    const antal = this._kladde.length + ((this._inputs.behov || "").trim().length >= 2 ? 1 : 0);
     return `<div class="ekstra">
       <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Ekstra</span>
         ${this._ekstra.length ? `<span class="mangler">${mangler.length} varer · ${a.ekstra_ca ? "ca. " : ""}${kr(a.ekstra_total)}</span>` : ""}</div>
-      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv fx pålæg, rugbrød eller frugt til madpakker, så finder den tilbud. Der sættes 1 af hver på, og du retter selv antallet. Det huskes til de næste uger.</div>
-      <form class="behov-form"><input name="behov" autocomplete="off" placeholder="Fx pålæg eller frugt til madpakker"
-          value="${esc(this._behovTekst)}"><button type="submit" ${finder ? "disabled" : ""}>
-          <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:magnify"}"></ha-icon>${finder ? "Søger …" : "Find tilbud"}</button></form>
+      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv én ting ad gangen og tryk +. Tryk så "Find tilbud", så finder den tilbud på det hele på én gang. Der sættes 1 af hver på, og du retter selv antallet. Det huskes til de næste uger.</div>
+      <form class="behov-form" data-form="behov"><input name="behov" autocomplete="off" enterkeyhint="done" placeholder="Fx pålæg, rugbrød, frugt …"
+          value="${esc(this._inputs.behov || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+      ${
+        this._kladde.length
+          ? `<div class="chips kladde">${this._kladde
+              .map((k, i) => `<button class="chip-kladde" data-h="kladdefjern" data-i="${i}">${esc(k)}<ha-icon icon="mdi:close"></ha-icon></button>`)
+              .join("")}</div>`
+          : ""
+      }
+      ${
+        antal || finder
+          ? `<button class="knap findknap" data-h="findbehov" ${finder ? "disabled" : ""}>
+              <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:star-four-points"}"></ha-icon>${finder ? "Søger …" : `Find tilbud (${antal})`}</button>`
+          : ""
+      }
       ${
         behov.length
-          ? `<div class="chips">${behov
+          ? `<div class="gemt">Huskes hver uge</div><div class="chips">${behov
               .map((b, i) => {
                 const bek = this._bekraeft === `fjernbehov-${i + 1}`;
                 return `<button class="chip-behov ${bek ? "bekraeft" : ""}" data-h="fjernbehov" data-dag="${i + 1}" data-tekst="${esc(b)}">
@@ -504,7 +583,8 @@ class MadplanCard extends HTMLElement {
     const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
     const uge = this.shadowRoot.querySelector(".uge");
     const rul = uge ? uge.scrollLeft : null;
-    const fokus = this.shadowRoot.activeElement?.name === "behov";
+    const fokus = this._fokusNavn || this.shadowRoot.activeElement?.name;
+    this._fokusNavn = null;
     this.shadowRoot.innerHTML = `<style>${CSS}</style>
       <ha-card style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
         ${this._butikker(planer)}
@@ -516,7 +596,7 @@ class MadplanCard extends HTMLElement {
                <small>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</small></div></div>`
         }
       </ha-card>`;
-    if (fokus) this._fokuser();
+    if (fokus) this._fokuser(fokus);
     const nyUge = this.shadowRoot.querySelector(".uge");
     if (nyUge) {
       if (rul !== null) nyUge.scrollLeft = rul;
@@ -666,6 +746,16 @@ const CSS = `
     border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; font-size: 13px; }
   .chip-behov ha-icon { --mdc-icon-size: 14px; opacity: .6; }
   .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
+  .gemt { font-size: 12px; color: var(--secondary-text-color); margin: 10px 2px 2px; }
+  .behov-form .plusknap { width: 42px; padding: 0; justify-content: center; flex: none; }
+  .behov-form .plusknap ha-icon { --mdc-icon-size: 22px; }
+  .chip-kladde { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; border-radius: 16px; border: none;
+    background: color-mix(in srgb, var(--brand) 16%, transparent); color: var(--primary-text-color); cursor: pointer; font: inherit;
+    font-size: 14px; font-weight: 600; animation: ind .15s ease-out; }
+  .chip-kladde ha-icon { --mdc-icon-size: 15px; opacity: .6; }
+  @keyframes ind { from { transform: scale(.8); opacity: 0; } }
+  .findknap { width: 100%; padding: 12px; margin: 4px 0 8px; font-weight: 700; }
+  .findknap[disabled] { opacity: .6; }
   .gruppe { margin: 14px 0 2px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
     color: var(--secondary-text-color); }
   .antal { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--divider-color); border-radius: 18px;
@@ -740,6 +830,13 @@ class MadplanPanel extends MadplanCard {
           : ""
       }
       ${a.handl_senest ? `<div class="info"><ha-icon icon="mdi:calendar-clock"></ha-icon>Tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
+      ${
+        (a.advarsler || []).length
+          ? `<button class="advarsler" data-h="side" data-side="regler"><ha-icon icon="mdi:alert-outline"></ha-icon>
+              <span><b>Planen bryder ${a.advarsler.length === 1 ? "en af jeres regler" : `${a.advarsler.length} af jeres regler`}</b>
+              ${a.advarsler.map((x) => `<small>${esc(x)}</small>`).join("")}</span></button>`
+          : ""
+      }
       ${
         status
           ? `<div class="statuspille ${arbejder ? "" : status.startsWith("✅") ? "ok" : "fejl"}">${arbejder ? '<span class="prik-puls"></span>' : '<ha-icon icon="mdi:information-outline"></ha-icon>'}${esc(status)}</div>`
@@ -820,6 +917,56 @@ class MadplanPanel extends MadplanCard {
     </article>`;
   }
 
+  /** Familiens regler: fælles for alle butikker og bruges fra næste plan. Koster ingen ekstra AI-kald. */
+  _reglerSide(a) {
+    const r = a.regler || {};
+    const stepper = (felt, enhed) => `<div class="stepper"><button data-h="rstep" data-felt="${felt}" data-d="-1" aria-label="Færre">−</button>
+        <span>${esc(r[felt] ?? 0)}${enhed}</span><button data-h="rstep" data-felt="${felt}" data-d="1" aria-label="Flere">+</button></div>`;
+    const liste = (felt, ikon, titel, hjaelp, eksempel, klasse = "") => `<section class="rkort">
+        <div class="rtitel"><span class="rikon ${klasse}"><ha-icon icon="${ikon}"></ha-icon></span><span><b>${titel}</b><small>${hjaelp}</small></span></div>
+        ${
+          (r[felt] || []).length
+            ? `<div class="chips">${r[felt]
+                .map((x, i) => `<button class="rchip ${klasse}" data-h="rfjern" data-felt="${felt}" data-i="${i}">${esc(x)}<ha-icon icon="mdi:close"></ha-icon></button>`)
+                .join("")}</div>`
+            : ""
+        }
+        <form class="behov-form" data-form="rliste" data-felt="${felt}"><input name="r_${felt}" autocomplete="off" enterkeyhint="done"
+          placeholder="${eksempel}" value="${esc(this._inputs[`r_${felt}`] || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+      </section>`;
+    const faste = (r.faste_dage || []).slice().sort((x, y) => x.dag - y.dag);
+    return `<div class="rintro"><ha-icon icon="mdi:information-outline"></ha-icon>Reglerne gælder alle butikker og bruges fra næste madplan. De koster ikke ekstra AI-kald.</div>
+      <section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:wallet-outline"></ha-icon></span><span><b>Budget</b><small>Hele ugens aftensmad</small></span></div>
+        <label class="budget"><input name="r_budget" type="number" inputmode="numeric" min="0" step="50" placeholder="Intet budget"
+          value="${esc(this._inputs.r_budget ?? r.budget ?? "")}"><span>kr. pr. uge</span></label>
+      </section>
+      <section class="rkort">
+        <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:timer-outline"></ha-icon></span><span class="rnavn2"><b>Maks tid</b><small>På hverdage</small></span>${stepper("max_tid", " min")}</div>
+        <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:sprout"></ha-icon></span><span class="rnavn2"><b>Vegetarretter</b><small>Mindst pr. uge</small></span>${stepper("vegetar", "")}</div>
+        <div class="rlinje"><span class="rikon blaa"><ha-icon icon="mdi:fish"></ha-icon></span><span class="rnavn2"><b>Fiskeretter</b><small>Mindst pr. uge</small></span>${stepper("fisk", "")}</div>
+        <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:leaf"></ha-icon></span><span class="rnavn2"><b>Økologi</b><small>Når prisforskellen er lille</small></span>
+          <button class="kontakt ${r.oeko ? "til" : ""}" data-h="rtoggle" data-felt="oeko" role="switch" aria-checked="${r.oeko ? "true" : "false"}" aria-label="Økologi"><span></span></button></div>
+      </section>
+      ${liste("allergier", "mdi:alert-octagon-outline", "Allergier", "Må aldrig indgå", "Fx nødder", "roed")}
+      ${liste("undgaa", "mdi:thumb-down-outline", "Undgå", "Det vil I ikke have", "Fx svampe eller lever")}
+      ${liste("favoritter", "mdi:heart-outline", "Yndlingsretter", "Kommer med en gang imellem", "Fx lasagne", "lyseroed")}
+      <section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:calendar-star"></ha-icon></span><span><b>Faste dage</b><small>Fx fredag er pizzadag</small></span></div>
+        ${faste
+          .map((f) => `<div class="fastrad"><span class="fdag">${DAGE[f.dag]}</span><span class="fret">${esc(f.ret)}</span>
+            <button class="ikonknap" data-h="rfjern" data-felt="faste_dage" data-i="${(r.faste_dage || []).indexOf(f)}" aria-label="Fjern"><ha-icon icon="mdi:close"></ha-icon></button></div>`)
+          .join("")}
+        <form class="behov-form" data-form="rfast"><select name="r_dag">${DAGE.map((d, i) => `<option value="${i}" ${i === 5 ? "selected" : ""}>${d}</option>`).join("")}</select>
+          <input name="r_fast" autocomplete="off" enterkeyhint="done" placeholder="Fx pizza" value="${esc(this._inputs.r_fast || "")}">
+          <button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+      </section>
+      <section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:text-box-outline"></ha-icon></span><span><b>Andre krav</b><small>Gemmes, når du trykker udenfor</small></span></div>
+        <textarea name="r_krav" rows="3" placeholder="Fx frilandsæg og økologisk mælk. Børnene kan ikke lide stærk mad.">${esc(this._inputs.r_krav ?? r.krav ?? "")}</textarea>
+      </section>`;
+  }
+
   _fane(side, tekst, ikon, antal = 0) {
     return `<button class="${this._side === side ? "aktiv" : ""}" data-h="side" data-side="${side}">
       <ha-icon icon="${ikon}"></ha-icon><span>${tekst}</span>${antal ? `<span class="badge">${antal}</span>` : ""}</button>`;
@@ -851,7 +998,8 @@ class MadplanPanel extends MadplanCard {
     const gammel = this.shadowRoot.querySelector(".indhold");
     const rul = gammel && !this._tilTop ? gammel.scrollTop : 0;
     this._tilTop = false;
-    const fokus = this.shadowRoot.activeElement?.name === "behov";
+    const fokus = this._fokusNavn || this.shadowRoot.activeElement?.name;
+    this._fokusNavn = null;
     const tilfoejUrl = "/config/integrations/dashboard/add?domain=madplan";
     let farve = "#3f51b5";
     let krop;
@@ -873,13 +1021,17 @@ class MadplanPanel extends MadplanCard {
         this._dagValgt = i >= 0 ? i : 0;
       }
       const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
-      if (!harPlan) {
+      if (!harPlan && this._side === "regler") {
+        krop = this._reglerSide(a);
+      } else if (!harPlan) {
         krop = `${this._overblik(s, n)}<div class="velkommen"><ha-icon icon="mdi:chef-hat"></ha-icon><h2>Ingen madplan endnu</h2>
           <p>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</p></div>`;
       } else if (this._side === "ret") {
         krop = this._retSide(dage);
       } else if (this._side === "indkob") {
         krop = this._indkob(s);
+      } else if (this._side === "regler") {
+        krop = this._reglerSide(a);
       } else {
         krop = this._ugeSide(s, n, dage);
       }
@@ -901,7 +1053,7 @@ class MadplanPanel extends MadplanCard {
                   "Indkøb",
                   "mdi:cart-outline",
                   mangler,
-                )}</nav>`
+                )}${this._fane("regler", "Regler", "mdi:tune-variant")}</nav>`
               : ""
           }
         </header>
@@ -913,7 +1065,7 @@ class MadplanPanel extends MadplanCard {
       m.narrow = this._narrow;
     }
     this.shadowRoot.querySelector(".indhold").scrollTop = rul;
-    if (fokus) this._fokuser();
+    if (fokus) this._fokuser(fokus);
   }
 }
 
@@ -1058,6 +1210,60 @@ const PANEL_CSS = `
   .ramme .sektion { font-size: 20px; font-weight: 800; }
   .ramme .fremdrift { height: 8px; border-radius: 4px; }
   .ramme .detalje { background: var(--card-background-color); margin: 0; border: none; border-radius: 24px; box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+
+  /* Advarsler på ugesiden */
+  .advarsler { display: flex; gap: 10px; width: 100%; margin-top: 10px; padding: 10px 12px; border: none; border-radius: 16px; text-align: left;
+    cursor: pointer; font: inherit; background: rgba(239,108,0,.12); color: var(--primary-text-color); }
+  .advarsler > ha-icon { color: #ef6c00; flex: none; }
+  .advarsler span { display: flex; flex-direction: column; gap: 2px; }
+  .advarsler small { color: var(--secondary-text-color); }
+
+  /* Regler */
+  .rintro { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--secondary-text-color); margin: 0 4px 12px; }
+  .rintro ha-icon { --mdc-icon-size: 18px; flex: none; }
+  .rkort { background: var(--card-background-color); border-radius: 24px; padding: 14px; margin-bottom: 12px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+  .rtitel { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .rtitel > span:last-child, .rnavn2 { display: flex; flex-direction: column; min-width: 0; }
+  .rtitel small, .rnavn2 small { color: var(--secondary-text-color); font-size: 13px; }
+  .rtitel b, .rnavn2 b { font-size: 16px; }
+  .rikon { width: 40px; height: 40px; border-radius: 14px; display: grid; place-items: center; flex: none;
+    background: color-mix(in srgb, var(--brand) 16%, transparent); color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .rikon.groen { background: rgba(46,125,50,.14); color: #2e7d32; }
+  .rikon.blaa { background: rgba(21,101,192,.14); color: #1565c0; }
+  .rikon.roed { background: rgba(198,40,40,.14); color: #c62828; }
+  .rikon.lyseroed { background: rgba(216,27,96,.14); color: #d81b60; }
+  .rlinje { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+  .rlinje + .rlinje { border-top: 1px solid var(--divider-color); }
+  .rnavn2 { flex: 1; }
+  .rlinje .stepper span { min-width: 54px; justify-content: center; }
+  .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 600; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--primary-text-color); }
+  .rchip.roed { background: rgba(198,40,40,.12); }
+  .rchip.lyseroed { background: rgba(216,27,96,.12); }
+  .rchip ha-icon { --mdc-icon-size: 15px; opacity: .6; }
+  .kontakt { width: 52px; height: 32px; border-radius: 16px; border: none; padding: 3px; cursor: pointer; flex: none;
+    background: var(--divider-color); transition: background .2s; }
+  .kontakt span { display: block; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    transition: transform .2s; }
+  .kontakt.til { background: #2e7d32; }
+  .kontakt.til span { transform: translateX(20px); }
+  .budget { display: flex; align-items: center; gap: 10px; }
+  .budget input { width: 140px; padding: 10px 14px; border-radius: 22px; border: 1px solid var(--divider-color); font: inherit;
+    font-size: 18px; font-weight: 700; background: var(--card-background-color); color: var(--primary-text-color); outline: none; }
+  .budget input:focus, .rkort textarea:focus, .rkort select:focus { border-color: var(--brand); }
+  .budget span { color: var(--secondary-text-color); }
+  .fastrad { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--divider-color); }
+  .fdag { font-weight: 800; width: 76px; flex: none; }
+  .fret { flex: 1; }
+  .ikonknap { width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center;
+    background: var(--secondary-background-color); color: var(--secondary-text-color); }
+  .ikonknap ha-icon { --mdc-icon-size: 16px; }
+  .rkort select { padding: 0 10px; border-radius: 22px; border: 1px solid var(--divider-color); font: inherit; outline: none;
+    background: var(--card-background-color); color: var(--primary-text-color); }
+  .rkort textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--divider-color);
+    font: inherit; resize: vertical; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }
+  @container (max-width: 400px) { .topfaner button span:not(.badge) { font-size: 13px; } .topfaner button { gap: 4px; padding: 10px 2px; } }
 
   .velkommen { text-align: center; padding: 40px 20px; }
   .velkommen > ha-icon { --mdc-icon-size: 56px; color: var(--brand); }
