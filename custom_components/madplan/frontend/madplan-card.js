@@ -224,15 +224,6 @@ class MadplanCard extends HTMLElement {
         if (ny >= 1) this._kald("madplan", "ekstra_antal", { entity_id: plan, uid: el.dataset.uid, antal: ny });
         break;
       }
-      case "mpplus":
-      case "mpminus": {
-        const mp = Number(this._hass.states[a.madpakker_entitet]?.state || 0);
-        this._kald("number", "set_value", {
-          entity_id: a.madpakker_entitet,
-          value: Math.min(12, Math.max(0, mp + (h === "mpplus" ? 1 : -1))),
-        });
-        break;
-      }
       case "fjernbehov":
         this._kald("madplan", "fjern_behov", { entity_id: plan, tekst: el.dataset.tekst });
         break;
@@ -470,17 +461,7 @@ class MadplanCard extends HTMLElement {
     return `<div class="ekstra">
       <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Ekstra</span>
         ${this._ekstra.length ? `<span class="mangler">${mangler.length} varer · ${a.ekstra_ca ? "ca. " : ""}${kr(a.ekstra_total)}</span>` : ""}</div>
-      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv fx pålæg, rugbrød eller frugt til madpakker, så finder den tilbud til ${esc(
-        this._personer(),
-      )} personer. Det huskes til de næste uger.</div>
-      ${
-        a.madpakker_entitet && this._hass.states[a.madpakker_entitet]
-          ? `<div class="mp"><ha-icon icon="mdi:food-takeout-box-outline"></ha-icon><span>Madpakker pr. hverdag</span>
-              <span class="antal"><button data-h="mpminus" aria-label="Færre">−</button>
-              <b>${esc(Math.round(Number(this._hass.states[a.madpakker_entitet].state)))}</b>
-              <button data-h="mpplus" aria-label="Flere">+</button></span></div>`
-          : ""
-      }
+      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv fx pålæg, rugbrød eller frugt til madpakker, så finder den tilbud. Der sættes 1 af hver på, og du retter selv antallet. Det huskes til de næste uger.</div>
       <form class="behov-form"><input name="behov" autocomplete="off" placeholder="Fx pålæg eller frugt til madpakker"
           value="${esc(this._behovTekst)}"><button type="submit" ${finder ? "disabled" : ""}>
           <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:magnify"}"></ha-icon>${finder ? "Søger …" : "Find tilbud"}</button></form>

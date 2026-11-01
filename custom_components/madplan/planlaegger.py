@@ -81,8 +81,6 @@ class Madplan:
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
-        andre_mp = [e.runtime_data.madpakker for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
-        self.madpakker = data.get("madpakker", max(andre_mp, default=0))
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -95,7 +93,6 @@ class Madplan:
                 "personer": self.personer,
                 "butik_info": self.butik_info,
                 "behov": self.behov,
-                "madpakker": self.madpakker,
             }
         )
 
@@ -219,15 +216,10 @@ class Madplan:
             self.opdater()
 
     async def async_saet_personer(self, antal: int) -> None:
-        gammel = self.personer
         self.personer = max(1, int(antal))
         if self.plan.get("retter") and not self.optaget:
             await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
             self._beregn()
-        # Ekstra varer skaleres med antal personer.
-        for e in self.plan.get("ekstra", []):
-            e["antal"] = max(1, round(e["antal"] * self.personer / max(1, gammel)))
-            e["pris"] = round(e["antal"] * e["enhedspris"], 2)
         self._totaler()
         await self._gem()
         self.opdater()
@@ -238,11 +230,6 @@ class Madplan:
             if v["key"] == key:
                 v["hjemme"] = hjemme
         self._totaler()
-        await self._gem()
-        self.opdater()
-
-    async def async_saet_madpakker(self, antal: int) -> None:
-        self.madpakker = max(0, int(antal))
         await self._gem()
         self.opdater()
 
@@ -302,29 +289,14 @@ class Madplan:
             start, slut = self._plan_uge()
             await self._hent_data(start, slut, nye_tilbud=True)
             self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
-        n = self.personer
-        mp = self.madpakker
-        madpakke_tekst = (
-            f"Der smøres {mp} madpakker pr. hverdag, altså {mp * 5} madpakker om ugen. Varer til madpakker "
-            "(rugbrød, pålæg, frugt og grønt til madpakker osv.) regnes KUN ud fra antallet af madpakker, "
-            "ikke ud fra hele familien. "
-            if mp
-            else "Antallet af madpakker er ikke oplyst, så regn med 2 madpakker pr. hverdag. "
-        )
         instr = (
-            f"Du hjælper en dansk familie på {n} personer med indkøb i {self.butik_navn} til en hel uge "
-            "ud over aftensmaden. For hvert behov herunder: vælg konkrete, almindelige varer, som familien "
-            "vil kunne lide, og brug så vidt muligt tilbudsvarer (T:). Brug kun R:-varer, hvis der ikke er "
-            "et passende tilbud. Hold det billigt, og vælg højst 3-4 forskellige varer pr. behov. "
-            + madpakke_tekst
-            + "MÆNGDER: regn realistisk og hellere lidt for lidt end for meget. Tommelfingerregler pr. "
-            "madpakke: 3 skiver rugbrød (ca. 120 g), 40-50 g pålæg, 1 stk frugt, 50-75 g grønt. En pakke "
-            "rugbrød på 1 kg er ca. 25 skiver. Regn summen ud fra pakningens størrelse, og rund ned, hvis "
-            "det kun lige mangler lidt. 'antal' er antal pakninger for hele ugen. "
-            "Brug KUN vare-id'er fra listen.\n"
+            f"Du hjælper en dansk familie med indkøb i {self.butik_navn} ud over aftensmaden. For hvert behov "
+            "herunder: vælg konkrete, almindelige varer, som familien vil kunne lide, og brug så vidt muligt "
+            "tilbudsvarer (T:). Brug kun R:-varer, hvis der ikke er et passende tilbud. Hold det billigt, og "
+            "vælg højst 3-4 forskellige varer pr. behov. Brug KUN vare-id'er fra listen.\n"
             f"Behov: {'; '.join(behov)}\n"
             'Svar KUN med JSON: {"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "R:id", '
-            '"antal": int, "hvorfor": str (kort)}]}\n\n' + self._vare_tekst(start)
+            '"hvorfor": str (kort)}]}\n\n' + self._vare_tekst(start)
         )
         svar = await self._spoerg_ai("Madplan ekstra varer", instr)
         nye = []
@@ -333,7 +305,8 @@ class Madplan:
             if not info:
                 continue
             navn, strr, enhedspris, _, tilbud = info
-            antal = max(1, int(v.get("antal") or 1))
+            # Altid 1 pakning; brugeren retter selv antallet.
+            antal = 1
             # AI'en staver ikke altid behovet præcis som brugeren; brug brugerens ord.
             b = str(v.get("behov") or "").lower()
             hoerer_til = next((x for x in behov if x.lower() == b), None) or next(

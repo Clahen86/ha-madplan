@@ -70,7 +70,6 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "anslaaede_priser": not self.madplan.er_rema,
             "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],
             "personer_entitet": find("number", "personer"),
-            "madpakker_entitet": find("number", "madpakker"),
             "varer_entitet": find("todo", "varer"),
             "ekstra_entitet": find("todo", "ekstra"),
             "behov": self.madplan.behov,
