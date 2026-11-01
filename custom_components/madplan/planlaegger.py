@@ -579,10 +579,11 @@ class Madplan:
                     continue
                 ing["soeg"], ing["vare"] = v[2:], fundet[v]
                 # Den rigtige pakningsstørrelse frem for AI'ens gæt.
-                if ing["vare"].startswith("R:") and (
-                    (s := soeg.stoerrelse(self.katalog[ing["vare"][2:]]["str"])) and s[1] == ing.get("enhed")
-                ):
+                s = soeg.stoerrelse(self.katalog[ing["vare"][2:]]["str"]) if ing["vare"].startswith("R:") else None
+                if s and s[1] == ing.get("enhed"):
                     ing["pakke"] = s[0]
+                elif s and s[1] == "g" and ing.get("enhed") == "stk" and (vaegt := soeg.stk_vaegt(ing.get("navn", ""))):
+                    ing["pakke"] = round(s[0] / vaegt, 1)  # fx 1 kg løg ≈ 8 stk
             hv = str(ret.get("hovedvare") or "").strip()
             if hv.startswith("S:"):
                 ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)

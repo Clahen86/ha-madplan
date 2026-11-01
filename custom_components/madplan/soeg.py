@@ -37,6 +37,10 @@ _SYNONYM = {
     "svin": "gris",
     "grøntsager": "grøntsagsblanding",
     "wokgrøntsager": "grøntsagsblanding",
+    "wraps": "tortillas",
+    "wrap": "tortillas",
+    "tortilla": "tortillas",
+    "tortillawraps": "tortillas",
 }
 _BOEJNING = ("e", "r", "er", "en", "n", "ne", "et", "s", "erne")
 # Ord der beskriver mængde eller emballage og ikke står i varenavnene.
@@ -88,6 +92,20 @@ def _score(soeg: list[str], navn: list[str]) -> int | None:
         sammensat += bedst[1]
     ekstra = sum(1 for i, w in enumerate(navn) if i not in brugt and w not in _NEUTRAL)
     return 2 * sammensat + ekstra
+
+
+# Ca. vægt pr. stk, når AI'en regner i stk, men varen sælges i gram (fx "4 stk løg" og en pose på 1 kg).
+_STK_VAEGT = {
+    "løg": 120, "rødløg": 100, "hvidløg": 50, "gulerod": 80, "gulerødder": 80, "kartoffel": 100, "kartofler": 100,
+    "æble": 150, "æbler": 150, "pære": 150, "pærer": 150, "peberfrugt": 160, "peberfrugter": 160, "tomat": 100,
+    "tomater": 100, "citron": 120, "citroner": 120, "lime": 70, "agurk": 350, "squash": 300, "porre": 250,
+    "porrer": 250, "banan": 120, "bananer": 120, "avocado": 200, "avocadoer": 200, "appelsin": 200, "pastinak": 150,
+}
+
+
+def stk_vaegt(navn: str) -> float | None:
+    """Gram pr. stk for almindelige grøntsager og frugt, ud fra ingrediensens navn."""
+    return next((_STK_VAEGT[o] for o in reversed(_ord(navn)) if o in _STK_VAEGT), None)
 
 
 def ligner(a: str, b: str) -> bool:
