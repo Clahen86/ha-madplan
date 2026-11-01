@@ -44,6 +44,8 @@ MAKS_PAKKER = 10
 # Færre tilbud end dette til næste uge betyder, at den nye avis ikke er ude endnu.
 MIN_TILBUD = 20
 MAKS_EKSTRA_BUTIKKER = 2
+# En anden butik bruges kun til mindst så mange forskellige varer - ellers købes de i hovedbutikken.
+MIN_PR_BUTIK = 3
 
 
 class ForLangtSvar(HomeAssistantError):
@@ -181,8 +183,8 @@ class Madplan:
             if v.get("butik") and not v.get("hjemme"):
                 andre.setdefault(v["butik"], []).append(v["navn"])
         for butik, navne in andre.items():
-            if len(navne) == 1:
-                ud.append(f"Kun 1 vare fra {butik} ({navne[0]}) – er turen det værd?")
+            if len(navne) < MIN_PR_BUTIK:  # kan ske efter "Byt ret"
+                ud.append(f"Kun {len(navne)} vare{'r' if len(navne) > 1 else ''} fra {butik} – er turen det værd?")
         if self.plan.get("salling_fejl"):
             ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
         if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
@@ -242,6 +244,8 @@ class Madplan:
                 nye = svar.get("retter", [])[:antal]
                 if len(nye) < antal:
                     raise HomeAssistantError(f"AI gav kun {len(nye)} retter")
+                if self.ekstra_butikker:
+                    self._saml_butikker(nye)
                 await self.hass.async_add_executor_job(self._find_varer, nye, start)
                 ai_retter = iter(nye)
                 retter = [
@@ -829,9 +833,9 @@ class Madplan:
         else:
             self._navne = await self.hass.async_add_executor_job(soeg.navneliste, self.katalog, start)
         if nye_tilbud:
-            self.tilbud = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
-            for t in self.tilbud.values():
-                t["butik"] = self.butik
+            # Kopier, så butiksmærket ikke ændrer i det, der blev hentet.
+            hentet = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
+            self.tilbud = {tid: {**t, "butik": self.butik} for tid, t in hentet.items()}
             for andre in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER]:
                 try:
                     ekstra = await kilder.hent_tilbud(self.hass, BUTIKKER[andre][1], start, slut)
@@ -1022,15 +1026,39 @@ class Madplan:
                 return None
         return self._salling_priser[ean]
 
+    def _alle_butikker(self) -> str:
+        navne = [self.butik_navn, *(BUTIKKER[b][0] for b in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER])]
+        return navne[0] if len(navne) == 1 else ", ".join(navne[:-1]) + " og " + navne[-1]
+
     def _flere_butikker(self) -> str:
         if not self.ekstra_butikker:
             return ""
-        andre = " og ".join(BUTIKKER[b][0] for b in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER])
         return (
-            f"FLERE BUTIKKER: Familien handler i {self.butik_navn} og kan også handle i {andre}. Brug kun tilbud fra "
-            f"{andre}, når det sparer mærkbart eller giver en bedre ret – og så gerne flere varer derfra, ikke én "
-            f"enkelt. Varer, der ikke er på tilbud (S:), købes altid i {self.butik_navn}.\n"
+            f"FLERE BUTIKKER: Familien handler i {self._alle_butikker()}, og butikkerne er ligestillede. Vælg de "
+            "billigste og bedste tilbud på tværs af dem, men saml indkøbet: brug kun en butik, hvis I køber mindst "
+            f"{MIN_PR_BUTIK} forskellige varer der – ellers køb det i en af de andre. Varer, der ikke er på tilbud "
+            f"(S:), købes i {self.butik_navn}.\n"
         )
+
+    def _saml_butikker(self, retter: list[dict]) -> None:
+        """En tur i en anden butik for 1-2 varer er ikke det værd: de varer købes i hovedbutikken i stedet.
+        Kører i koden efter AI'en, så det ikke koster ekstra kald."""
+        pr_butik: dict[str, set[str]] = {}
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                v = str(ing.get("vare") or "")
+                if self._anden_butik(v):
+                    pr_butik.setdefault(self.tilbud[v[2:]]["butik"], set()).add(v)
+        for butik, varer in pr_butik.items():
+            if len(varer) >= MIN_PR_BUTIK:
+                continue
+            _LOGGER.info("Kun %s vare(r) fra %s - købes i %s i stedet", len(varer), BUTIKKER[butik][0], self.butik_navn)
+            for ret in retter:
+                for ing in ret.get("ingredienser", []):
+                    if ing.get("vare") in varer:
+                        ing["vare"] = f"S:{ing.get('navn', '')}"
+                if ret.get("hovedvare") in varer:
+                    ret["hovedvare"] = None
 
     def _anden_butik(self, vare_id: str) -> str | None:
         """Navnet på den anden kæde, hvis varen er et tilbud derfra - ellers None (hovedbutikken)."""
@@ -1091,7 +1119,7 @@ class Madplan:
             f"forholdsvis sunde (grøntsager i hver ret), hurtige (højst {r['max_tid']} min fra start til "
             f"servering på hverdage, højst {r.get('max_tid_weekend', 60)} min søndag og lørdag), "
             f"{'børnevenlige og ' if boern else ''}smage godt. Byg retterne primært på "
-            f"ugens tilbudsvarer fra {self.butik_navn} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
+            f"ugens tilbudsvarer fra {self._alle_butikker()} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
             "du som 'S:navn', hvor navn står PRÆCIS som på listen ALMINDELIGE VARER (fx 'S:Hakkede tomater', "
             "'S:Piskefløde 36%', 'S:Basmati ris'). Kun hvis varen slet ikke findes på listen, skriver du et kort, "
             "almindeligt dansk varenavn uden mærke og mængde. "
