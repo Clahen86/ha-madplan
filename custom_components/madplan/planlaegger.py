@@ -578,8 +578,12 @@ class Madplan:
                 if v not in fundet:
                     continue
                 ing["soeg"], ing["vare"] = v[2:], fundet[v]
-                # Den rigtige pakningsstørrelse frem for AI'ens gæt.
-                s = soeg.stoerrelse(self.katalog[ing["vare"][2:]]["str"]) if ing["vare"].startswith("R:") else None
+        # Den rigtige pakningsstørrelse frem for AI'ens gæt - både for tilbud og katalogvarer.
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                v = str(ing.get("vare") or "")
+                vare = self.tilbud.get(v[2:]) if v.startswith("T:") else self.katalog.get(v[2:]) if v.startswith("R:") else None
+                s = soeg.stoerrelse(vare["str"]) if vare else None
                 if s and s[1] == ing.get("enhed"):
                     ing["pakke"] = s[0]
                 elif s and s[1] == "g" and ing.get("enhed") == "stk" and (vaegt := soeg.stk_vaegt(ing.get("navn", ""))):

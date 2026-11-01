@@ -59,7 +59,7 @@ IKKE_MAD = re.compile(
     r"servietter|batteri|led.?p[æa]re|\blys\b|\bposer?\b|folie|film|kattemad|hundemad|katte|hunde|snack|slik|"
     r"chokolade|vingummi|lakrids|chips|kiks|kage|\bis\b|sodavand|cola|energidrik|\b[øo]l\b|\bvin\b|spiritus|"
     r"vodka|\bgin\b|\brom\b|whisky|cider|kaffe|\bte\b|kapsler|tyggegummi|plaster|creme|lotion|barber|mascara|"
-    r"neglelak|rengøring|klud|\bsvamp\b|affaldsposer|fryseposer|gave|blomst",
+    r"neglelak|rengøring|klud|\bsvamp\b|(skure|stål|mirakel)svamp|ståluld|affaldsposer|fryseposer|gave|blomst",
     re.IGNORECASE,
 )
 # Aviser uden madvarer springes over (Bilka har fx legetøjs- og elektronikkataloger).

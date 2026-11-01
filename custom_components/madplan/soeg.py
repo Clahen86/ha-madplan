@@ -42,12 +42,55 @@ _SYNONYM = {
     "tortilla": "tortillas",
     "tortillawraps": "tortillas",
 }
+# Hele søgeord, AI'en typisk skriver, og hvad REMA kalder varen (ellers rammes fx "Tun i olie" for "olie").
+_UDTRYK = {
+    "mælk": "letmælk",
+    "ris": "jasmin ris",
+    "olie": "rapsolie",
+    "mel": "hvedemel",
+    "laks": "laksefilet",
+    "torsk": "torskefileter",
+    "sej": "mørksejfilet",
+    "rejer": "rejer i lage",
+    "kalkun": "kalkunbryst",
+    "svampe": "champignon",
+    "kål": "hvidkål",
+    "salat": "hjertesalat",
+    "icebergsalat": "iceberg salat",
+    "peberfrugt": "rød peber",
+    "peberfrugter": "rød peber",
+    "rød peberfrugt": "rød peber",
+    "gul peberfrugt": "gul/orange peber",
+    "peber": "sort peber",
+    "taco krydderi": "taco spice mix",
+    "tacokrydderi": "taco spice mix",
+    "salsa": "salsasauce",
+    "toastbrød": "hvedetoast",
+    "naan": "naanbrød",
+    "vindruer": "druer",
+    "frossen spinat": "hakket spinat",
+    "frosne spinat": "hakket spinat",
+    "appelsiner": "øko. appelsiner",
+    "hakket kylling": "hk. kyllingekød",
+    "hakket kyllingekød": "hk. kyllingekød",
+    "hakket kalv og flæsk": "hk. gris & kalv",
+    "hakket gris og kalv": "hk. gris & kalv",
+    "hakket kalve- og flæskekød": "hk. gris & kalv",
+    "oksekød i tern": "ungkvæg i tern",
+    "svinekoteletter": "koteletter",
+    "ægnudler": "nudler",
+    "skyr": "skyr naturel",
+    "snackgulerødder": "gulerødder",
+    "gulerodsstave": "gulerødder",
+}
+# Ord, der er for brede til at søge på alene ("taco krydderi" må ikke blive til pebernødkrydderi).
+_GENERISK = {"krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld"}
 _BOEJNING = ("e", "r", "er", "en", "n", "ne", "et", "s", "erne")
 # Ord der beskriver mængde eller emballage og ikke står i varenavnene.
 _FYLD = {"og", "med", "i", "til", "af", "på", "en", "et", "frisk", "friske", "dåse", "glas", "pakke", "pose", "stk"}
 _FYLD |= {"frosne", "frossen", "frosset", "dybfrosne", "blandede"}
 # Ord i varenavnet, der ikke gør varen til noget andet ("Øko. tomater", "Citron spanien kl. 1").
-_NEUTRAL = _FYLD | {"m", "øko", "økologisk", "økologiske", "kl", "dansk", "danske", "spanien", "danmark", "holland"}
+_NEUTRAL = (_FYLD - {"glas", "dåse"}) | {"m", "øko", "økologisk", "økologiske", "kl", "dansk", "danske", "spanien", "danmark", "holland"}
 
 
 def stoerrelse(tekst: str) -> tuple[float, str] | None:
@@ -133,15 +176,18 @@ def find_vare(
     behov = (mængde, enhed) for hele ugen: så vælges den vare, der dækker behovet billigst,
     i stedet for bare den billigste pakning.
     """
+    soegeord = _UDTRYK.get(" ".join((soegeord or "").lower().split()), soegeord)
     ord_ = [_SYNONYM.get(o, o) for o in _ord(soegeord) if o not in _FYLD] or _ord(soegeord)
     if not ord_:
         return None
-    # Først alle ord, derefter kun det sidste (hovedordet: "friske champignon" -> "champignon").
-    for forsoeg in (ord_, ord_[-1:]) if len(ord_) > 1 else (ord_,):
+    # Først alle ord, derefter kun hovedordet: det sidste ("friske champignon" -> "champignon"),
+    # medmindre det er et bredt ord som "krydderi" - så det første.
+    hoved = next((o for o in reversed(ord_) if o not in _GENERISK), None)
+    for forsoeg in (ord_, [hoved]) if len(ord_) > 1 and hoved else (ord_,):
         kandidater: list[tuple[int, tuple[bool, float], str]] = []
         for vid, v in katalog.items():
-            if (kun_mad and IKKE_MAD.search(v["navn"])) or "VEJ SELV" in v["str"].upper():
-                continue  # ikke mad, eller løsvægt ("vej selv"), der ikke kan købes i pakker
+            if (kun_mad and IKKE_MAD.search(v["navn"])) or _stykvare(v["str"]):
+                continue
             s = _score(forsoeg, _ord(v["navn"]))
             if s is None or not (pris := kilder.rema_pris(v, dato)):
                 continue
@@ -150,6 +196,15 @@ def find_vare(
             bedste = min(k[0] for k in kandidater)
             return min((k for k in kandidater if k[0] == bedste), key=lambda k: k[1])[2]
     return None
+
+
+def _stykvare(strr: str) -> bool:
+    """Løsvægt pr. stk ("Løse kartofler, 0.07 KG, vej selv") - prisen gælder kun ét stk.
+    Løsvægt pr. kg (fx hvidkål 1 KG vej selv) er fin."""
+    if "VEJ SELV" not in strr.upper():
+        return False
+    s = stoerrelse(strr)
+    return not s or s[0] < 250
 
 
 def _pris_for(pris: float, strr: str, behov: tuple[float, str] | None) -> tuple[bool, float]:
