@@ -19,7 +19,7 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import BUTIKKER, DOMAIN
 from .planlaegger import Madplan
 
 PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
@@ -84,6 +84,9 @@ EN_RET_SKEMA = SKEMA.extend(
 )
 EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
+EKSTRA_BUTIKKER_SKEMA = SKEMA.extend(
+    {vol.Required("butikker"): vol.All(cv.ensure_list, [vol.In(list(BUTIKKER))], vol.Length(max=2))}
+)
 RESTER_SKEMA = DAG_SKEMA.extend({vol.Optional("til", default=True): cv.boolean})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
 
@@ -129,6 +132,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def tilfoej_behov(call: ServiceCall) -> None:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
+
+    async def ekstra_butikker(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_saet_ekstra_butikker(call.data["butikker"])
 
     async def rester(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_rester(call.data["dag"], call.data["til"])
@@ -189,6 +195,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "dag_mail", dag_mail, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "rester", rester, schema=RESTER_SKEMA)
+    hass.services.async_register(DOMAIN, "ekstra_butikker", ekstra_butikker, schema=EKSTRA_BUTIKKER_SKEMA)
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)

@@ -190,6 +190,14 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "rester", { entity_id: plan, dag, til: !da.dobbelt }).catch(() => {});
         break;
       }
+      case "ekstrabutik": {
+        const valgt = new Set(a.ekstra_butikker || []);
+        const k = el.dataset.k;
+        if (valgt.has(k)) valgt.delete(k);
+        else if (valgt.size < 2) valgt.add(k);
+        this._kald("madplan", "ekstra_butikker", { entity_id: plan, butikker: [...valgt] });
+        break;
+      }
       case "fridag": {
         const fri = new Set((a.regler || {}).fri_dage || []);
         const i = Number(el.dataset.i);
@@ -639,7 +647,7 @@ class MadplanCard extends HTMLElement {
       <div class="kurvstatus"><span><ha-icon icon="mdi:cart-check"></ha-icon><b>${iKurv}</b> af ${tilKoeb + iKurv} i kurven</span>
         ${iKurv ? this._knap("toemkurv", "Tøm kurven", "mdi:cart-remove", "graa lille") : ""}</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
-      ${koeb.map(linje).join("")}
+      ${this._perButik(koeb, linje)}
       ${kurv.map(linje).join("")}
       ${
         hjemme.length
@@ -652,6 +660,18 @@ class MadplanCard extends HTMLElement {
     </div>`;
   }
 
+  /** Hovedbutikkens varer først, så "Fra Netto" osv. for varer fra andre kæder. */
+  _perButik(varer, linje) {
+    const butik = (v) => (v.description || "").split(" · ")[1] || "";
+    const andre = [...new Set(varer.map(butik).filter(Boolean))];
+    return (
+      varer.filter((v) => !butik(v)).map(linje).join("") +
+      andre
+        .map((b) => `<div class="gruppe"><ha-icon icon="mdi:storefront-outline"></ha-icon> Fra ${esc(b)}</div>${varer.filter((v) => butik(v) === b).map(linje).join("")}`)
+        .join("")
+    );
+  }
+
   _vareLinje(v, liste) {
     const t = this._tilstand(v);
     const tilbud = v.summary.startsWith("🏷️");
@@ -659,12 +679,15 @@ class MadplanCard extends HTMLElement {
     const [, antal, raa, str] = /^(?:(\d+) × )?(.*?)(?: \(([^()]*)\))?$/.exec(v.summary.replace(/^🏷️\s*/, ""));
     const navn = raa.replace(/^REMA 1000 /i, "");
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
+    // Varer fra en anden kæde (fx Netto) har butikken efter prisen: "12.00 kr · Netto".
+    const butik = liste === "varer" ? (v.description || "").split(" · ")[1] : "";
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
-    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ");
+    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ")
+      + (butik ? ` <span class="butiktag">${esc(butik)}</span>` : "");
     return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
       <span class="vtekst"><span class="vnavn">${esc(navn)}</span>
-        ${meta || tilbud ? `<span class="vmeta">${meta}${tilbud ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}</span>
+        ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}</span>
       <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
         ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}</span>
       ${
@@ -962,6 +985,9 @@ const CSS = `
     border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; font-size: 13px; }
   .chip-behov ha-icon { --mdc-icon-size: 14px; opacity: .6; }
   .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
+  .butiktag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--secondary-background-color);
+    color: var(--primary-text-color); border: 1px solid var(--divider-color); }
+  .gruppe ha-icon { --mdc-icon-size: 16px; vertical-align: -3px; }
   .gemt { font-size: 12px; color: var(--secondary-text-color); margin: 10px 2px 2px; }
   .behov-form .plusknap { width: 42px; padding: 0; justify-content: center; flex: none; }
   .behov-form .plusknap ha-icon { --mdc-icon-size: 22px; }
@@ -1192,7 +1218,20 @@ class MadplanPanel extends MadplanCard {
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:text-box-outline"></ha-icon></span><span><b>Andre krav</b><small>Gemmes, når du trykker udenfor</small></span></div>
         <textarea name="r_krav" rows="3" placeholder="Fx frilandsæg og økologisk mælk. Børnene kan ikke lide stærk mad.">${esc(this._inputs.r_krav ?? r.krav ?? "")}</textarea>
       </section>
+      ${this._butikkerKort(a)}
       ${this._udseendeKort(a)}`;
+  }
+
+  /** Andre kæder, man også handler i - kun for den valgte butik. */
+  _butikkerKort(a) {
+    const valgt = a.ekstra_butikker || [];
+    return `<section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:store-plus-outline"></ha-icon></span>
+          <span><b>Handler også i</b><small>Op til 2 kæder ud over ${esc(a.butik)} – kun deres tilbud bruges</small></span></div>
+        <div class="chips">${(a.kaeder || [])
+          .map(([k, navn]) => `<button class="rchip ${valgt.includes(k) ? "valgt" : "fra"}" data-h="ekstrabutik" data-k="${esc(k)}">${esc(navn)}${valgt.includes(k) ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</button>`)
+          .join("")}</div>
+      </section>`;
   }
 
   /** Én ret ud fra køleskabet - helt adskilt fra ugeplanen og dens indkøbsliste. */
@@ -1577,6 +1616,9 @@ const PANEL_CSS = `
   .rchip.roed { background: rgba(198,40,40,.12); }
   .rchip.lyseroed { background: rgba(216,27,96,.12); }
   .rchip ha-icon { --mdc-icon-size: 15px; opacity: .6; }
+  .rchip.fra { background: var(--secondary-background-color); color: var(--secondary-text-color); font-weight: 500; }
+  .rchip.valgt { background: var(--brand); color: var(--brand-tekst); }
+  .rchip.valgt ha-icon { opacity: 1; }
   .kontakt { width: 52px; height: 32px; border-radius: 16px; border: none; padding: 3px; cursor: pointer; flex: none;
     background: var(--divider-color); transition: background .2s; }
   .kontakt span { display: block; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3);

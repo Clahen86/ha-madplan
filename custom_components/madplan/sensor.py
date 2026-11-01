@@ -12,7 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DAGE, DOMAIN
+from .const import BUTIKKER, DAGE, DOMAIN
 from .entity import MadplanEntity
 
 
@@ -76,6 +76,8 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "ekstra_entitet": find("todo", "ekstra"),
             "behov": self.madplan.behov,
             "regler": self.madplan.regler,
+            "ekstra_butikker": self.madplan.ekstra_butikker,
+            "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],
             "en_ret": self.madplan.en_ret,
             "en_ret_status": self.madplan.en_ret_status,
             # Hvilke knapper "Én ret" kan vise.

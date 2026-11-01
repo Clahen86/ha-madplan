@@ -361,6 +361,20 @@
           "description": "Fra fortryder, og næste dag får sin egen ret igen."
         }
       }
+    },
+    "ekstra_butikker": {
+      "name": "Handler også i",
+      "description": "Op til 2 andre kæder, hvis tilbud planen må bruge (fx REMA + Netto). Tom = kun denne butik.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "butikker": {
+          "name": "Butikker",
+          "description": "Fx netto."
+        }
+      }
     }
   }
 }

@@ -361,6 +361,20 @@
           "description": "Off undoes it, and the next day gets its own dish back."
         }
       }
+    },
+    "ekstra_butikker": {
+      "name": "Also shop in",
+      "description": "Up to 2 other chains whose offers the plan may use (e.g. REMA + Netto). Empty = only this store.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "butikker": {
+          "name": "Stores",
+          "description": "E.g. netto."
+        }
+      }
     }
   }
 }

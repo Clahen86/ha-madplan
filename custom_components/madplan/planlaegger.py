@@ -43,6 +43,7 @@ _LOGGER = logging.getLogger(__name__)
 MAKS_PAKKER = 10
 # Færre tilbud end dette til næste uge betyder, at den nye avis ikke er ude endnu.
 MIN_TILBUD = 20
+MAKS_EKSTRA_BUTIKKER = 2
 
 
 class ForLangtSvar(HomeAssistantError):
@@ -109,6 +110,8 @@ class Madplan:
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
         self.en_ret: list[dict] = data.get("en_ret", [])
+        # Andre kæder, familien også handler i (fx REMA + Netto, der ligger tæt). Kun tilbud derfra.
+        self.ekstra_butikker: list[str] = [b for b in data.get("ekstra_butikker", []) if b in BUTIKKER]
         self.en_ret_status = ""
         if self._faelles["regler"] is None:
             gemt = await self._faelles["regler_store"].async_load() or {}
@@ -126,6 +129,7 @@ class Madplan:
                 "butik_info": self.butik_info,
                 "behov": self.behov,
                 "en_ret": self.en_ret,
+                "ekstra_butikker": self.ekstra_butikker,
             }
         )
 
@@ -172,6 +176,13 @@ class Madplan:
         for v in self.plan.get("varer", []):
             if v.get("for_mange"):
                 ud.append(f"Tjek mængden af {v['navn']} – sat til {MAKS_PAKKER} pakker")
+        andre: dict[str, list[str]] = {}
+        for v in self.plan.get("varer", []):
+            if v.get("butik") and not v.get("hjemme"):
+                andre.setdefault(v["butik"], []).append(v["navn"])
+        for butik, navne in andre.items():
+            if len(navne) == 1:
+                ud.append(f"Kun 1 vare fra {butik} ({navne[0]}) – er turen det værd?")
         if self.plan.get("salling_fejl"):
             ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
         if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
@@ -758,7 +769,11 @@ class Madplan:
                     await self.hass.services.async_call(
                         "todo",
                         "add_item",
-                        {"entity_id": liste, "item": vare_tekst(v), "description": pris_tekst(v)},
+                        {
+                            "entity_id": liste,
+                            "item": vare_tekst(v) + (f" – {v['butik']}" if v.get("butik") else ""),
+                            "description": pris_tekst(v),
+                        },
                         blocking=True,
                     )
             if self._notify_tjenester():
@@ -815,6 +830,17 @@ class Madplan:
             self._navne = await self.hass.async_add_executor_job(soeg.navneliste, self.katalog, start)
         if nye_tilbud:
             self.tilbud = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
+            for t in self.tilbud.values():
+                t["butik"] = self.butik
+            for andre in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER]:
+                try:
+                    ekstra = await kilder.hent_tilbud(self.hass, BUTIKKER[andre][1], start, slut)
+                except Exception as e:  # noqa: BLE001 - planen laves med hovedbutikken alene
+                    _LOGGER.warning("Tilbud fra %s kunne ikke hentes: %s", BUTIKKER[andre][0], e)
+                    continue
+                for tid, t in ekstra.items():
+                    if tid not in self.tilbud:
+                        self.tilbud[tid] = {**t, "butik": andre}
             try:
                 self.butik_info = await kilder.hent_butik_info(self.hass, self.dealer)
             except Exception:  # noqa: BLE001 - logo og farve er pynt
@@ -888,8 +914,15 @@ class Madplan:
         ]
         if not liste:
             tilbud = tilbud[:150]
-        linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
-        linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in tilbud]
+        linjer = []
+        for butik in [self.butik, *self.ekstra_butikker]:
+            egne = [(tid, t) for tid, t in tilbud if t.get("butik", self.butik) == butik]
+            if not egne:
+                continue
+            anden = "" if butik == self.butik else " – ANDEN BUTIK"
+            linjer += ["" if linjer else None, f"TILBUD I {BUTIKKER[butik][0].upper()}{anden} (id|vare|størrelse|pris kr):"]
+            linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in egne]
+        linjer = [x for x in linjer if x is not None]
         if liste and self._navne:
             linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
             linjer.append("; ".join(self._navne))
@@ -989,6 +1022,30 @@ class Madplan:
                 return None
         return self._salling_priser[ean]
 
+    def _flere_butikker(self) -> str:
+        if not self.ekstra_butikker:
+            return ""
+        andre = " og ".join(BUTIKKER[b][0] for b in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER])
+        return (
+            f"FLERE BUTIKKER: Familien handler i {self.butik_navn} og kan også handle i {andre}. Brug kun tilbud fra "
+            f"{andre}, når det sparer mærkbart eller giver en bedre ret – og så gerne flere varer derfra, ikke én "
+            f"enkelt. Varer, der ikke er på tilbud (S:), købes altid i {self.butik_navn}.\n"
+        )
+
+    def _anden_butik(self, vare_id: str) -> str | None:
+        """Navnet på den anden kæde, hvis varen er et tilbud derfra - ellers None (hovedbutikken)."""
+        if str(vare_id).startswith("T:") and (t := self.tilbud.get(str(vare_id)[2:])):
+            if (b := t.get("butik")) and b != self.butik and b in BUTIKKER:
+                return BUTIKKER[b][0]
+        return None
+
+    async def async_saet_ekstra_butikker(self, butikker: list[str]) -> None:
+        self.ekstra_butikker = [b for b in dict.fromkeys(butikker) if b in BUTIKKER and b != self.butik][
+            :MAKS_EKSTRA_BUTIKKER
+        ]
+        await self._gem()
+        self.opdater()
+
     def _familiens_regler(self) -> str:
         """Familiens egne regler fra panelet, som tekst til AI'en."""
         r = self.regler
@@ -1050,6 +1107,7 @@ class Madplan:
             + f" samme protein højst to gange. Varier også køkkenet ({koekkener}).\n"
             + "Genbrug gerne den samme vare i flere retter (fx resten af en pakke hakket kød, fløde, ost eller "
             "grøntsager), så der bliver mindst muligt tilovers, og indkøbslisten bliver kort.\n"
+            + self._flere_butikker()
             + self._familiens_regler()
             + "Undgå dyre varer (and, mørbrad, oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør "
             "retten billig.\n"
@@ -1124,6 +1182,7 @@ class Madplan:
                     ing["vare"],
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
+                f["butik"] = self._anden_butik(ing["vare"])
                 # Uden for REMA er normalprisen kun et cirkatal.
                 f["ukendt"] = ing["vare"].startswith("S:")
                 f["anslaaet"] = self._ca(ing["vare"])
@@ -1162,9 +1221,10 @@ class Madplan:
                     "for_mange": f.get("for_mange", False),
                     "hjemme": gamle.get(key, f["basis"]),
                     "kurv": key in i_kurv,
+                    "butik": f.get("butik"),
                 }
             )
-        varer.sort(key=lambda v: (v["basis"], not v["tilbud"], v["navn"]))
+        varer.sort(key=lambda v: (v["basis"], bool(v.get("butik")), not v["tilbud"], v["navn"]))
         self.plan["varer"] = varer
         self.plan["personer"] = n
         # Tilbuddene skal købes, før det første af dem udløber.
@@ -1225,7 +1285,12 @@ class Madplan:
             + (f" (heraf ca. {self.plan['total_ca']} kr anslået)" if self.plan.get("total_ca") else "")
             + "\n"
             + f"🏷️ = på tilbud i {self.butik_navn}" + ("" if self.er_rema else " · ca. = anslået pris") + "\n\n"
-            + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler)
+            + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler if not v.get("butik"))
+            + "".join(
+                f"\n\nFRA {butik.upper()}:\n"
+                + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler if v.get("butik") == butik)
+                for butik in dict.fromkeys(v["butik"] for v in mangler if v.get("butik"))
+            )
             + ekstra_tekst
             + "\n\n\nOPSKRIFTER\n"
             + "\n\n".join(opskrifter)

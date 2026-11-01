@@ -30,7 +30,8 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
                 summary=vare_tekst(v),
                 uid=v["key"],
                 status=TodoItemStatus.COMPLETED if v.get("hjemme") or v.get("kurv") else TodoItemStatus.NEEDS_ACTION,
-                description=pris_tekst(v),
+                # "pris · butik" for varer fra en anden kæde (fx Netto), så kortet kan gruppere dem.
+                description=pris_tekst(v) + (f" · {v['butik']}" if v.get("butik") else ""),
             )
             for v in self.madplan.plan.get("varer", [])
         ]

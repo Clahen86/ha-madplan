@@ -203,3 +203,13 @@ rester:
       default: true
       selector:
         boolean:
+ekstra_butikker:
+  fields:
+    entity_id: *madplan
+    butikker:
+      required: true
+      example: ["netto"]
+      selector:
+        select:
+          multiple: true
+          options: ["rema1000", "netto", "foetex", "bilka", "lidl", "365discount", "kvickly", "superbrugsen", "brugsen", "meny", "spar", "lovbjerg", "min_kobmand", "abc_lavpris"]
