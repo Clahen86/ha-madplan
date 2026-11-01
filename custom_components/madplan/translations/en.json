@@ -178,6 +178,42 @@
           "description": "E.g. free-range eggs and organic milk."
         }
       }
+    },
+    "marker": {
+      "name": "Mark item",
+      "description": "Marks an item as in the basket or already at home.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "liste": {
+          "name": "List",
+          "description": "varer (dinner) or ekstra (extra items)."
+        },
+        "uid": {
+          "name": "Item id",
+          "description": "The item's id on the list."
+        },
+        "felt": {
+          "name": "Mark",
+          "description": "kurv = in the basket (still counted in the price), hjemme = already at home (deducted)."
+        },
+        "vaerdi": {
+          "name": "On",
+          "description": "On or off."
+        }
+      }
+    },
+    "toem_kurv": {
+      "name": "Empty basket",
+      "description": "Unmarks everything in the basket.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        }
+      }
     }
   }
 }

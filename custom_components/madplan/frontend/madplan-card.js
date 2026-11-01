@@ -139,7 +139,7 @@ class MadplanCard extends HTMLElement {
     const h = el.dataset.h;
     const dag = Number(el.dataset.dag || 0);
     const id = `${h}-${dag}`;
-    if (["ny", "byt", "fjern", "send", "fjernbehov"].includes(h) && this._bekraeft !== id) {
+    if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv"].includes(h) && this._bekraeft !== id) {
       this._bekraeft = id;
       clearTimeout(this._timer);
       this._timer = setTimeout(() => {
@@ -202,16 +202,29 @@ class MadplanCard extends HTMLElement {
         this._visHjemme = !this._visHjemme;
         break;
       case "vare": {
-        const ekstra = el.dataset.liste === "ekstra";
-        const v = (ekstra ? this._ekstra : this._varer).find((x) => x.uid === el.dataset.uid);
-        if (v)
-          this._kald("todo", "update_item", {
-            entity_id: ekstra ? this._ekstraId : this._varerId,
-            item: v.uid,
-            status: v.status === "completed" ? "needs_action" : "completed",
-          });
+        // Tryk = i kurven (eller tilbage på listen). En vare, I har hjemme, kommer tilbage på listen.
+        const t = el.dataset.tilstand;
+        this._kald("madplan", "marker", {
+          entity_id: plan,
+          liste: el.dataset.liste,
+          uid: el.dataset.uid,
+          felt: t === "hjemme" ? "hjemme" : "kurv",
+          vaerdi: t === "",
+        });
         break;
       }
+      case "husknap":
+        this._kald("madplan", "marker", {
+          entity_id: plan,
+          liste: el.dataset.liste,
+          uid: el.dataset.uid,
+          felt: "hjemme",
+          vaerdi: !el.classList.contains("til"),
+        });
+        break;
+      case "toemkurv":
+        this._kald("madplan", "toem_kurv", { entity_id: plan });
+        break;
       case "slet":
         ev.stopPropagation();
         this._kald("todo", "remove_item", { entity_id: this._ekstraId, item: el.dataset.uid });
@@ -456,21 +469,35 @@ class MadplanCard extends HTMLElement {
     </div>`;
   }
 
+  /** "kurv" = lagt i kurven, "hjemme" = har det hjemme, "" = skal købes. Afkrydset i to-do-listen er en af de to første. */
+  _tilstand(v) {
+    if (v.status !== "completed") return "";
+    const kurv = this._hass.states[this._valgt]?.attributes.kurv || [];
+    return kurv.includes(v.uid) ? "kurv" : "hjemme";
+  }
+
   _indkob(s) {
     if (!this._cfg.vis_indkob || !this._varerId) return "";
+    const alle = [...this._varer, ...this._ekstra];
+    const tilKoeb = alle.filter((v) => this._tilstand(v) === "").length;
+    const iKurv = alle.filter((v) => this._tilstand(v) === "kurv").length;
+    const pct = tilKoeb + iKurv ? Math.round((iKurv / (tilKoeb + iKurv)) * 100) : 0;
     const varer = this._varer;
-    const mangler = varer.filter((v) => v.status !== "completed");
-    const hjemme = varer.filter((v) => v.status === "completed");
-    const pct = varer.length ? Math.round((hjemme.length / varer.length) * 100) : 0;
     const linje = (v) => this._vareLinje(v, "varer");
+    const koeb = varer.filter((v) => this._tilstand(v) === "");
+    const kurv = varer.filter((v) => this._tilstand(v) === "kurv");
+    const hjemme = varer.filter((v) => this._tilstand(v) === "hjemme");
     return `<div class="indkob">
       <div class="sektion"><ha-icon icon="mdi:cart-outline"></ha-icon><span>Indkøb</span>
-        <span class="mangler">${mangler.length} varer · ${kr(s.state)}</span></div>
-      <div class="hjaelp">Tryk på det, I har hjemme, så trækkes det fra.${
+        <span class="mangler">${koeb.length + kurv.length} varer · ${kr(s.state)}</span></div>
+      <div class="hjaelp">Tryk på en vare, når den er i kurven. Har I den allerede, så tryk på <ha-icon icon="mdi:home-outline"></ha-icon>, så trækkes den fra.${
         s.attributes.anslaaede_priser ? ` Priser med "ca." er anslået; tilbudspriser er ${esc(s.attributes.butik)}s egne.` : ""
       }</div>
+      <div class="kurvstatus"><span><ha-icon icon="mdi:cart-check"></ha-icon><b>${iKurv}</b> af ${tilKoeb + iKurv} i kurven</span>
+        ${iKurv ? this._knap("toemkurv", "Tøm kurven", "mdi:cart-remove", "graa lille") : ""}</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
-      ${mangler.map(linje).join("")}
+      ${koeb.map(linje).join("")}
+      ${kurv.map(linje).join("")}
       ${
         hjemme.length
           ? `<button class="vis-hjemme" data-h="hjemme"><ha-icon icon="${this._visHjemme ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>Har hjemme (${hjemme.length})</button>
@@ -483,17 +510,23 @@ class MadplanCard extends HTMLElement {
   }
 
   _vareLinje(v, liste) {
-    const h = v.status === "completed";
+    const t = this._tilstand(v);
     const tilbud = v.summary.startsWith("🏷️");
     let navn = v.summary.replace(/^🏷️\s*/, "");
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
     if (liste === "ekstra") navn = navn.replace(/^\d+ × /, "");
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
-    return `<div class="vare ${h ? "hjemme" : ""}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}">
-      <span class="tjek">${h ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</span>
+    return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
+      <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
       <span class="vnavn">${esc(navn)}${tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span>
       <span class="vpris">${esc(pris)}</span>
-      ${liste === "ekstra" ? this._antalKnapper(v) : ""}
+      ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}
+      ${
+        t === "kurv"
+          ? ""
+          : `<button class="husknap ${t === "hjemme" ? "til" : ""}" data-h="husknap" data-liste="${liste}" data-uid="${esc(v.uid)}"
+              aria-label="${t === "hjemme" ? "Skal alligevel købes" : "Har det hjemme"}"><ha-icon icon="${t === "hjemme" ? "mdi:home" : "mdi:home-outline"}"></ha-icon></button>`
+      }
     </div>`;
   }
 
@@ -515,9 +548,12 @@ class MadplanCard extends HTMLElement {
     if (!this._ekstraId) return "";
     const a = s.attributes;
     const behov = a.behov || [];
-    const mangler = this._ekstra.filter((v) => v.status !== "completed");
+    const mangler = this._ekstra.filter((v) => this._tilstand(v) !== "hjemme");
+    const raekke = { "": 0, kurv: 1, hjemme: 2 };
     const gruppe = (b) => {
-      const varer = this._ekstra.filter((v) => (v.description || "").split(" · ")[1] === b);
+      const varer = this._ekstra
+        .filter((v) => (v.description || "").split(" · ")[1] === b)
+        .sort((x, y) => raekke[this._tilstand(x)] - raekke[this._tilstand(y)]);
       if (!varer.length) return "";
       return `<div class="gruppe">${esc(b.charAt(0).toUpperCase() + b.slice(1))}</div>${varer
         .map((v) => this._vareLinje(v, "ekstra"))
@@ -726,10 +762,21 @@ const CSS = `
   .vare { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
   .tjek { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--secondary-text-color); flex: none;
     display: grid; place-items: center; }
-  .vare.hjemme .tjek { background: #2e7d32; border-color: #2e7d32; color: #fff; }
   .tjek ha-icon { --mdc-icon-size: 15px; }
   .vnavn { flex: 1; }
-  .vare.hjemme .vnavn { text-decoration: line-through; color: var(--secondary-text-color); }
+  .vare.hjemme .vnavn, .vare.kurv .vnavn { text-decoration: line-through; color: var(--secondary-text-color); }
+  .vare.kurv .tjek { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .vare.hjemme .tjek { background: var(--secondary-background-color); border-color: var(--divider-color); color: var(--secondary-text-color); }
+  .vare.kurv, .vare.hjemme { opacity: .75; }
+  .husknap { width: 34px; height: 34px; flex: none; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center;
+    background: none; color: var(--secondary-text-color); }
+  .husknap ha-icon { --mdc-icon-size: 20px; }
+  .husknap.til { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .hjaelp ha-icon { --mdc-icon-size: 15px; vertical-align: -2px; }
+  .kurvstatus { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 6px; font-size: 14px; min-height: 34px; }
+  .kurvstatus > span { display: inline-flex; align-items: center; gap: 6px; }
+  .kurvstatus ha-icon { --mdc-icon-size: 18px; color: #2e7d32; }
+  .knap.lille { padding: 6px 12px; font-size: 13px; }
   .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--brand);
     color: var(--brand-tekst); vertical-align: middle; margin-left: 4px; }
   .vpris { color: var(--secondary-text-color); white-space: nowrap; font-size: 14px; }

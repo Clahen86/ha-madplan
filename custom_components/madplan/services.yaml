@@ -104,3 +104,27 @@ gem_regler:
       selector:
         text:
           multiline: true
+marker:
+  fields:
+    entity_id: *madplan
+    liste:
+      required: true
+      selector:
+        select:
+          options: ["varer", "ekstra"]
+    uid:
+      required: true
+      selector:
+        text:
+    felt:
+      required: true
+      selector:
+        select:
+          options: ["kurv", "hjemme"]
+    vaerdi:
+      required: true
+      selector:
+        boolean:
+toem_kurv:
+  fields:
+    entity_id: *madplan

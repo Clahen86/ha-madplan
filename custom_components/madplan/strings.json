@@ -178,6 +178,42 @@
           "description": "Fx frilandsæg og økologisk mælk."
         }
       }
+    },
+    "marker": {
+      "name": "Markér vare",
+      "description": "Markerer en vare som lagt i kurven eller som noget, I har hjemme.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "liste": {
+          "name": "Liste",
+          "description": "varer (aftensmad) eller ekstra (ekstra varer)."
+        },
+        "uid": {
+          "name": "Vare-id",
+          "description": "Varens id på listen."
+        },
+        "felt": {
+          "name": "Markering",
+          "description": "kurv = lagt i kurven (tæller med i prisen), hjemme = har det allerede (trækkes fra)."
+        },
+        "vaerdi": {
+          "name": "Til",
+          "description": "Til eller fra."
+        }
+      }
+    },
+    "toem_kurv": {
+      "name": "Tøm kurven",
+      "description": "Fjerner markeringen 'i kurven' fra alle varer.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        }
+      }
     }
   }
 }

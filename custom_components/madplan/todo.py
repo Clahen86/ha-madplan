@@ -1,4 +1,4 @@
-"""Ugens vareliste. Afkrydset = har det allerede hjemme."""
+"""Ugens vareliste. Afkrydset = lagt i kurven eller har det allerede hjemme."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
             TodoItem(
                 summary=vare_tekst(v),
                 uid=v["key"],
-                status=TodoItemStatus.COMPLETED if v.get("hjemme") else TodoItemStatus.NEEDS_ACTION,
+                status=TodoItemStatus.COMPLETED if v.get("hjemme") or v.get("kurv") else TodoItemStatus.NEEDS_ACTION,
                 description=pris_tekst(v),
             )
             for v in self.madplan.plan.get("varer", [])
@@ -40,7 +40,7 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
 
 
 class MadplanEkstra(MadplanEntity, TodoListEntity):
-    """Varer til ugens øvrige behov (pålæg, madpakker …). Afkrydset = har det. Kan slettes."""
+    """Varer til ugens øvrige behov (pålæg, madpakker …). Afkrydset = i kurven eller har det. Kan slettes."""
 
     _attr_name = "Ekstra varer"
     _attr_icon = "mdi:basket-plus-outline"
@@ -59,14 +59,15 @@ class MadplanEkstra(MadplanEntity, TodoListEntity):
             TodoItem(
                 summary=vare_tekst(e),
                 uid=e["uid"],
-                status=TodoItemStatus.COMPLETED if e.get("hjemme") else TodoItemStatus.NEEDS_ACTION,
+                status=TodoItemStatus.COMPLETED if e.get("hjemme") or e.get("kurv") else TodoItemStatus.NEEDS_ACTION,
                 description=f"{pris_tekst(e)} · {e['behov']}",
             )
             for e in self.madplan.plan.get("ekstra", [])
         ]
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
-        await self.madplan.async_saet_ekstra(item.uid, hjemme=item.status == TodoItemStatus.COMPLETED)
+        # Afkrydset i HA's to-do-liste = lagt i kurven.
+        await self.madplan.async_marker("ekstra", item.uid, "kurv", item.status == TodoItemStatus.COMPLETED)
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
         for uid in uids:

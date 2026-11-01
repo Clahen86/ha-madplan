@@ -284,11 +284,27 @@ class Madplan:
         self.opdater()
 
     async def async_saet_hjemme(self, key: str, hjemme: bool) -> None:
-        """Afkrydsning i varelisten: varen er allerede hjemme."""
-        for v in self.plan.get("varer", []):
-            if v["key"] == key:
-                v["hjemme"] = hjemme
+        """Afkrydsning i HA's egen to-do-liste: lagt i kurven (eller fortrudt)."""
+        await self.async_marker("varer", key, "kurv", hjemme)
+
+    async def async_marker(self, liste: str, uid: str, felt: str, vaerdi: bool) -> None:
+        """'kurv' = lagt i kurven mens man handler (tæller stadig med i prisen).
+        'hjemme' = har det allerede (trækkes fra). En vare er højst det ene af dem."""
+        noegle = "key" if liste == "varer" else "uid"
+        for v in self.plan.get(liste, []):
+            if v[noegle] == uid:
+                v[felt] = vaerdi
+                if vaerdi:
+                    v["hjemme" if felt == "kurv" else "kurv"] = False
+                elif felt == "kurv":
+                    v["hjemme"] = False
         self._totaler()
+        await self._gem()
+        self.opdater()
+
+    async def async_toem_kurv(self) -> None:
+        for v in self.plan.get("varer", []) + self.plan.get("ekstra", []):
+            v["kurv"] = False
         await self._gem()
         self.opdater()
 
@@ -689,6 +705,7 @@ class Madplan:
             ret["_dato"] = (start + datetime.timedelta(days=i)).isoformat()
         # Basisvarer starter som "har hjemme"; ellers huskes brugerens valg.
         gamle = {} if ny else {v["key"]: v.get("hjemme", False) for v in self.plan.get("varer", [])}
+        i_kurv = set() if ny else {v["key"] for v in self.plan.get("varer", []) if v.get("kurv")}
         varer = []
         for key, f in forbrug.items():
             antal = 1 if f["basis"] else max(1, math.ceil(f["andel"] - 0.15))
@@ -704,6 +721,7 @@ class Madplan:
                     "ukendt": f.get("ukendt", False),
                     "basis": f["basis"],
                     "hjemme": gamle.get(key, f["basis"]),
+                    "kurv": key in i_kurv,
                 }
             )
         varer.sort(key=lambda v: (v["basis"], not v["tilbud"], v["navn"]))
