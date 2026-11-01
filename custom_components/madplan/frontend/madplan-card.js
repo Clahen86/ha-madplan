@@ -718,6 +718,7 @@ class MadplanCard extends HTMLElement {
     const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
     const uge = this.shadowRoot.querySelector(".uge");
     const rul = uge ? uge.scrollLeft : null;
+    const butRul = this.shadowRoot.querySelector(".butikker")?.scrollLeft || 0;
     const fokus = this._fokusNavn || this.shadowRoot.activeElement?.name;
     this._fokusNavn = null;
     this.shadowRoot.innerHTML = `<style>${CSS}</style>
@@ -737,6 +738,8 @@ class MadplanCard extends HTMLElement {
       if (rul !== null) nyUge.scrollLeft = rul;
       else nyUge.querySelector(".valgt")?.scrollIntoView({ block: "nearest", inline: "center" });
     }
+    const nyeButikker = this.shadowRoot.querySelector(".butikker");
+    if (nyeButikker) nyeButikker.scrollLeft = butRul;
   }
 }
 
@@ -748,7 +751,9 @@ const CSS = `
   small { color: var(--secondary-text-color); }
 
   /* Butiksvælger */
-  .butikker { display: flex; gap: 8px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none; }
+  .butikker { display: flex; gap: 8px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none;
+    touch-action: pan-x; overscroll-behavior-x: contain; }
+  .uge { touch-action: pan-x; overscroll-behavior-x: contain; }
   .butik { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px;
     border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; flex: none; }
   .butik img { height: 24px; width: 40px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
@@ -1254,6 +1259,8 @@ class MadplanPanel extends MadplanCard {
     const s = this._hass.states[this._valgt];
     const gammel = this.shadowRoot.querySelector(".indhold");
     const rul = gammel && !this._tilTop ? gammel.scrollTop : 0;
+    // Butikslinjen og fanerne beholder deres vandrette position, når siden tegnes igen.
+    const sidelaens = [".bchips", ".topfaner"].map((v) => this.shadowRoot.querySelector(v)?.scrollLeft || 0);
     this._tilTop = false;
     const fokus = this._fokusNavn || this.shadowRoot.activeElement?.name;
     this._fokusNavn = null;
@@ -1326,13 +1333,21 @@ class MadplanPanel extends MadplanCard {
       m.narrow = this._narrow;
     }
     this.shadowRoot.querySelector(".indhold").scrollTop = rul;
+    [".bchips", ".topfaner"].forEach((v, i) => {
+      const e = this.shadowRoot.querySelector(v);
+      if (e) e.scrollLeft = sidelaens[i];
+    });
     if (fokus) this._fokuser(fokus);
   }
 }
 
 const PANEL_CSS = `
   :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
-  .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; }
+  .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; overflow: hidden;
+    overscroll-behavior: none; }
+  /* Kun op/ned på siden; butikslinjen og fanerne ruller selv sidelæns, uden at hele siden flytter sig. */
+  .hero, .indhold { touch-action: pan-y; }
+  .bchips, .topfaner { touch-action: pan-x; overscroll-behavior-x: contain; }
 
   /* Top med kædens farver, butiksvalg og faner */
   .hero { flex: none; color: var(--brand-tekst); padding: 0 12px 14px; border-radius: 0 0 28px 28px;
@@ -1351,7 +1366,8 @@ const PANEL_CSS = `
   .hplus { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: inherit;
     background: rgba(255,255,255,.18); flex: none; }
   .hplus ha-icon { --mdc-icon-size: 22px; }
-  .bchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 10px; }
+  .bchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 10px;
+    -webkit-overflow-scrolling: touch; }
   .bchips::-webkit-scrollbar { display: none; }
   .bchip { position: relative; display: flex; align-items: center; gap: 6px; flex: none; padding: 6px 12px 6px 6px;
     border-radius: 20px; border: none; cursor: pointer; background: rgba(255,255,255,.18); color: inherit; }
@@ -1361,15 +1377,17 @@ const PANEL_CSS = `
   .bchip.valgt { background: #fff; color: #1c1c1c; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
   .bchip em { position: absolute; top: -8px; right: 4px; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .5px;
     text-transform: uppercase; background: #2e7d32; color: #fff; border-radius: 6px; padding: 1px 5px; }
-  .topfaner { display: flex; width: 100%; box-sizing: border-box; gap: 4px; padding: 4px; border-radius: 18px; background: rgba(0,0,0,.2); }
-  .topfaner button { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  .topfaner { display: flex; width: 100%; box-sizing: border-box; gap: 4px; padding: 4px; border-radius: 18px; background: rgba(0,0,0,.2);
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .topfaner::-webkit-scrollbar { display: none; }
+  .topfaner button { position: relative; flex: 1 0 auto; min-width: 58px; display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 10px 6px; border: none; border-radius: 14px; background: none; color: inherit; opacity: .85;
     font-weight: 600; font-size: 14px; cursor: pointer; transition: background .2s; }
   .topfaner button.aktiv { background: #fff; color: #1c1c1c; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
   .topfaner ha-icon { --mdc-icon-size: 20px; }
   .badge { background: #e53935; color: #fff; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 1px 6px; }
 
-  .indhold { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .indhold { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
   .ramme { max-width: 920px; margin: 0 auto; padding: 16px 14px 28px; }
 
   /* Overblik */
