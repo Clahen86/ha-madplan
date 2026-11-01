@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Madplan",
+        "description": "Ugentlig aftensmadsplan ud fra ugens tilbud.",
+        "data": {
+          "ai_entity": "AI-agent (ai_task)",
+          "indkobsliste": "Indkøbsliste",
+          "personer": "Antal personer",
+          "butik": "Butik"
+        }
+      }
+    },
+    "abort": { "already_configured": "Madplan er allerede sat op." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Madplan",
+        "data": {
+          "ai_entity": "AI-agent (ai_task)",
+          "indkobsliste": "Indkøbsliste",
+          "personer": "Antal personer",
+          "butik": "Butik"
+        }
+      }
+    }
+  },
+  "selector": {
+    "butik": { "options": { "rema1000": "REMA 1000" } }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "domain": "madplan",
+  "name": "Madplan",
+  "codeowners": ["@Clahen86"],
+  "config_flow": true,
+  "dependencies": ["ai_task", "todo"],
+  "documentation": "https://github.com/Clahen86/ha-madplan",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Clahen86/ha-madplan/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

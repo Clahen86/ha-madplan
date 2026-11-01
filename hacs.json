@@ -1,0 +1,7 @@
+{
+  "name": "Madplan",
+  "content_in_root": false,
+  "render_readme": true,
+  "country": ["DK"],
+  "homeassistant": "2025.8.0"
+}

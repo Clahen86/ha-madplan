@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Madplan",
+        "description": "Weekly dinner plan based on this week's offers.",
+        "data": {
+          "ai_entity": "AI agent (ai_task)",
+          "indkobsliste": "Shopping list",
+          "personer": "Number of people",
+          "butik": "Store"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Madplan is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Madplan",
+        "data": {
+          "ai_entity": "AI agent (ai_task)",
+          "indkobsliste": "Shopping list",
+          "personer": "Number of people",
+          "butik": "Store"
+        }
+      }
+    }
+  },
+  "selector": {
+    "butik": {
+      "options": {
+        "rema1000": "REMA 1000"
+      }
+    }
+  }
+}
