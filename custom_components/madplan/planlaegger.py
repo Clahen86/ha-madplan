@@ -551,6 +551,13 @@ class Madplan:
     def _find_varer(self, retter: list[dict], dato: datetime.date) -> None:
         """Slår AI'ens søgeord op for hele ugen på én gang, så samme vare bliver samme produkt,
         og pakningen vælges efter den samlede mængde."""
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                # AI'en giver af og til et forkert tilbuds-id (fx clementiner til nudler) - så søges der i stedet.
+                v = str(ing.get("vare") or "")
+                t = self.tilbud.get(v[2:]) if v.startswith("T:") else None
+                if v.startswith("T:") and not (t and soeg.ligner(str(ing.get("navn", "")), t["navn"])):
+                    ing["vare"] = f"S:{ing.get('navn', '')}"
         mgd: dict[str, dict[str, float]] = {}
         for ret in retter:
             for ing in ret.get("ingredienser", []):

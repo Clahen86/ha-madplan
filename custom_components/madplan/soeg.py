@@ -35,10 +35,13 @@ _SYNONYM = {
     "feta": "fetaost",
     "svinekød": "grisekød",
     "svin": "gris",
+    "grøntsager": "grøntsagsblanding",
+    "wokgrøntsager": "grøntsagsblanding",
 }
 _BOEJNING = ("e", "r", "er", "en", "n", "ne", "et", "s", "erne")
 # Ord der beskriver mængde eller emballage og ikke står i varenavnene.
 _FYLD = {"og", "med", "i", "til", "af", "på", "en", "et", "frisk", "friske", "dåse", "glas", "pakke", "pose", "stk"}
+_FYLD |= {"frosne", "frossen", "frosset", "dybfrosne", "blandede"}
 # Ord i varenavnet, der ikke gør varen til noget andet ("Øko. tomater", "Citron spanien kl. 1").
 _NEUTRAL = _FYLD | {"m", "øko", "økologisk", "økologiske", "kl", "dansk", "danske", "spanien", "danmark", "holland"}
 
@@ -85,6 +88,19 @@ def _score(soeg: list[str], navn: list[str]) -> int | None:
         sammensat += bedst[1]
     ekstra = sum(1 for i, w in enumerate(navn) if i not in brugt and w not in _NEUTRAL)
     return 2 * sammensat + ekstra
+
+
+def ligner(a: str, b: str) -> bool:
+    """Om to varenavne har et fælles stykke ord på mindst 4 bogstaver ("Fiskefilet" ~ "mørksejfilet").
+    Korte ord (ris, løg, æg) skal findes som hele ord."""
+    b_ord = _ord(b)
+    b_tekst = "".join(b_ord)
+    for w in _ord(a):
+        if len(w) >= 4 and any(w[i : i + 4] in b_tekst for i in range(len(w) - 3)):
+            return True
+        if len(w) < 4 and any(_passer(w, x) is not None or x.endswith(w) for x in b_ord):
+            return True
+    return False
 
 
 def find_vare(
