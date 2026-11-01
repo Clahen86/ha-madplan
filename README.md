@@ -12,6 +12,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 
 - **Ugens madplan**, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10. Laves den midt på ugen, planlægges kun fra i dag til lørdag.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
+- **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder. Indkøbslisten deles op pr. butik.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
 - **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
@@ -102,6 +103,7 @@ For hver butik:
 | `madplan.byt_ret` / `madplan.fjern_ret` | Byt eller fjern én dags ret (`dag`: 1 = søndag … 7 = lørdag). |
 | `madplan.dag_personer` | Antal personer én dag (0 = som resten af ugen). |
 | `madplan.rester` | Lav én dags ret til 2 dage (`til: false` fortryder). |
+| `madplan.ekstra_butikker` | Andre kæder, planen også må bruge tilbud fra, fx `butikker: ["netto"]`. |
 | `madplan.tilfoej_behov` / `madplan.fjern_behov` | Ekstra varer, fx `tekst: ["pålæg", "frugt"]`. |
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
