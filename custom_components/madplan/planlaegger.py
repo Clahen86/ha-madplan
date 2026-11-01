@@ -242,6 +242,7 @@ class Madplan:
                     self._regler()
                     + f"Ugens andre retter er: {', '.join(andre)}. "
                     + (f"Familien vil IKKE have: {', '.join(fravalgt)}.\n" if fravalgt else "\n")
+                    + self._samme_slags(dag - 1)
                     + f"Lav én ny ret til {DAGE[dag - 1].lower()}, som er anderledes end ugens andre retter "
                     + "(andet protein eller køkken), og undgå retter fra de seneste uger: "
                     + ", ".join(self._seneste_retter(self.plan["start"]))
@@ -265,6 +266,23 @@ class Madplan:
             except Exception as e:  # noqa: BLE001
                 _LOGGER.exception("Byt ret fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
+
+    def _samme_slags(self, i: int) -> str:
+        """Mangler ugen en fiske- eller vegetarret uden denne dag, skal den nye ret være det.
+        Så overholder et bytte reglerne - og kan rette en plan, der mangler fx fisk."""
+        r = self.regler
+        gammel = self.plan["retter"][i]
+        andre = [ret for j, ret in enumerate(self.plan.get("retter", [])) if j != i and not ret.get("fjernet")]
+        mangler = [
+            (felt, navn)
+            for felt, navn in (("fisk", "fiskeret"), ("vegetar", "vegetarret"))
+            if r[felt] and sum(1 for ret in andre if ret.get(felt)) < r[felt]
+        ]
+        if not mangler:
+            return ""
+        # Mangler begge, så den slags, den gamle ret var.
+        felt, navn = next(((f, n) for f, n in mangler if gammel.get(f)), mangler[0])
+        return f"Den nye ret SKAL være en {navn}.\n"
 
     async def async_fjern_ret(self, dag: int) -> None:
         """Ingen aftensmad den dag (ude, rester osv.). 'Byt ret' giver en ret igen."""
