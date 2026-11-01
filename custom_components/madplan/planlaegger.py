@@ -348,7 +348,7 @@ class Madplan:
             linjer.append(f"{vis} {ing.get('navn', '')}".strip())
             # Det, familien har, afgøres af deres egen liste - ikke af AI'ens 'har', som kan tage fejl.
             navn_ing = str(ing.get("navn", ""))
-            ing["har"] = any(soeg.ligner(navn_ing, h) or soeg.ligner(h, navn_ing) for h in har)
+            ing["har"] = any(soeg.samme_vare(navn_ing, h) for h in har)
             if ing["har"] or ing.get("basis") or not (info := self._slaa_op(ing.get("vare"), dato)):
                 continue
             navn, strr, enhedspris, _, tilbud = info

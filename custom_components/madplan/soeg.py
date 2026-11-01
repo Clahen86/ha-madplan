@@ -259,6 +259,21 @@ def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
     return _navne_cache[noegle]
 
 
+# Beskrivende ord, der ikke siger, hvilken vare det er ("hakket oksekød" og "hakkede tomater" er forskellige).
+_BESKRIVENDE = {
+    "hakket", "hakkede", "hk", "frisk", "friske", "dansk", "danske", "økologisk", "økologiske", "øko", "rema",
+    "stor", "store", "lille", "små", "hel", "hele", "revet", "revne", "kogt", "kogte", "frosne", "frossen", "røget",
+    "flåede", "skiver", "tern", "strimler", "fersk", "ferske", "inspiring", "food", "classic",
+}
+
+
+def samme_vare(a: str, b: str) -> bool:
+    """Om to navne er den samme slags vare - til at afgøre, om familien har en ingrediens."""
+    rens = lambda t: " ".join(o for o in _ord(t) if o not in _BESKRIVENDE)  # noqa: E731
+    a2, b2 = rens(a), rens(b)
+    return bool(a2 and b2) and (ligner(a2, b2) or ligner(b2, a2))
+
+
 def find_vare(
     katalog: dict[str, dict],
     soegeord: str,
