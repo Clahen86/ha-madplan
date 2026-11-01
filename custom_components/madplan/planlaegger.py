@@ -46,6 +46,12 @@ MIN_TILBUD = 20
 MAKS_EKSTRA_BUTIKKER = 2
 # En anden butik bruges kun til mindst så mange forskellige varer - ellers købes de i hovedbutikken.
 MIN_PR_BUTIK = 3
+# Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
+SAMMENLIGN = (
+    "hakket oksekød", "hakket grisekød", "hakket kylling", "kyllingebryst", "kyllingelår", "hel kylling", "laks",
+    "torsk", "bacon", "pølser", "medister", "kartofler", "løg", "gulerødder", "broccoli", "peberfrugt", "tomater",
+    "agurk", "æg", "piskefløde", "revet ost", "mozzarella", "pasta", "ris",
+)
 
 
 class ForLangtSvar(HomeAssistantError):
@@ -927,6 +933,8 @@ class Madplan:
             linjer += ["" if linjer else None, f"TILBUD I {BUTIKKER[butik][0].upper()}{anden} (id|vare|størrelse|pris kr):"]
             linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in egne]
         linjer = [x for x in linjer if x is not None]
+        if self.ekstra_butikker:
+            linjer += self._sammenligning(tilbud)
         if liste and self._navne:
             linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
             linjer.append("; ".join(self._navne))
@@ -1034,11 +1042,36 @@ class Madplan:
         if not self.ekstra_butikker:
             return ""
         return (
-            f"FLERE BUTIKKER: Familien handler i {self._alle_butikker()}, og butikkerne er ligestillede. Vælg de "
-            "billigste og bedste tilbud på tværs af dem, men saml indkøbet: brug kun en butik, hvis I køber mindst "
-            f"{MIN_PR_BUTIK} forskellige varer der – ellers køb det i en af de andre. Varer, der ikke er på tilbud "
-            f"(S:), købes i {self.butik_navn}.\n"
+            f"FLERE BUTIKKER: Familien handler i {self._alle_butikker()}, og butikkerne er ligestillede. Familien vil "
+            "gerne spare: sammenlign aktivt kød, fisk, grønt og mejerivarer på tværs af butikkerne (se SAMMENLIGNING "
+            "nederst) og vælg den billigste, når forskellen er mærkbar. Saml indkøbet: en butik bruges kun, hvis I "
+            f"køber mindst {MIN_PR_BUTIK} forskellige varer der – så vælg hellere flere gode tilbud fra samme butik. "
+            f"Varer, der ikke er på tilbud (S:), købes i {self.butik_navn}.\n"
         )
+
+    def _sammenligning(self, tilbud: list[tuple[str, dict]]) -> list[str]:
+        """Kilopris for de vigtigste varer på tværs af butikkerne, så AI'en kan se, hvor det kan betale sig."""
+        dato = dt_util.now().date()
+        linjer = []
+        for vare in SAMMENLIGN:
+            bud = []
+            for butik in [self.butik, *self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER]]:
+                egne = {tid: t for tid, t in tilbud if t.get("butik", self.butik) == butik and t.get("pris")}
+
+                def enhedspris(tid: str, t: dict) -> float | None:
+                    s = soeg.stoerrelse(t["str"])
+                    return float(t["pris"]) / s[0] * (1 if s[1] == "stk" else 1000) if s else None
+
+                if (tid := soeg.find_vare(egne, vare, dato, pris=enhedspris)) and (p := enhedspris(tid, egne[tid])):
+                    enhed = "stk" if soeg.stoerrelse(egne[tid]["str"])[1] == "stk" else "kg"
+                    bud.append((p, BUTIKKER[butik][0], tid, enhed))
+            if len(bud) > 1 and len({b[3] for b in bud}) == 1:
+                bud.sort()
+                linjer.append(f"{vare}: " + ", ".join(f"{b} {p:.0f} kr/{e} (T:{tid})" for p, b, tid, e in bud))
+        if not linjer:
+            return []
+        return ["", "SAMMENLIGNING – billigste tilbud pr. kg/stk i hver butik (brug det billigste, når forskellen er "
+                "mærkbar):", *linjer[:14]]
 
     def _saml_butikker(self, retter: list[dict]) -> None:
         """En tur i en anden butik for 1-2 varer er ikke det værd: de varer købes i hovedbutikken i stedet.
