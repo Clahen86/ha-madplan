@@ -267,11 +267,59 @@ _BESKRIVENDE = {
 }
 
 
+def _en_fejl(a: str, b: str) -> bool:
+    """Højst én stavefejl (et bogstav for meget, for lidt eller forkert) - "gullerødder" ~ "gulerødder"."""
+    if abs(len(a) - len(b)) > 1 or a == b:
+        return a == b
+    if len(a) > len(b):
+        a, b = b, a
+    i = j = fejl = 0
+    while i < len(a) and j < len(b):
+        if a[i] != b[j]:
+            fejl += 1
+            if fejl > 1:
+                return False
+            if len(a) < len(b):
+                j += 1
+                continue
+        i += 1
+        j += 1
+    return fejl + (len(b) - j) <= 1
+
+
+# Første led, der gør det til en helt anden vare.
+_ANDEN_SLAGS = {"kokos", "karry", "chili", "tomat", "kakao", "chokolade", "is", "salat", "suppe", "sauce", "jordbær"}
+# Ord foran, der gør det til en anden vare ("søde kartofler").
+_ANDEN_VARE = {"søde", "sød"}
+
+# Udskæringer: "kylling" + "bryst" er stadig kylling, men "fløde" + "ost" er en anden vare.
+_UDSKAERING = ("bryst", "lår", "filet", "fileter", "inderfilet", "inderfileter", "strimler", "tern", "kød", "fars",
+               "stykker", "skiver", "bøffer", "koteletter", "portioner")
+
+
+def _samme_ord(t: str, w: str) -> bool:
+    if _passer(t, w) == 0 or (len(t) >= 6 and _en_fejl(t, w)):
+        return True
+    kort, lang = sorted((t, w), key=len)
+    if len(kort) < 4:
+        return False
+    # Sidste led: "fløde" ~ "piskefløde" - men ikke "kokosmælk" eller "karrypasta".
+    if lang.endswith(kort):
+        return lang[: -len(kort)] not in _ANDEN_SLAGS
+    # Første led + udskæring: "kylling" ~ "kyllingebryst", "torsk" ~ "torskefilet".
+    return lang.startswith(kort) and lang[len(kort):].lstrip("e") in _UDSKAERING
+
+
 def samme_vare(a: str, b: str) -> bool:
-    """Om to navne er den samme slags vare - til at afgøre, om familien har en ingrediens."""
-    rens = lambda t: " ".join(o for o in _ord(t) if o not in _BESKRIVENDE)  # noqa: E731
-    a2, b2 = rens(a), rens(b)
-    return bool(a2 and b2) and (ligner(a2, b2) or ligner(b2, a2))
+    """Om to navne er den samme slags vare - til at afgøre, om familien har en ingrediens.
+    Sammenligner hele ord (ikke bogstavstumper), uden beskrivende ord som "hakket" og "frisk"."""
+    rens = lambda t: [  # noqa: E731
+        _SYNONYM.get(o, o) for o in _ord(t) if o not in _BESKRIVENDE and o not in _FYLD and len(o) >= 2
+    ]
+    a_ord, b_ord = rens(a), rens(b)
+    if any(o in _ANDEN_VARE for o in a_ord) != any(o in _ANDEN_VARE for o in b_ord):
+        return False
+    return any(_samme_ord(t, w) for t in b_ord for w in a_ord)
 
 
 def find_vare(
