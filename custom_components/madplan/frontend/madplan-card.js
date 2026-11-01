@@ -752,8 +752,8 @@ const CSS = `
 
   /* Butiksvælger */
   .butikker { display: flex; gap: 8px; padding: 12px 12px 0; overflow-x: auto; scrollbar-width: none;
-    touch-action: pan-x; overscroll-behavior-x: contain; }
-  .uge { touch-action: pan-x; overscroll-behavior-x: contain; }
+    overscroll-behavior-x: contain; }
+  .uge { overscroll-behavior-x: contain; }
   .butik { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px;
     border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; flex: none; }
   .butik img { height: 24px; width: 40px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
@@ -1343,11 +1343,9 @@ class MadplanPanel extends MadplanCard {
 
 const PANEL_CSS = `
   :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
-  .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; overflow: hidden;
-    overscroll-behavior: none; }
-  /* Kun op/ned på siden; butikslinjen og fanerne ruller selv sidelæns, uden at hele siden flytter sig. */
-  .hero, .indhold { touch-action: pan-y; }
-  .bchips, .topfaner { touch-action: pan-x; overscroll-behavior-x: contain; }
+  .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; overflow-x: clip; }
+  /* Butikslinjen og fanerne ruller selv sidelæns, uden at bevægelsen skubber hele siden. */
+  .bchips, .topfaner { overscroll-behavior-x: contain; }
 
   /* Top med kædens farver, butiksvalg og faner */
   .hero { flex: none; color: var(--brand-tekst); padding: 0 12px 14px; border-radius: 0 0 28px 28px;
@@ -1387,7 +1385,7 @@ const PANEL_CSS = `
   .topfaner ha-icon { --mdc-icon-size: 20px; }
   .badge { background: #e53935; color: #fff; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 1px 6px; }
 
-  .indhold { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+  .indhold { flex: 1; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; }
   .ramme { max-width: 920px; margin: 0 auto; padding: 16px 14px 28px; }
 
   /* Overblik */
