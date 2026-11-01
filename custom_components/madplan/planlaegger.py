@@ -37,6 +37,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+MAKS_PAKKER = 10
 
 
 class ForLangtSvar(HomeAssistantError):
@@ -152,6 +153,9 @@ class Madplan:
             if 0 <= i < len(retter) and ord_ and not retter[i].get("fjernet"):
                 if not any(o in retter[i].get("navn", "").lower() for o in ord_):
                     ud.append(f"{DAGE[i]}: skulle være {fast['ret']}")
+        for v in self.plan.get("varer", []):
+            if v.get("for_mange"):
+                ud.append(f"Tjek mængden af {v['navn']} – sat til {MAKS_PAKKER} pakker")
         if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
             ud.append(f"Koster {self.plan['total_alle']} kr (budget {r['budget']} kr)")
         return ud
@@ -283,7 +287,10 @@ class Madplan:
     async def async_saet_personer(self, antal: int) -> None:
         self.personer = max(1, int(antal))
         if self.plan.get("retter") and not self.optaget:
-            await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
+            start = datetime.date.fromisoformat(self.plan["start"])
+            await self._hent_data(start, None)
+            # Pakkestørrelserne regnes forfra (rettelser i omregningen gælder også en gemt plan).
+            await self.hass.async_add_executor_job(self._find_varer, self.plan["retter"], start)
             self._beregn()
         self._totaler()
         await self._gem()
@@ -612,10 +619,18 @@ class Madplan:
                 v = str(ing.get("vare") or "")
                 vare = self.tilbud.get(v[2:]) if v.startswith("T:") else self.katalog.get(v[2:]) if v.startswith("R:") else None
                 s = soeg.stoerrelse(vare["str"]) if vare else None
+                ing.pop("pakke_ukendt", None)
+                vaegt = soeg.stk_vaegt(ing.get("navn", ""))
                 if s and s[1] == ing.get("enhed"):
                     ing["pakke"] = s[0]
-                elif s and s[1] == "g" and ing.get("enhed") == "stk" and (vaegt := soeg.stk_vaegt(ing.get("navn", ""))):
+                elif s and s[1] == "g" and ing.get("enhed") == "stk" and vaegt:
                     ing["pakke"] = round(s[0] / vaegt, 1)  # fx 1 kg løg ≈ 8 stk
+                elif s and s[1] == "stk" and ing.get("enhed") == "g" and vaegt:
+                    ing["pakke"] = s[0] * vaegt  # fx 1 spidskål ≈ 800 g
+                elif s and ing.get("enhed") in ("g", "ml", "stk"):
+                    # Kan ikke regnes om (fx gram mod en vare pr. stk): AI'ens gæt kan være helt skævt,
+                    # så regn med én pakning pr. ret i stedet.
+                    ing["pakke_ukendt"] = True
             hv = str(ret.get("hovedvare") or "").strip()
             if hv.startswith("S:"):
                 ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)
@@ -755,8 +770,8 @@ class Madplan:
                 f["ukendt"] = ing["vare"].startswith("S:")
                 f["anslaaet"] = not tilbud and not self.er_rema and not f["ukendt"]
                 f["basis"] = f["basis"] and bool(ing.get("basis"))
-                if not ing.get("basis") and pakke > 0:
-                    andel = mgd / pakke
+                if not ing.get("basis") and (pakke > 0 or ing.get("pakke_ukendt")):
+                    andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
                     pris += andel * enhedspris
             hv = self._slaa_op(ret.get("hovedvare"), start)
@@ -770,6 +785,11 @@ class Madplan:
         varer = []
         for key, f in forbrug.items():
             antal = 1 if f["basis"] else max(1, math.ceil(f["andel"] - 0.15))
+            # Sikkerhedsgrænse: en enkelt vare til en uges aftensmad er aldrig 400 pakker.
+            if antal > MAKS_PAKKER:
+                _LOGGER.warning("Usandsynlig mængde af %s (%s pakker) - sat til %s", f["navn"], antal, MAKS_PAKKER)
+                f["for_mange"] = True
+                antal = MAKS_PAKKER
             varer.append(
                 {
                     "key": key,
@@ -781,6 +801,7 @@ class Madplan:
                     "anslaaet": f.get("anslaaet", False),
                     "ukendt": f.get("ukendt", False),
                     "basis": f["basis"],
+                    "for_mange": f.get("for_mange", False),
                     "hjemme": gamle.get(key, f["basis"]),
                     "kurv": key in i_kurv,
                 }

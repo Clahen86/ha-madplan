@@ -183,12 +183,22 @@ _STK_VAEGT = {
     "porrer": 250, "banan": 120, "bananer": 120, "avocado": 200, "avocadoer": 200, "appelsin": 200, "pastinak": 150,
     "brød": 60, "boller": 60, "bolle": 60, "burgerboller": 60, "pitabrød": 70, "tortillas": 40, "wraps": 40,
     "pølser": 60, "pølse": 60, "kyllingebryst": 150, "kyllingebrystfilet": 150, "laksefilet": 125, "æg": 60,
+    "spidskål": 800, "hvidkål": 1500, "rødkål": 1200, "blomkål": 700, "broccoli": 400, "kål": 1000,
+    "salat": 300, "hjertesalat": 200, "selleri": 600, "fennikel": 300, "aubergine": 350, "majskolbe": 250,
+    "filet": 110, "fileter": 110, "frikadelle": 50, "frikadeller": 50, "hakkebøf": 125, "hakkebøffer": 125,
+    "kotelet": 150, "koteletter": 150, "schnitzel": 150, "kyllingelår": 200, "kyllingeinderfilet": 40,
+    "kyllingeinderfileter": 40, "baguette": 300, "flutes": 150, "pitabrød": 70, "naanbrød": 130,
 }
 
 
 def stk_vaegt(navn: str) -> float | None:
-    """Gram pr. stk for almindelige grøntsager og frugt, ud fra ingrediensens navn."""
-    return next((_STK_VAEGT[o] for o in reversed(_ord(navn)) if o in _STK_VAEGT), None)
+    """Gram pr. stk ud fra ingrediensens navn - også sidste led i sammensatte ord ("rødspættefilet" -> filet)."""
+    for o in reversed(_ord(navn)):
+        if o in _STK_VAEGT:
+            return _STK_VAEGT[o]
+        if hoved := max((n for n in _STK_VAEGT if len(n) >= 4 and o.endswith(n)), key=len, default=None):
+            return _STK_VAEGT[hoved]
+    return None
 
 
 def ligner(a: str, b: str) -> bool:
