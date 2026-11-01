@@ -1,13 +1,10 @@
+<p align="center"><img src="docs/hero.jpg" alt="Madplan: ugens plan, opskrift og indkøbsliste på en telefon" width="100%"></p>
+
 # Madplan til Home Assistant
 
 Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser. Madplan bruger den AI, du allerede har i Home Assistant, og virker med 14 danske kæder.
 
-<p>
-  <img src="docs/uge.png" alt="Ugens madplan" width="24%">
-  <img src="docs/opskrift.png" alt="Opskrift" width="24%">
-  <img src="docs/indkob.png" alt="Indkøbsliste" width="24%">
-  <img src="docs/regler.png" alt="Familiens regler" width="24%">
-</p>
+<p align="center"><img src="docs/funktioner.jpg" alt="Ugens plan, opskrifter, indkøb og familiens regler" width="100%"></p>
 
 > **Uofficiel integration.** Den er ikke lavet af eller tilknyttet nogen af kæderne. Tilbud hentes fra eTilbudsavis, og normalpriser fra REMA 1000's åbne produkt-API.
 
@@ -23,6 +20,8 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Familiens regler**: budget, økologi, allergier, ting I vil undgå, yndlingsretter, antal vegetar- og fiskeretter, maks tid på hverdage, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
 - **Eget punkt i sidemenuen**, der virker som en app på telefonen. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail.
+
+<p align="center"><img src="docs/designs.jpg" alt="Tre designs: Farverig, Lys og Mørk" width="100%"></p>
 
 ### Kæder
 
