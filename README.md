@@ -59,7 +59,7 @@ Kopier mappen `custom_components/madplan` til `config/custom_components/` og gen
 ## Opsætning
 
 1. Gå til **Indstillinger → Enheder og tjenester → Tilføj integration** og vælg **Madplan**.
-2. Vælg butik og AI Task-enhed. Du kan også vælge en to-do-liste og en notify-tjeneste til mail.
+2. Vælg butik og AI Task-enhed. Du kan også vælge en to-do-liste og en notify-tjeneste til mail – 👉 **[Guide: få listen på mail](docs/guide-mail.md)**.
 3. Den første madplan bliver lavet med det samme. Åbn **Madplan** i sidemenuen.
 
 Tilføj flere butikker ved at tilføje integrationen igen, eller tryk på butiksikonet øverst i Madplan.
