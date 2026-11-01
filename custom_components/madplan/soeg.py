@@ -47,6 +47,9 @@ _UDTRYK = {
     "mælk": "letmælk",
     "ris": "jasmin ris",
     "olie": "rapsolie",
+    "madolie": "rapsolie",
+    "neutral olie": "rapsolie",
+    "stegeolie": "rapsolie",
     "mel": "hvedemel",
     "laks": "laksefilet",
     "torsk": "torskefileter",
@@ -83,12 +86,29 @@ _UDTRYK = {
     "snackgulerødder": "gulerødder",
     "gulerodsstave": "gulerødder",
 }
-_IKKE_AFTENSMAD = re.compile(
-    r"\bis\b|flødeis|juice|drik|sodavand|\bvand\b|brus|saft|smoothie|shot|kakao|kaffe|cappuccino|latte|"
-    r"slik|chokolade|vingummi|lakrids|bolsjer|karamel|kiks|kage|cookie|muffin|croissant|wienerbrød|snack|"
-    r"chips|popcorn|müsli|granola|cornflakes|marmelade|nutella|dessert|budding|is-|isbæger|konfekt|"
-    r"\bøl\b|pilsner|ipa\b|cider|vin\b|rosé|alkoholfri|likør|bitter|cola|energi|baby|grød",
-    re.IGNORECASE,
+# Basisvarer til aftensmad. AI'en får REMA's navne på dem, så den kan skrive et præcist navn.
+# (Hele sortimentet er for langt: Gemini rammer sit loft for svarets længde.)
+_BASISVARER = (
+    "hakket oksekød", "hakket grisekød", "hakket kylling", "hakket kalv og flæsk", "kyllingebryst", "kyllingelår",
+    "kyllingeinderfilet", "hel kylling", "kyllingefilet", "svinekoteletter", "flæskesteg", "medister", "pølser",
+    "grillpølser", "bacon", "bacon i tern", "skinke", "skinkestrimler", "kalkun", "oksekød i tern", "oksefilet",
+    "laks", "laksefilet", "torsk", "torskefilet", "sej", "rødspætte", "fiskefrikadeller", "fiskefilet", "rejer",
+    "tun", "tun i vand", "makrel", "æg", "mælk", "letmælk", "sødmælk", "piskefløde", "madlavningsfløde",
+    "creme fraiche", "smør", "margarine", "yoghurt naturel", "skyr", "revet ost", "mozzarella", "parmesan", "feta",
+    "hytteost", "flødeost", "cheddar", "skiveost", "kartofler", "bagekartofler", "søde kartofler", "ris",
+    "basmati ris", "jasmin ris", "spaghetti", "pasta", "penne", "makaroni", "lasagneplader", "nudler", "ægnudler",
+    "couscous", "bulgur", "quinoa", "tortillas", "pitabrød", "burgerboller", "flutes", "rugbrød", "toastbrød",
+    "naan", "løg", "rødløg", "hvidløg", "gulerødder", "broccoli", "blomkål", "spidskål", "hvidkål", "rødkål",
+    "porrer", "squash", "aubergine", "peberfrugt", "rød peberfrugt", "agurk", "tomater", "cherrytomater", "salat",
+    "icebergsalat", "spinat", "frossen spinat", "ærter", "majs", "grønne bønner", "champignon", "svampe", "selleri",
+    "bladselleri", "pastinak", "rødbeder", "kål", "grønkål", "ingefær", "chili", "forårsløg", "persille",
+    "basilikum", "koriander", "purløg", "dild", "hakkede tomater", "flåede tomater", "tomatpuré", "passata",
+    "kokosmælk", "kidneybønner", "kikærter", "linser", "røde linser", "sorte bønner", "majs på dåse", "bouillon",
+    "hønsebouillon", "grøntsagsbouillon", "sojasauce", "karry", "karrypasta", "paprika", "spidskommen", "oregano",
+    "timian", "kanel", "salt", "peber", "olivenolie", "rapsolie", "olie", "eddike", "sukker", "mel", "hvedemel",
+    "honning", "sennep", "ketchup", "mayonnaise", "pesto", "taco krydderi", "tacosauce", "salsa", "citron", "lime",
+    "æbler", "bananer", "appelsiner", "pærer", "frosne grøntsager", "wokgrøntsager", "grøntsagsblanding",
+    "frosne ærter", "pommes frites", "kartoffelbåde", "hummus", "oliven",
 )
 # Ord, der er for brede til at søge på alene ("taco krydderi" må ikke blive til pebernødkrydderi).
 _GENERISK = {"krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld"}
@@ -150,6 +170,8 @@ _STK_VAEGT = {
     "æble": 150, "æbler": 150, "pære": 150, "pærer": 150, "peberfrugt": 160, "peberfrugter": 160, "tomat": 100,
     "tomater": 100, "citron": 120, "citroner": 120, "lime": 70, "agurk": 350, "squash": 300, "porre": 250,
     "porrer": 250, "banan": 120, "bananer": 120, "avocado": 200, "avocadoer": 200, "appelsin": 200, "pastinak": 150,
+    "brød": 60, "boller": 60, "bolle": 60, "burgerboller": 60, "pitabrød": 70, "tortillas": 40, "wraps": 40,
+    "pølser": 60, "pølse": 60, "kyllingebryst": 150, "kyllingebrystfilet": 150, "laksefilet": 125, "æg": 60,
 }
 
 
@@ -175,17 +197,21 @@ def _noegle(navn: str) -> str:
     return " ".join((navn or "").lower().split())
 
 
-def navneliste(katalog: dict[str, dict], dato: datetime.date, kun_aftensmad: bool = True) -> list[str]:
-    """REMA's varenavne (madvarer med pris) til AI'en, så den kan vælge et præcist navn i stedet for at gætte.
-    Til aftensmad udelades drikkevarer, slik, desserter og morgenmad - det holder prompten kortere."""
-    navne: dict[str, str] = {}
-    for v in katalog.values():
-        if IKKE_MAD.search(v["navn"]) or _stykvare(v["str"]) or not kilder.rema_pris(v, dato):
-            continue
-        if kun_aftensmad and _IKKE_AFTENSMAD.search(v["navn"]):
-            continue
-        navne.setdefault(_noegle(v["navn"]), " ".join(v["navn"].split()))
-    return sorted(navne.values(), key=str.lower)
+_navne_cache: dict[tuple, list[str]] = {}
+
+
+def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
+    """REMA's navne på basisvarerne, så AI'en kan vælge et præcist navn i stedet for at gætte."""
+    noegle = (id(katalog), len(katalog), dato)
+    if noegle not in _navne_cache:
+        navne: dict[str, str] = {}
+        for ord_ in _BASISVARER:
+            if vid := find_vare(katalog, ord_, dato):
+                navn = " ".join(katalog[vid]["navn"].split())
+                navne.setdefault(_noegle(navn), navn)
+        _navne_cache.clear()
+        _navne_cache[noegle] = sorted(navne.values(), key=str.lower)
+    return _navne_cache[noegle]
 
 
 def find_vare(

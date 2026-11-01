@@ -72,6 +72,7 @@ class Madplan:
         self.personer = STANDARD_PERSONER
         self.katalog: dict[str, dict] = {}
         self.tilbud: dict[str, dict] = {}
+        self._navne: list[str] = []
         self._laas = asyncio.Lock()
 
     # ------------------------------------------------------------------ opsætning
@@ -190,7 +191,7 @@ class Madplan:
                 retter = svar.get("retter", [])[:7]
                 if len(retter) < 7:
                     raise HomeAssistantError(f"AI gav kun {len(retter)} retter")
-                self._find_varer(retter, start)
+                await self.hass.async_add_executor_job(self._find_varer, retter, start)
                 self.plan = {
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
@@ -250,7 +251,7 @@ class Madplan:
                     ret = ret["retter"][0]
                 if gammel_ret.get("personer"):
                     ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
-                self._find_varer([ret], start)
+                await self.hass.async_add_executor_job(self._find_varer, [ret], start)
                 self.plan["retter"][dag - 1] = ret
                 self._beregn()
                 self._gem_historik()
@@ -389,9 +390,7 @@ class Madplan:
             f"Du hjælper en dansk familie med indkøb i {self.butik_navn}. {self._behov_regler(behov)}\n"
             "Svar KUN med JSON: {" + self._behov_skema() + "}\n\n"
         )
-        svar = await self._spoerg(
-            "Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste, kun_aftensmad=False)
-        )
+        svar = await self._spoerg("Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste))
         self._gem_behov(svar.get("varer", []), behov, start)
 
     @staticmethod
@@ -497,6 +496,8 @@ class Madplan:
                 else:
                     self.katalog = await kilder.hent_rema_katalog(self.hass)
                     await self._katalog_store.async_save({"hentet": time.time(), "varer": self.katalog})
+        # Navnelisten tager nogle sekunder første gang; den laves uden for HA's event loop.
+        self._navne = await self.hass.async_add_executor_job(soeg.navneliste, self.katalog, start)
         if nye_tilbud:
             self.tilbud = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
             try:
@@ -548,15 +549,13 @@ class Madplan:
             await asyncio.sleep(65 if kvote else 20 + forsoeg * 20)
         raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
 
-    def _vare_tekst(self, liste: bool = True, kun_aftensmad: bool = True) -> str:
-        """Ugens tilbud og en ren navneliste over almindelige varer. Pris og størrelse slås op
-        bagefter - hele sortimentet med priser i hvert kald ville bruge ca. 50.000 tokens."""
+    def _vare_tekst(self, liste: bool = True) -> str:
+        """Ugens tilbud og REMA's navne på basisvarerne. Pris og størrelse slås op bagefter."""
         linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
         linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in self.tilbud.items()]
-        if liste:
-            start = datetime.date.fromisoformat(self.plan["start"]) if self.plan.get("start") else dt_util.now().date()
+        if liste and self._navne:
             linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
-            linjer.append("; ".join(soeg.navneliste(self.katalog, start, kun_aftensmad)))
+            linjer.append("; ".join(self._navne))
         return "\n".join(linjer)
 
     def _find_vare(self, vare: Any, dato: datetime.date, behov: tuple[float, str] | None, kun_mad: bool = True) -> str:
