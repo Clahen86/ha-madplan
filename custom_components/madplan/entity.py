@@ -21,7 +21,8 @@ class MadplanEntity(Entity):
         self._attr_unique_id = f"{madplan.entry.entry_id}_{noegle}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, madplan.entry.entry_id)},
-            name="Madplan",
+            name=f"Madplan {madplan.butik_navn}",
+            manufacturer=madplan.butik_navn,
             entry_type=DeviceEntryType.SERVICE,
         )
 

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Madplan",
-        "description": "Weekly dinner plan based on this week's offers.",
+        "description": "Choose a store. You can add more stores later and compare.",
         "data": {
           "ai_entity": "AI agent (ai_task)",
           "butik": "Store",
@@ -12,11 +12,13 @@
         },
         "data_description": {
           "indkobsliste": "Missing items are added to this list when you send the shopping list.",
-          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes."
+          "notify_service": "E.g. notify.mail. Sends the week's dishes, items and recipes.",
+          "butik": "Offers come from eTilbudsavis. Outside REMA 1000, prices of items not on offer are estimates."
         }
       }
     },
     "abort": {
+      "alle_butikker": "All stores are already set up.",
       "already_configured": "Madplan is already set up."
     }
   },
@@ -26,7 +28,6 @@
         "title": "Madplan",
         "data": {
           "ai_entity": "AI agent (ai_task)",
-          "butik": "Store",
           "indkobsliste": "Shopping list (optional)",
           "notify_service": "Notify service for e-mail (optional)"
         },
@@ -37,17 +38,16 @@
       }
     }
   },
-  "selector": {
-    "butik": {
-      "options": {
-        "rema1000": "REMA 1000"
-      }
-    }
-  },
   "services": {
     "ny_plan": {
       "name": "New meal plan",
-      "description": "Creates a new plan for the week."
+      "description": "Creates a new plan for the week.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        }
+      }
     },
     "byt_ret": {
       "name": "Swap dish",
@@ -56,6 +56,10 @@
         "dag": {
           "name": "Day",
           "description": "1 = Sunday … 7 = Saturday"
+        },
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
         }
       }
     },
@@ -66,12 +70,22 @@
         "dag": {
           "name": "Day",
           "description": "1 = Sunday … 7 = Saturday"
+        },
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
         }
       }
     },
     "overfoer": {
       "name": "Send shopping list",
-      "description": "Sends missing items to the shopping list and/or e-mail."
+      "description": "Sends missing items to the shopping list and/or e-mail.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        }
+      }
     }
   }
 }

@@ -1,7 +1,14 @@
 ny_plan:
+  fields:
+    entity_id: &madplan
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
 byt_ret:
   fields:
-    dag:
+    entity_id: *madplan
+    dag: &dag
       required: true
       example: 1
       selector:
@@ -10,11 +17,8 @@ byt_ret:
           max: 7
 fjern_ret:
   fields:
-    dag:
-      required: true
-      example: 1
-      selector:
-        number:
-          min: 1
-          max: 7
+    entity_id: *madplan
+    dag: *dag
 overfoer:
+  fields:
+    entity_id: *madplan

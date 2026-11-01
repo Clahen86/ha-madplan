@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
-from .const import REMA_URL, TJEK_URL
+from .const import IKKE_MAD, REMA_URL, TJEK_DEALER_URL, TJEK_URL
 
 _LOGGER = logging.getLogger(__name__)
 _HEADERS = {"User-Agent": "HomeAssistant-madplan"}
@@ -23,6 +23,13 @@ async def _hent_json(hass: HomeAssistant, url: str) -> Any:
     async with session.get(url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as r:
         r.raise_for_status()
         return await r.json(content_type=None)
+
+
+async def hent_butik_info(hass: HomeAssistant, dealer: str) -> dict[str, str | None]:
+    """Kædens navn, logo og farve fra eTilbudsavis."""
+    d = await _hent_json(hass, TJEK_DEALER_URL.format(dealer=dealer))
+    farve = d.get("color")
+    return {"navn": d.get("name"), "logo": d.get("logo"), "farve": f"#{farve}" if farve else None}
 
 
 async def hent_rema_katalog(hass: HomeAssistant) -> dict[str, dict]:
@@ -54,13 +61,13 @@ async def hent_rema_katalog(hass: HomeAssistant) -> dict[str, dict]:
 
 
 async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, slut: datetime.date) -> dict[str, dict]:
-    """Tilbud fra eTilbudsavis, der gælder i hele resten af planugen."""
+    """Madvarer på tilbud fra eTilbudsavis, der gælder i hele resten af planugen."""
     tz = dt_util.get_default_time_zone()
     fra = max(start, dt_util.now().date())
     vindue_fra = datetime.datetime.combine(fra, datetime.time(12, 0), tz)
     vindue_til = datetime.datetime.combine(slut, datetime.time(12, 0), tz)
     tilbud: dict[str, dict] = {}
-    for offset in range(0, 1000, 100):
+    for offset in range(0, 2000, 100):
         d = await _hent_json(hass, TJEK_URL.format(dealer=dealer, offset=offset))
         if not d:
             break
@@ -70,7 +77,7 @@ async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, sl
                 o_til = datetime.datetime.fromisoformat(o["run_till"].replace("Z", "+00:00"))
             except (KeyError, ValueError):
                 continue
-            if o_fra > vindue_fra or o_til < vindue_til:
+            if o_fra > vindue_fra or o_til < vindue_til or IKKE_MAD.search(o.get("heading", "")):
                 continue
             q = o.get("quantity") or {}
             size = (q.get("size") or {}).get("from")

@@ -8,9 +8,10 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DAGE
+from .const import DAGE, DOMAIN
 from .entity import MadplanEntity
 
 
@@ -55,7 +56,21 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             periode = f"{start.day}/{start.month} – {slut.day}/{slut.month}"
         except (KeyError, ValueError):
             periode = ""
+        reg = er.async_get(self.hass)
+        eid = self.madplan.entry.entry_id
+
+        def find(platform: str, noegle: str) -> str | None:
+            return reg.async_get_entity_id(platform, DOMAIN, f"{eid}_{noegle}")
+
+        info = self.madplan.butik_info
         return {
+            "butik": self.madplan.butik_navn,
+            "butik_logo": info.get("logo"),
+            "butik_farve": info.get("farve"),
+            "anslaaede_priser": not self.madplan.er_rema,
+            "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],
+            "personer_entitet": find("number", "personer"),
+            "varer_entitet": find("todo", "varer"),
             "status": p.get("status", "Ingen plan endnu"),
             "uge": p.get("uge"),
             "periode": periode,
@@ -79,7 +94,6 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
         super().__init__(madplan, f"dag_{i + 1}")
         self._i = i
         self._attr_name = DAGE[i]
-        self.entity_id = f"sensor.madplan_dag_{i + 1}"
 
     def _ret(self) -> dict:
         retter = self.madplan.plan.get("retter") or []

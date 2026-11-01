@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import MadplanEntity
-from .planlaegger import vare_tekst
+from .planlaegger import pris_tekst, vare_tekst
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -30,7 +30,7 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
                 summary=vare_tekst(v),
                 uid=v["key"],
                 status=TodoItemStatus.COMPLETED if v.get("hjemme") else TodoItemStatus.NEEDS_ACTION,
-                description=f"{v['pris']:.2f} kr",
+                description=pris_tekst(v),
             )
             for v in self.madplan.plan.get("varer", [])
         ]

@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
@@ -25,7 +25,8 @@ PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 KORT_URL = "/madplan/madplan-card.js"
-DAG_SKEMA = vol.Schema({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
+SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id})
+DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
 
@@ -34,29 +35,40 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Services: ny_plan, byt_ret, fjern_ret og overfoer, plus dashboard-kortet."""
     await _registrer_kort(hass)
 
-    def _madplan() -> Madplan:
-        for entry in hass.config_entries.async_loaded_entries(DOMAIN):
-            return entry.runtime_data
-        raise ServiceValidationError("Madplan er ikke sat op")
+    def _madplaner(call: ServiceCall, alle: bool = False) -> list[Madplan]:
+        """Madplanen for entity_id, eller den eneste (alle for ny_plan) hvis den er udeladt."""
+        indlaest = [e.runtime_data for e in hass.config_entries.async_loaded_entries(DOMAIN)]
+        if not indlaest:
+            raise ServiceValidationError("Madplan er ikke sat op")
+        if entity_id := call.data.get("entity_id"):
+            reg = er.async_get(hass)
+            ent = reg.async_get(entity_id)
+            valgt = [m for m in indlaest if ent and m.entry.entry_id == ent.config_entry_id]
+            if not valgt:
+                raise ServiceValidationError(f"{entity_id} hører ikke til en madplan")
+            return valgt
+        if len(indlaest) == 1 or alle:
+            return indlaest
+        raise ServiceValidationError("Der er flere butikker; angiv entity_id")
 
     async def ny_plan(call: ServiceCall) -> None:
-        m = _madplan()
-        m.entry.async_create_background_task(hass, m.async_ny_plan(), "madplan_ny_plan")
+        for m in _madplaner(call, alle=True):
+            m.entry.async_create_background_task(hass, m.async_ny_plan(), "madplan_ny_plan")
 
     async def byt_ret(call: ServiceCall) -> None:
-        m = _madplan()
+        m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_byt_ret(call.data["dag"]), "madplan_byt_ret")
 
     async def fjern_ret(call: ServiceCall) -> None:
-        await _madplan().async_fjern_ret(call.data["dag"])
+        await _madplaner(call)[0].async_fjern_ret(call.data["dag"])
 
     async def overfoer(call: ServiceCall) -> None:
-        await _madplan().async_overfoer()
+        await _madplaner(call)[0].async_overfoer()
 
-    hass.services.async_register(DOMAIN, "ny_plan", ny_plan)
+    hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
-    hass.services.async_register(DOMAIN, "overfoer", overfoer)
+    hass.services.async_register(DOMAIN, "overfoer", overfoer, schema=SKEMA)
     return True
 
 
@@ -86,6 +98,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
 
     entry.async_on_unload(async_track_time_change(hass, _lordag, hour=10, minute=0, second=0))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Hovedsensoren peger på de andre enheder; nu er de alle registreret.
+    madplan.opdater()
     entry.async_on_unload(entry.add_update_listener(_opdateret))
     return True
 

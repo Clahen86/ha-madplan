@@ -31,7 +31,6 @@ from .const import (
     IKKE_MAD,
     KATALOG_MAX_ALDER,
     SIGNAL_OPDATERET,
-    STANDARD_BUTIK,
     STANDARD_PERSONER,
     UNDGAA_UGER,
 )
@@ -45,6 +44,13 @@ class Madplan:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
+        self.butik = entry.data[CONF_BUTIK]
+        self.butik_navn, self.dealer = BUTIKKER[self.butik]
+        self.butik_info: dict[str, Any] = {"navn": self.butik_navn, "logo": None, "farve": None}
+        # Fælles for alle butikker: ét REMA-katalog og ét AI-kald ad gangen.
+        faelles = hass.data.setdefault(DOMAIN, {"katalog_laas": asyncio.Lock(), "ai_laas": asyncio.Lock()})
+        self._katalog_laas = faelles["katalog_laas"]
+        self._ai_laas = faelles["ai_laas"]
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
         self._katalog_store = Store(hass, 1, f"{DOMAIN}.katalog")
         self.plan: dict[str, Any] = {}
@@ -69,19 +75,22 @@ class Madplan:
         self.plan = data.get("plan", {})
         self.historik = data.get("historik", [])
         self.personer = data.get("personer", STANDARD_PERSONER)
+        self.butik_info = data.get("butik_info") or self.butik_info
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
 
     async def _gem(self) -> None:
-        await self._store.async_save({"plan": self.plan, "historik": self.historik, "personer": self.personer})
+        await self._store.async_save(
+            {"plan": self.plan, "historik": self.historik, "personer": self.personer, "butik_info": self.butik_info}
+        )
 
-    def _opdater(self) -> None:
+    def opdater(self) -> None:
         async_dispatcher_send(self.hass, self.signal)
 
     def _status(self, tekst: str) -> None:
         self.plan["status"] = tekst
-        self._opdater()
+        self.opdater()
 
     # ------------------------------------------------------------------ handlinger
 
@@ -119,7 +128,7 @@ class Madplan:
                 self._gem_historik()
                 self.plan["status"] = "Klar"
                 await self._gem()
-                self._opdater()
+                self.opdater()
                 _LOGGER.info("Madplan lavet for %s - %s", start, slut)
             except Exception as e:  # noqa: BLE001 - vises i status på dashboardet
                 _LOGGER.exception("Madplan fejlede")
@@ -162,7 +171,7 @@ class Madplan:
                 self._gem_historik()
                 self.plan["status"] = "Klar"
                 await self._gem()
-                self._opdater()
+                self.opdater()
             except Exception as e:  # noqa: BLE001
                 _LOGGER.exception("Byt ret fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -183,7 +192,7 @@ class Madplan:
             self._beregn()
             self.plan["status"] = "Klar"
             await self._gem()
-            self._opdater()
+            self.opdater()
 
     async def async_saet_personer(self, antal: int) -> None:
         self.personer = max(1, int(antal))
@@ -191,7 +200,7 @@ class Madplan:
             await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
             self._beregn()
         await self._gem()
-        self._opdater()
+        self.opdater()
 
     async def async_saet_hjemme(self, key: str, hjemme: bool) -> None:
         """Afkrydsning i varelisten: varen er allerede hjemme."""
@@ -200,7 +209,7 @@ class Madplan:
                 v["hjemme"] = hjemme
         self._totaler()
         await self._gem()
-        self._opdater()
+        self.opdater()
 
     async def async_overfoer(self) -> None:
         """Lægger manglende varer på indkøbslisten og/eller sender dem som besked."""
@@ -212,7 +221,7 @@ class Madplan:
                     await self.hass.services.async_call(
                         "todo",
                         "add_item",
-                        {"entity_id": liste, "item": vare_tekst(v), "description": f"{v['pris']:.2f} kr"},
+                        {"entity_id": liste, "item": vare_tekst(v), "description": pris_tekst(v)},
                         blocking=True,
                     )
             if notify := opts.get(CONF_NOTIFY):
@@ -220,7 +229,10 @@ class Madplan:
                 await self.hass.services.async_call(
                     domaene,
                     tjeneste,
-                    {"title": f"Indkøbsliste uge {self.plan.get('uge', '')}", "message": self._besked(mangler)},
+                    {
+                        "title": f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}",
+                        "message": self._besked(mangler),
+                    },
                     blocking=True,
                 )
             self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer)")
@@ -241,15 +253,19 @@ class Madplan:
 
     async def _hent_data(self, start: datetime.date, slut: datetime.date | None, nye_tilbud: bool = False) -> None:
         if not self.katalog:
-            k = await self._katalog_store.async_load() or {}
-            if k.get("hentet") and time.time() - k["hentet"] < KATALOG_MAX_ALDER:
-                self.katalog = k["varer"]
-            else:
-                self.katalog = await kilder.hent_rema_katalog(self.hass)
-                await self._katalog_store.async_save({"hentet": time.time(), "varer": self.katalog})
+            async with self._katalog_laas:
+                k = await self._katalog_store.async_load() or {}
+                if k.get("hentet") and time.time() - k["hentet"] < KATALOG_MAX_ALDER:
+                    self.katalog = k["varer"]
+                else:
+                    self.katalog = await kilder.hent_rema_katalog(self.hass)
+                    await self._katalog_store.async_save({"hentet": time.time(), "varer": self.katalog})
         if nye_tilbud:
-            dealer = BUTIKKER[self.entry.options.get(CONF_BUTIK, STANDARD_BUTIK)]
-            self.tilbud = await kilder.hent_tilbud(self.hass, dealer, start, slut)
+            self.tilbud = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
+            try:
+                self.butik_info = await kilder.hent_butik_info(self.hass, self.dealer)
+            except Exception:  # noqa: BLE001 - logo og farve er pynt
+                _LOGGER.debug("Kunne ikke hente butiksinfo for %s", self.butik_navn)
         else:
             self.tilbud = self.plan.get("tilbud") or {}
 
@@ -258,17 +274,18 @@ class Madplan:
         sidste_fejl = ""
         for forsoeg in range(5):
             try:
-                svar = await self.hass.services.async_call(
-                    "ai_task",
-                    "generate_data",
-                    {
-                        "entity_id": self.entry.options[CONF_AI_ENTITY],
-                        "task_name": opgave,
-                        "instructions": instruktioner,
-                    },
-                    blocking=True,
-                    return_response=True,
-                )
+                async with self._ai_laas:
+                    svar = await self.hass.services.async_call(
+                        "ai_task",
+                        "generate_data",
+                        {
+                            "entity_id": self.entry.options[CONF_AI_ENTITY],
+                            "task_name": opgave,
+                            "instructions": instruktioner,
+                        },
+                        blocking=True,
+                        return_response=True,
+                    )
                 if data := (svar or {}).get("data"):
                     return _parse_json(data)
                 sidste_fejl = "tomt svar"
@@ -283,7 +300,10 @@ class Madplan:
         for tid, t in self.tilbud.items():
             linjer.append(f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}")
         linjer.append("")
-        linjer.append("REMA 1000 SORTIMENT (id|vare|størrelse|pris kr):")
+        if self.er_rema:
+            linjer.append("REMA 1000 SORTIMENT (id|vare|størrelse|pris kr):")
+        else:
+            linjer.append("ALMINDELIGE VARER, cirkapriser (id|vare|størrelse|pris kr):")
         for rid, v in self.katalog.items():
             if IKKE_MAD.search(v["navn"]):
                 continue
@@ -291,13 +311,17 @@ class Madplan:
                 linjer.append(f"R:{rid}|{v['navn']}|{v['str']}|{pris}")
         return "\n".join(linjer)
 
-    @staticmethod
-    def _regler() -> str:
+    @property
+    def er_rema(self) -> bool:
+        return self.butik == "rema1000"
+
+    def _regler(self) -> str:
         return (
             "Du er en dansk madplanlægger for en børnefamilie. Retterne skal være: billige, nemme, "
             "forholdsvis sunde (grøntsager i hver ret), hurtige (højst 40 min aktiv tid på hverdage, "
             "højst 60 min søndag og lørdag), børnevenlige og smage godt. Byg retterne primært på "
-            "tilbudsvarerne (T:) og supplér med REMA-varer (R:). Brug KUN vare-id'er fra listen. "
+            f"ugens tilbudsvarer fra {self.butik_navn} (T:) og supplér med almindelige varer (R:). "
+            "Brug KUN vare-id'er fra listen. "
             "Varier proteinet: mindst én fiskeret og én vegetarret om ugen, og samme protein højst to "
             "gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
             "BUDGET: sigt efter højst 15 kr pr. person pr. ret. Undgå dyre varer (and, mørbrad, "
@@ -362,6 +386,8 @@ class Madplan:
                     ing["vare"],
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
+                # Uden for REMA er normalprisen kun et cirkatal.
+                f["anslaaet"] = not tilbud and not self.er_rema
                 f["basis"] = f["basis"] and bool(ing.get("basis"))
                 if not ing.get("basis") and pakke > 0:
                     andel = mgd / pakke
@@ -385,6 +411,7 @@ class Madplan:
                     "antal": antal,
                     "pris": round(antal * f["pris"], 2),
                     "tilbud": f["tilbud"],
+                    "anslaaet": f.get("anslaaet", False),
                     "basis": f["basis"],
                     "hjemme": gamle.get(key, f["basis"]),
                 }
@@ -428,8 +455,8 @@ class Madplan:
             f"Madplan uge {self.plan.get('uge', '')} ({periode}) · {self.plan.get('personer', '')} personer\n\n"
             + "\n".join(retter)
             + f"\n\nINDKØB · {len(mangler)} varer · ca. {self.plan.get('total', 0)} kr\n"
-            + "🏷️ = på tilbud\n\n"
-            + "\n".join(f"☐ {vare_tekst(v)}  {v['pris']:.0f} kr" for v in mangler)
+            + f"🏷️ = på tilbud i {self.butik_navn}" + ("" if self.er_rema else " · ca. = anslået pris") + "\n\n"
+            + "\n".join(f"☐ {vare_tekst(v)}  {pris_tekst(v, 0)}" for v in mangler)
             + "\n\n\nOPSKRIFTER\n"
             + "\n\n".join(opskrifter)
         )
@@ -459,6 +486,10 @@ def vare_tekst(v: dict) -> str:
     strr = strr.replace("LTR.", "l").replace("ML.", "ml").replace("STK.", "stk").strip()
     antal = f"{v['antal']} × " if v["antal"] > 1 else ""
     return f"{mark}{antal}{v['navn']} ({strr})" if strr else f"{mark}{antal}{v['navn']}"
+
+
+def pris_tekst(v: dict, decimaler: int = 2) -> str:
+    return f"{'ca. ' if v.get('anslaaet') else ''}{v['pris']:.{decimaler}f} kr"
 
 
 def _parse_json(tekst: Any) -> dict:

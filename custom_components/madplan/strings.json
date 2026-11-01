@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Madplan",
-        "description": "Ugentlig aftensmadsplan ud fra ugens tilbud.",
+        "description": "Vælg butik. Du kan tilføje flere butikker bagefter og sammenligne.",
         "data": {
           "ai_entity": "AI-agent (ai_task)",
           "butik": "Butik",
@@ -12,11 +12,13 @@
         },
         "data_description": {
           "indkobsliste": "Manglende varer lægges på denne liste, når du sender indkøbslisten.",
-          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter."
+          "notify_service": "Fx notify.mail. Sender ugens retter, varer og opskrifter.",
+          "butik": "Tilbud hentes fra eTilbudsavis. Uden for REMA 1000 er priser på varer, der ikke er på tilbud, et cirkatal."
         }
       }
     },
     "abort": {
+      "alle_butikker": "Alle butikker er allerede sat op.",
       "already_configured": "Madplan er allerede sat op."
     }
   },
@@ -26,7 +28,6 @@
         "title": "Madplan",
         "data": {
           "ai_entity": "AI-agent (ai_task)",
-          "butik": "Butik",
           "indkobsliste": "Indkøbsliste (valgfri)",
           "notify_service": "Notify-service til mail (valgfri)"
         },
@@ -37,17 +38,16 @@
       }
     }
   },
-  "selector": {
-    "butik": {
-      "options": {
-        "rema1000": "REMA 1000"
-      }
-    }
-  },
   "services": {
     "ny_plan": {
       "name": "Ny madplan",
-      "description": "Laver en ny plan for ugen."
+      "description": "Laver en ny plan for ugen.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        }
+      }
     },
     "byt_ret": {
       "name": "Byt ret",
@@ -56,6 +56,10 @@
         "dag": {
           "name": "Dag",
           "description": "1 = søndag … 7 = lørdag"
+        },
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
         }
       }
     },
@@ -66,12 +70,22 @@
         "dag": {
           "name": "Dag",
           "description": "1 = søndag … 7 = lørdag"
+        },
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
         }
       }
     },
     "overfoer": {
       "name": "Send indkøbsliste",
-      "description": "Sender de manglende varer til indkøbslisten og/eller mail."
+      "description": "Sender de manglende varer til indkøbslisten og/eller mail.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        }
+      }
     }
   }
 }

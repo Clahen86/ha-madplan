@@ -11,11 +11,28 @@ CONF_BUTIK = "butik"
 
 STANDARD_PERSONER = 4
 
-# Butik -> eTilbudsavis (Tjek) dealer-id. REMA har også normalpriser via eget API.
-BUTIKKER = {"rema1000": "11deC"}
+# Butik -> (navn, eTilbudsavis/Tjek dealer-id). Kun REMA har et åbent katalog med normalpriser;
+# for de andre kæder bruges REMA's normalpriser som cirkapris for varer, der ikke er på tilbud.
+BUTIKKER = {
+    "rema1000": ("REMA 1000", "11deC"),
+    "netto": ("Netto", "9ba51"),
+    "foetex": ("føtex", "bdf5A"),
+    "bilka": ("Bilka", "93f13"),
+    "lidl": ("Lidl", "71c90"),
+    "365discount": ("365discount", "DWZE1w"),
+    "kvickly": ("Kvickly", "c1edq"),
+    "superbrugsen": ("SuperBrugsen", "0b1e8"),
+    "brugsen": ("Brugsen", "d311fg"),
+    "meny": ("MENY", "267e1m"),
+    "spar": ("SPAR", "88ddE"),
+    "lovbjerg": ("Løvbjerg", "65caN"),
+    "min_kobmand": ("Min Købmand", "603dfL"),
+    "abc_lavpris": ("ABC Lavpris", "70d42L"),
+}
 STANDARD_BUTIK = "rema1000"
 
 TJEK_URL = "https://squid-api.tjek.com/v2/offers?dealer_ids={dealer}&country_id=DK&limit=100&offset={offset}"
+TJEK_DEALER_URL = "https://squid-api.tjek.com/v2/dealers/{dealer}"
 REMA_URL = "https://api.digital.rema1000.dk/api/v3/products?per_page=100&page={side}"
 
 SIGNAL_OPDATERET = "madplan_opdateret_{}"
