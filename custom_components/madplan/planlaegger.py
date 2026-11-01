@@ -9,6 +9,7 @@ import logging
 import math
 import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -36,6 +37,10 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ForLangtSvar(HomeAssistantError):
+    """AI'ens svar ramte loftet for længde (MAX_TOKENS)."""
 
 
 class Madplan:
@@ -180,9 +185,8 @@ class Madplan:
                     + "]"
                     + (", " + self._behov_skema() if behov else "")
                     + "} med retterne i rækkefølge søndag til lørdag.\n\n"
-                    + self._vare_tekst()
                 )
-                svar = await self._spoerg_ai("Madplan uge", instr)
+                svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
                 retter = svar.get("retter", [])[:7]
                 if len(retter) < 7:
                     raise HomeAssistantError(f"AI gav kun {len(retter)} retter")
@@ -240,9 +244,8 @@ class Madplan:
                     + "Svar KUN med JSON: "
                     + self._ret_skema()
                     + "\n\n"
-                    + self._vare_tekst()
                 )
-                ret = await self._spoerg_ai("Madplan byt ret", instr)
+                ret = await self._spoerg("Madplan byt ret", lambda liste: instr + self._vare_tekst(liste))
                 if "retter" in ret:
                     ret = ret["retter"][0]
                 if gammel_ret.get("personer"):
@@ -384,9 +387,11 @@ class Madplan:
             self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
         instr = (
             f"Du hjælper en dansk familie med indkøb i {self.butik_navn}. {self._behov_regler(behov)}\n"
-            "Svar KUN med JSON: {" + self._behov_skema() + "}\n\n" + self._vare_tekst()
+            "Svar KUN med JSON: {" + self._behov_skema() + "}\n\n"
         )
-        svar = await self._spoerg_ai("Madplan ekstra varer", instr)
+        svar = await self._spoerg(
+            "Madplan ekstra varer", lambda liste: instr + self._vare_tekst(liste, kun_aftensmad=False)
+        )
         self._gem_behov(svar.get("varer", []), behov, start)
 
     @staticmethod
@@ -501,10 +506,18 @@ class Madplan:
         else:
             self.tilbud = self.plan.get("tilbud") or {}
 
+    async def _spoerg(self, opgave: str, byg: Callable[[bool], str]) -> dict:
+        """Spørg med navnelisten; bliver svaret for langt, så én gang til uden (som før listen kom)."""
+        try:
+            return await self._spoerg_ai(opgave, byg(True))
+        except ForLangtSvar:
+            _LOGGER.warning("%s: svaret blev for langt - prøver uden navnelisten", opgave)
+            return await self._spoerg_ai(opgave, byg(False) + "\nHold svaret ekstra kort.")
+
     async def _spoerg_ai(self, opgave: str, instruktioner: str) -> dict:
-        """Kalder ai_task; prøver igen ved travlhed (503/429)."""
+        """Kalder ai_task; prøver igen ved travlhed (503/429). Hvert forsøg er et kald."""
         sidste_fejl = ""
-        for forsoeg in range(5):
+        for forsoeg in range(3):
             try:
                 async with self._ai_laas:
                     svar = await self.hass.services.async_call(
@@ -523,6 +536,9 @@ class Madplan:
                 sidste_fejl = "tomt svar"
             except (HomeAssistantError, ValueError) as e:
                 sidste_fejl = str(e)
+            if "MAX_TOKENS" in sidste_fejl.upper():
+                # Et for langt svar bliver ikke kortere af at spørge igen.
+                raise ForLangtSvar(sidste_fejl)
             if re.search(r"per.?day|PerDay", sidste_fejl):
                 # Dagskvoten er brugt: nye forsøg ville bare bruge af morgendagens kvote.
                 raise HomeAssistantError("AI'ens gratis dagskvote er brugt op – prøv igen i morgen")
@@ -532,14 +548,15 @@ class Madplan:
             await asyncio.sleep(65 if kvote else 20 + forsoeg * 20)
         raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
 
-    def _vare_tekst(self) -> str:
+    def _vare_tekst(self, liste: bool = True, kun_aftensmad: bool = True) -> str:
         """Ugens tilbud og en ren navneliste over almindelige varer. Pris og størrelse slås op
         bagefter - hele sortimentet med priser i hvert kald ville bruge ca. 50.000 tokens."""
         linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
         linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in self.tilbud.items()]
-        start = datetime.date.fromisoformat(self.plan["start"]) if self.plan.get("start") else dt_util.now().date()
-        linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
-        linjer.append("; ".join(soeg.navneliste(self.katalog, start)))
+        if liste:
+            start = datetime.date.fromisoformat(self.plan["start"]) if self.plan.get("start") else dt_util.now().date()
+            linjer += ["", "ALMINDELIGE VARER (skriv 'S:' + et navn præcis som her):"]
+            linjer.append("; ".join(soeg.navneliste(self.katalog, start, kun_aftensmad)))
         return "\n".join(linjer)
 
     def _find_vare(self, vare: Any, dato: datetime.date, behov: tuple[float, str] | None, kun_mad: bool = True) -> str:
@@ -666,7 +683,8 @@ class Madplan:
             "en almindelig pakningsstørrelse). "
             "Sæt 'basis': true for basisvarer de fleste har hjemme (salt, peber, olie, smør, mel, "
             "sukker, tørrede krydderier, bouillon). 'hovedvare' er id'et på rettens vigtigste vare.\n"
-            "Opskriftens trin skal være korte og konkrete på dansk.\n"
+            "Opskriftens trin skal være korte og konkrete på dansk: højst 6 trin. 'kort' højst 12 ord og "
+            "'sundhed' højst 8 ord. Svar med kompakt JSON uden linjeskift.\n"
         )
 
     @staticmethod

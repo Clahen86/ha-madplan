@@ -83,6 +83,13 @@ _UDTRYK = {
     "snackgulerødder": "gulerødder",
     "gulerodsstave": "gulerødder",
 }
+_IKKE_AFTENSMAD = re.compile(
+    r"\bis\b|flødeis|juice|drik|sodavand|\bvand\b|brus|saft|smoothie|shot|kakao|kaffe|cappuccino|latte|"
+    r"slik|chokolade|vingummi|lakrids|bolsjer|karamel|kiks|kage|cookie|muffin|croissant|wienerbrød|snack|"
+    r"chips|popcorn|müsli|granola|cornflakes|marmelade|nutella|dessert|budding|is-|isbæger|konfekt|"
+    r"\bøl\b|pilsner|ipa\b|cider|vin\b|rosé|alkoholfri|likør|bitter|cola|energi|baby|grød",
+    re.IGNORECASE,
+)
 # Ord, der er for brede til at søge på alene ("taco krydderi" må ikke blive til pebernødkrydderi).
 _GENERISK = {"krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld"}
 _BOEJNING = ("e", "r", "er", "en", "n", "ne", "et", "s", "erne")
@@ -168,11 +175,14 @@ def _noegle(navn: str) -> str:
     return " ".join((navn or "").lower().split())
 
 
-def navneliste(katalog: dict[str, dict], dato: datetime.date) -> list[str]:
-    """REMA's varenavne (madvarer med pris) til AI'en, så den kan vælge et præcist navn i stedet for at gætte."""
+def navneliste(katalog: dict[str, dict], dato: datetime.date, kun_aftensmad: bool = True) -> list[str]:
+    """REMA's varenavne (madvarer med pris) til AI'en, så den kan vælge et præcist navn i stedet for at gætte.
+    Til aftensmad udelades drikkevarer, slik, desserter og morgenmad - det holder prompten kortere."""
     navne: dict[str, str] = {}
     for v in katalog.values():
         if IKKE_MAD.search(v["navn"]) or _stykvare(v["str"]) or not kilder.rema_pris(v, dato):
+            continue
+        if kun_aftensmad and _IKKE_AFTENSMAD.search(v["navn"]):
             continue
         navne.setdefault(_noegle(v["navn"]), " ".join(v["navn"].split()))
     return sorted(navne.values(), key=str.lower)
