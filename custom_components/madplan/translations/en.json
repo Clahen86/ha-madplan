@@ -114,6 +114,24 @@
           "description": "E.g. \"cold cuts\" or \"fruit for packed lunches\"."
         }
       }
+    },
+    "ekstra_antal": {
+      "name": "Set quantity of extra item",
+      "description": "Changes the number of packages for one item on the Extra items list.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "uid": {
+          "name": "Item id",
+          "description": "The item's id on the list."
+        },
+        "antal": {
+          "name": "Quantity",
+          "description": "Number of packages."
+        }
+      }
     }
   }
 }

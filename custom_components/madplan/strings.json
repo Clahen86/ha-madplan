@@ -114,6 +114,24 @@
           "description": "Fx \"pålæg\" eller \"frugt og grønt til madpakker\"."
         }
       }
+    },
+    "ekstra_antal": {
+      "name": "Ret antal for ekstra vare",
+      "description": "Ændrer antallet af pakninger for én vare på listen Ekstra varer.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "uid": {
+          "name": "Vare-id",
+          "description": "Varens id på listen."
+        },
+        "antal": {
+          "name": "Antal",
+          "description": "Antal pakninger."
+        }
+      }
     }
   }
 }

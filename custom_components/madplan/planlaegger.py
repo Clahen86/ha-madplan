@@ -81,6 +81,8 @@ class Madplan:
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
+        andre_mp = [e.runtime_data.madpakker for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
+        self.madpakker = data.get("madpakker", max(andre_mp, default=0))
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -93,6 +95,7 @@ class Madplan:
                 "personer": self.personer,
                 "butik_info": self.butik_info,
                 "behov": self.behov,
+                "madpakker": self.madpakker,
             }
         )
 
@@ -238,6 +241,21 @@ class Madplan:
         await self._gem()
         self.opdater()
 
+    async def async_saet_madpakker(self, antal: int) -> None:
+        self.madpakker = max(0, int(antal))
+        await self._gem()
+        self.opdater()
+
+    async def async_ekstra_antal(self, uid: str, antal: int) -> None:
+        """Ret antallet af pakninger for én ekstra vare."""
+        for e in self.plan.get("ekstra", []):
+            if e["uid"] == uid:
+                e["antal"] = max(1, int(antal))
+                e["pris"] = round(e["antal"] * e["enhedspris"], 2)
+        self._totaler()
+        await self._gem()
+        self.opdater()
+
     async def async_tilfoej_behov(self, tekst: str) -> None:
         """Fx "pålæg" eller "frugt til madpakker": AI vælger tilbudsvarer til en uge."""
         tekst = tekst.strip()
@@ -285,13 +303,25 @@ class Madplan:
             await self._hent_data(start, slut, nye_tilbud=True)
             self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
         n = self.personer
+        mp = self.madpakker
+        madpakke_tekst = (
+            f"Der smøres {mp} madpakker pr. hverdag, altså {mp * 5} madpakker om ugen. Varer til madpakker "
+            "(rugbrød, pålæg, frugt og grønt til madpakker osv.) regnes KUN ud fra antallet af madpakker, "
+            "ikke ud fra hele familien. "
+            if mp
+            else "Antallet af madpakker er ikke oplyst, så regn med 2 madpakker pr. hverdag. "
+        )
         instr = (
             f"Du hjælper en dansk familie på {n} personer med indkøb i {self.butik_navn} til en hel uge "
             "ud over aftensmaden. For hvert behov herunder: vælg konkrete, almindelige varer, som familien "
             "vil kunne lide, og brug så vidt muligt tilbudsvarer (T:). Brug kun R:-varer, hvis der ikke er "
-            "et passende tilbud. Vælg gerne flere forskellige varer pr. behov (fx flere slags pålæg eller "
-            "frugt), men hold det billigt. 'antal' er antal pakninger, så det rækker en uge for "
-            f"{n} personer (madpakker: 5 hverdage). Brug KUN vare-id'er fra listen.\n"
+            "et passende tilbud. Hold det billigt, og vælg højst 3-4 forskellige varer pr. behov. "
+            + madpakke_tekst
+            + "MÆNGDER: regn realistisk og hellere lidt for lidt end for meget. Tommelfingerregler pr. "
+            "madpakke: 3 skiver rugbrød (ca. 120 g), 40-50 g pålæg, 1 stk frugt, 50-75 g grønt. En pakke "
+            "rugbrød på 1 kg er ca. 25 skiver. Regn summen ud fra pakningens størrelse, og rund ned, hvis "
+            "det kun lige mangler lidt. 'antal' er antal pakninger for hele ugen. "
+            "Brug KUN vare-id'er fra listen.\n"
             f"Behov: {'; '.join(behov)}\n"
             'Svar KUN med JSON: {"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "R:id", '
             '"antal": int, "hvorfor": str (kort)}]}\n\n' + self._vare_tekst(start)

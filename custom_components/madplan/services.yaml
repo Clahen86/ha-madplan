@@ -34,3 +34,16 @@ fjern_behov:
   fields:
     entity_id: *madplan
     tekst: *tekst
+ekstra_antal:
+  fields:
+    entity_id: *madplan
+    uid:
+      required: true
+      selector:
+        text:
+    antal:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 50

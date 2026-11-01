@@ -217,6 +217,22 @@ class MadplanCard extends HTMLElement {
         ev.stopPropagation();
         this._kald("todo", "remove_item", { entity_id: this._ekstraId, item: el.dataset.uid });
         break;
+      case "eplus":
+      case "eminus": {
+        const nu = Number(el.dataset.antal || 1);
+        const ny = h === "eplus" ? nu + 1 : nu - 1;
+        if (ny >= 1) this._kald("madplan", "ekstra_antal", { entity_id: plan, uid: el.dataset.uid, antal: ny });
+        break;
+      }
+      case "mpplus":
+      case "mpminus": {
+        const mp = Number(this._hass.states[a.madpakker_entitet]?.state || 0);
+        this._kald("number", "set_value", {
+          entity_id: a.madpakker_entitet,
+          value: Math.min(12, Math.max(0, mp + (h === "mpplus" ? 1 : -1))),
+        });
+        break;
+      }
       case "fjernbehov":
         this._kald("madplan", "fjern_behov", { entity_id: plan, tekst: el.dataset.tekst });
         break;
@@ -412,14 +428,29 @@ class MadplanCard extends HTMLElement {
   _vareLinje(v, liste) {
     const h = v.status === "completed";
     const tilbud = v.summary.startsWith("🏷️");
-    const navn = v.summary.replace(/^🏷️\s*/, "");
+    let navn = v.summary.replace(/^🏷️\s*/, "");
+    // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
+    if (liste === "ekstra") navn = navn.replace(/^\d+ × /, "");
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
     return `<div class="vare ${h ? "hjemme" : ""}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}">
       <span class="tjek">${h ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</span>
       <span class="vnavn">${esc(navn)}${tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span>
       <span class="vpris">${esc(pris)}</span>
-      ${liste === "ekstra" ? `<button class="slet" data-h="slet" data-uid="${esc(v.uid)}" aria-label="Fjern"><ha-icon icon="mdi:close"></ha-icon></button>` : ""}
+      ${liste === "ekstra" ? this._antalKnapper(v) : ""}
     </div>`;
+  }
+
+  _antalKnapper(v) {
+    const antal = Number((/^(?:🏷️\s*)?(\d+) × /.exec(v.summary) || [])[1] || 1);
+    const uid = esc(v.uid);
+    return `<span class="antal" data-h="ingen">
+      ${
+        antal > 1
+          ? `<button data-h="eminus" data-uid="${uid}" data-antal="${antal}" aria-label="Færre">−</button>`
+          : `<button data-h="slet" data-uid="${uid}" aria-label="Fjern"><ha-icon icon="mdi:delete-outline"></ha-icon></button>`
+      }
+      <b>${antal}</b>
+      <button data-h="eplus" data-uid="${uid}" data-antal="${antal}" aria-label="Flere">+</button></span>`;
   }
 
   /** Ekstra varer ud over aftensmaden: man skriver et behov, og AI finder tilbud. */
@@ -442,6 +473,14 @@ class MadplanCard extends HTMLElement {
       <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv fx pålæg, rugbrød eller frugt til madpakker, så finder den tilbud til ${esc(
         this._personer(),
       )} personer. Det huskes til de næste uger.</div>
+      ${
+        a.madpakker_entitet && this._hass.states[a.madpakker_entitet]
+          ? `<div class="mp"><ha-icon icon="mdi:food-takeout-box-outline"></ha-icon><span>Madpakker pr. hverdag</span>
+              <span class="antal"><button data-h="mpminus" aria-label="Færre">−</button>
+              <b>${esc(Math.round(Number(this._hass.states[a.madpakker_entitet].state)))}</b>
+              <button data-h="mpplus" aria-label="Flere">+</button></span></div>`
+          : ""
+      }
       <form class="behov-form"><input name="behov" autocomplete="off" placeholder="Fx pålæg eller frugt til madpakker"
           value="${esc(this._behovTekst)}"><button type="submit" ${finder ? "disabled" : ""}>
           <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:magnify"}"></ha-icon>${finder ? "Søger …" : "Find tilbud"}</button></form>
@@ -648,6 +687,14 @@ const CSS = `
   .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
   .gruppe { margin: 14px 0 2px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
     color: var(--secondary-text-color); }
+  .antal { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--divider-color); border-radius: 18px;
+    padding: 2px; flex: none; }
+  .antal button { width: 28px; height: 28px; border-radius: 50%; border: none; background: none; cursor: pointer;
+    font-size: 18px; line-height: 1; display: grid; place-items: center; color: var(--primary-text-color); }
+  .antal button ha-icon { --mdc-icon-size: 16px; color: var(--secondary-text-color); }
+  .antal b { min-width: 18px; text-align: center; font-size: 14px; }
+  .mp { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; font-size: 14px; }
+  .mp span:first-of-type { flex: 1; }
   .slet { border: none; background: none; cursor: pointer; color: var(--secondary-text-color); padding: 4px; display: grid; }
   .slet ha-icon { --mdc-icon-size: 16px; }
   .vis-hjemme { display: flex; align-items: center; gap: 4px; border: none; background: none; padding: 12px 0 4px;
