@@ -931,7 +931,7 @@ class MadplanPanel extends MadplanCard {
     return `<section class="overblik">
       <div class="tiles">
         <div class="tile hoved"><span class="ikon"><ha-icon icon="mdi:cart"></ha-icon></span>
-          <b>${a.pris_ca ? "ca. " : ""}${kr(s.state)}</b><small>at købe</small></div>
+          <b>${kr(s.state)}</b><small>${a.pris_ca ? "ca. pris at købe" : "at købe"}</small></div>
         <div class="tile"><span class="ikon"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></span>
           <b>${esc(String(a.pr_kuvert || 0).replace(".", ","))} kr</b><small>pr. kuvert</small></div>
         <div class="tile"><span class="ikon"><ha-icon icon="mdi:home-heart"></ha-icon></span>
@@ -1426,6 +1426,10 @@ const PANEL_CSS = `
     .rlinje .stepper button { width: 30px; height: 30px; font-size: 18px; }
     .rlinje .stepper span { min-width: 40px; padding: 0 4px; }
     .ramme { padding: 12px 10px 24px; }
+    .tiles { gap: 6px; }
+    .tile { padding: 10px; }
+    .tile b { font-size: 16px; }
+    .tile.hoved b { font-size: 18px; }
   }
 
   /* Udseende */
