@@ -1345,7 +1345,7 @@ const PANEL_CSS = `
   :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
   .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; overflow-x: clip; }
   /* Butikslinjen og fanerne ruller selv sidelæns, uden at bevægelsen skubber hele siden. */
-  .bchips, .topfaner { overscroll-behavior-x: contain; }
+
 
   /* Top med kædens farver, butiksvalg og faner */
   .hero { flex: none; color: var(--brand-tekst); padding: 0 12px 14px; border-radius: 0 0 28px 28px;
@@ -1354,6 +1354,9 @@ const PANEL_CSS = `
       radial-gradient(circle at 0% 120%, rgba(0,0,0,.25), transparent 50%),
       linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand) 62%, #000));
     box-shadow: 0 6px 20px color-mix(in srgb, var(--brand) 35%, transparent); z-index: 1; }
+  /* Toppen og alt i den holder sig inden for skærmens bredde. */
+  .hero { box-sizing: border-box; min-width: 0; max-width: 100%; display: block; height: auto; overflow: visible; }
+  .hero > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
   .hrad { display: flex; align-items: center; gap: 10px; height: 60px; }
   .hlogo { width: 40px; height: 40px; border-radius: 12px; background: #fff; display: grid; place-items: center;
     padding: 4px; box-sizing: border-box; flex: none; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
@@ -1364,8 +1367,8 @@ const PANEL_CSS = `
   .hplus { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: inherit;
     background: rgba(255,255,255,.18); flex: none; }
   .hplus ha-icon { --mdc-icon-size: 22px; }
-  .bchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 10px;
-    -webkit-overflow-scrolling: touch; }
+  /* Butikkerne bryder over på flere linjer i stedet for at skulle rulles sidelæns (virker på alle telefoner). */
+  .bchips { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0 10px; }
   .bchips::-webkit-scrollbar { display: none; }
   .bchip { position: relative; display: flex; align-items: center; gap: 6px; flex: none; padding: 6px 12px 6px 6px;
     border-radius: 20px; border: none; cursor: pointer; background: rgba(255,255,255,.18); color: inherit; }
@@ -1375,10 +1378,9 @@ const PANEL_CSS = `
   .bchip.valgt { background: #fff; color: #1c1c1c; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
   .bchip em { position: absolute; top: -8px; right: 4px; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .5px;
     text-transform: uppercase; background: #2e7d32; color: #fff; border-radius: 6px; padding: 1px 5px; }
-  .topfaner { display: flex; width: 100%; box-sizing: border-box; gap: 4px; padding: 4px; border-radius: 18px; background: rgba(0,0,0,.2);
-    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-  .topfaner::-webkit-scrollbar { display: none; }
-  .topfaner button { position: relative; flex: 1 0 auto; min-width: 58px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  /* Alle faner er altid synlige - de deler bredden, så intet skal rulles. */
+  .topfaner { display: flex; width: 100%; box-sizing: border-box; gap: 4px; padding: 4px; border-radius: 18px; background: rgba(0,0,0,.2); }
+  .topfaner button { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 10px 6px; border: none; border-radius: 14px; background: none; color: inherit; opacity: .85;
     font-weight: 600; font-size: 14px; cursor: pointer; transition: background .2s; }
   .topfaner button.aktiv { background: #fff; color: #1c1c1c; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
@@ -1542,7 +1544,13 @@ const PANEL_CSS = `
     font: inherit; resize: vertical; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }
   /* Smal telefon: ikon over tekst i fanerne, mindre tællere under Regler */
   @container (max-width: 420px) {
-    .topfaner button { flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 12px; }
+    .topfaner button { flex-direction: column; gap: 2px; padding: 6px 1px; font-size: 11.5px; }
+    .topfaner button span:not(.badge) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bchips { gap: 6px; }
+    .bchip { padding: 4px 10px 4px 4px; gap: 5px; }
+    .bchip img { width: 24px; height: 24px; }
+    .bchip span { font-size: 14px; }
+    .bchip small { font-size: 12px; }
     .topfaner ha-icon { --mdc-icon-size: 20px; }
     .topfaner .badge { position: absolute; top: 2px; right: calc(50% - 26px); font-size: 10px; padding: 0 5px; }
     .rlinje { gap: 10px; }
