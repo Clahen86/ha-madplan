@@ -232,6 +232,56 @@
           "description": "0 = som resten af ugen."
         }
       }
+    },
+    "en_ret": {
+      "name": "Én ret",
+      "description": "Én aftensret til i dag ud fra det, I har i køleskabet. Adskilt fra ugeplanen.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "har": {
+          "name": "I køleskabet",
+          "description": "Det, I allerede har."
+        },
+        "personer": {
+          "name": "Personer",
+          "description": "Standard: planens antal personer."
+        },
+        "oenske": {
+          "name": "Ønske",
+          "description": "Fx noget asiatisk."
+        }
+      }
+    },
+    "slet_en_ret": {
+      "name": "Slet én ret",
+      "description": "Fjerner en gemt ret.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "en_ret_paa_listen": {
+      "name": "Én ret på indkøbslisten",
+      "description": "Lægger det, der mangler til retten, på indkøbslisten.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
     }
   }
 }

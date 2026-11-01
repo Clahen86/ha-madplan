@@ -68,6 +68,14 @@ MARKER_SKEMA = SKEMA.extend(
         vol.Required("vaerdi"): cv.boolean,
     }
 )
+EN_RET_SKEMA = SKEMA.extend(
+    {
+        vol.Optional("har", default=[]): vol.All(cv.ensure_list, [vol.All(cv.string, vol.Length(min=1, max=60))], vol.Length(max=20)),
+        vol.Optional("personer"): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+        vol.Optional("oenske", default=""): vol.All(cv.string, vol.Length(max=120)),
+    }
+)
+EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
 
@@ -115,6 +123,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def dag_personer(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_dag_personer(call.data["dag"], call.data["personer"])
 
+    async def en_ret(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        d = call.data
+        m.entry.async_create_background_task(
+            hass, m.async_en_ret(d["har"], d.get("personer"), d["oenske"]), "madplan_en_ret"
+        )
+
+    async def slet_en_ret(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_slet_en_ret(call.data["id"])
+
+    async def en_ret_paa_listen(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_en_ret_paa_listen(call.data["id"])
+
     async def marker(call: ServiceCall) -> None:
         d = call.data
         await _madplaner(call)[0].async_marker(d["liste"], d["uid"], d["felt"], d["vaerdi"])
@@ -142,6 +163,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=NYE_BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "gem_regler", gem_regler, schema=REGLER_SKEMA)
     hass.services.async_register(DOMAIN, "marker", marker, schema=MARKER_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret", en_ret, schema=EN_RET_SKEMA)
+    hass.services.async_register(DOMAIN, "slet_en_ret", slet_en_ret, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_paa_listen", en_ret_paa_listen, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)

@@ -74,6 +74,7 @@ class Madplan:
         self.katalog: dict[str, dict] = {}
         self.tilbud: dict[str, dict] = {}
         self._navne: list[str] = []
+        self._en_laas = asyncio.Lock()
         self._laas = asyncio.Lock()
 
     # ------------------------------------------------------------------ opsætning
@@ -97,6 +98,8 @@ class Madplan:
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
+        self.en_ret: list[dict] = data.get("en_ret", [])
+        self.en_ret_status = ""
         if self._faelles["regler"] is None:
             gemt = await self._faelles["regler_store"].async_load() or {}
             self._faelles["regler"] = {**STANDARD_REGLER, **gemt}
@@ -112,6 +115,7 @@ class Madplan:
                 "personer": self.personer,
                 "butik_info": self.butik_info,
                 "behov": self.behov,
+                "en_ret": self.en_ret,
             }
         )
 
@@ -178,24 +182,29 @@ class Madplan:
                 start, slut = self._plan_uge()
                 await self._hent_data(start, slut, nye_tilbud=True)
                 undgaa = self._seneste_retter(start.isoformat())
+                # Midt på ugen planlægges kun fra i dag; dagene før står som "forbi".
+                fra = max(0, min(6, (dt_util.now().date() - start).days))
+                antal = 7 - fra
                 # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
                 behov = list(self.behov)
                 instr = (
                     self._regler()
-                    + f"Lav 7 aftensmåltider for {DAGE[0]} {start.isoformat()} til {DAGE[6]} {slut.isoformat()}.\n"
+                    + f"Lav {antal} aftensmåltider for {DAGE[fra]} "
+                    + f"{(start + datetime.timedelta(days=fra)).isoformat()} til {DAGE[6]} {slut.isoformat()}.\n"
                     + (f"Undgå disse retter fra de seneste uger: {', '.join(undgaa)}.\n" if undgaa else "")
                     + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov else "")
-                    + 'Svar KUN med JSON: {"retter": [7 x '
+                    + f'Svar KUN med JSON: {{"retter": [{antal} x '
                     + self._ret_skema()
                     + "]"
                     + (", " + self._behov_skema() if behov else "")
-                    + "} med retterne i rækkefølge søndag til lørdag.\n\n"
+                    + f"}} med retterne i rækkefølge {DAGE[fra].lower()} til lørdag.\n\n"
                 )
                 svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
-                retter = svar.get("retter", [])[:7]
-                if len(retter) < 7:
-                    raise HomeAssistantError(f"AI gav kun {len(retter)} retter")
-                await self.hass.async_add_executor_job(self._find_varer, retter, start)
+                nye = svar.get("retter", [])[:antal]
+                if len(nye) < antal:
+                    raise HomeAssistantError(f"AI gav kun {len(nye)} retter")
+                await self.hass.async_add_executor_job(self._find_varer, nye, start)
+                retter = [{"navn": "Før planen", "fjernet": True, "forbi": True} for _ in range(fra)] + nye
                 self.plan = {
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
@@ -283,6 +292,110 @@ class Madplan:
         # Mangler begge, så den slags, den gamle ret var.
         felt, navn = next(((f, n) for f, n in mangler if gammel.get(f)), mangler[0])
         return f"Den nye ret SKAL være en {navn}.\n"
+
+    # ------------------------------------------------------------------ én ret (køleskab)
+
+    async def async_en_ret(self, har: list[str], personer: int | None = None, oenske: str = "") -> None:
+        """Én ret til i dag ud fra det, man har i køleskabet. Helt adskilt fra ugeplanen."""
+        if self._en_laas.locked():
+            return
+        async with self._en_laas:
+            try:
+                n = int(personer or self.personer)
+                har = [h.strip() for h in har if h.strip()]
+                self._en_status("Finder en ret …")
+                idag = dt_util.now().date()
+                await self._hent_data(idag, idag, nye_tilbud=not self.tilbud)
+                instr = (
+                    self._regler()
+                    + f"Lav ÉN aftensret til {n} personer i dag.\n"
+                    + (
+                        f"Familien har allerede: {', '.join(har)}. Byg retten på så mange af dem som muligt, og sæt "
+                        "'har': true på de ingredienser, de har. De skal ikke købes.\n"
+                        if har
+                        else ""
+                    )
+                    + (f"Ønske: {oenske.strip()}.\n" if oenske.strip() else "")
+                    + "Det, der mangler, skal købes: brug helst tilbudsvarer (T:), ellers S:navn. Køb så lidt som muligt.\n"
+                    + 'Svar KUN med JSON: {"ret": '
+                    + self._ret_skema().replace('"basis": bool}', '"basis": bool, "har": bool}')
+                    + "}\n\n"
+                )
+                svar = await self._spoerg("Madplan én ret", lambda liste: instr + self._vare_tekst(liste))
+                ret = svar.get("ret") or (svar.get("retter") or [None])[0] or svar
+                if not ret.get("navn"):
+                    raise HomeAssistantError("AI'en gav ingen ret")
+                await self.hass.async_add_executor_job(self._find_varer, [ret], idag)
+                self.en_ret = [self._beregn_en_ret(ret, n, idag, har, oenske)] + self.en_ret[:4]
+                await self._gem()
+                self._en_status("")
+            except Exception as e:  # noqa: BLE001 - vises på siden
+                _LOGGER.exception("Én ret fejlede")
+                self._en_status(f"Fejl: {str(e)[:120]}")
+
+    def _beregn_en_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str], oenske: str) -> dict:
+        """Mængder, og hvad der skal købes, for én ret. Ingen AI her."""
+        linjer, koeb = [], {}
+        for ing in ret.get("ingredienser", []):
+            try:
+                mgd = float(ing.get("pr_person") or 0) * n
+                pakke = float(ing.get("pakke") or 0)
+            except (TypeError, ValueError):
+                mgd, pakke = 0.0, 0.0
+            enhed = ing.get("enhed", "")
+            vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
+            linjer.append(f"{vis} {ing.get('navn', '')}".strip())
+            if ing.get("har") or ing.get("basis") or not (info := self._slaa_op(ing.get("vare"), dato)):
+                continue
+            navn, strr, enhedspris, _, tilbud = info
+            k = koeb.setdefault(ing["vare"], {"navn": navn, "str": strr, "enhedspris": enhedspris, "tilbud": tilbud,
+                                              "ukendt": ing["vare"].startswith("S:"), "andel": 0.0})
+            k["andel"] += 1.0 if ing.get("pakke_ukendt") or pakke <= 0 else mgd / pakke
+        varer = []
+        for k in koeb.values():
+            antal = min(MAKS_PAKKER, max(1, math.ceil(k["andel"] - 0.15)))
+            v = {"navn": k["navn"], "str": k["str"], "antal": antal, "pris": round(antal * k["enhedspris"], 2),
+                 "tilbud": k["tilbud"], "ukendt": k["ukendt"], "anslaaet": not k["tilbud"] and not self.er_rema and not k["ukendt"]}
+            varer.append({"tekst": vare_tekst(v), "pris": pris_tekst(v, 0), "kr": 0 if k["ukendt"] else v["pris"], "tilbud": k["tilbud"]})
+        hv = self._slaa_op(ret.get("hovedvare"), dato)
+        return {
+            "id": f"{int(time.time())}",
+            "lavet": dt_util.now().isoformat(timespec="minutes"),
+            "navn": ret.get("navn", ""),
+            "kort": ret.get("kort", ""),
+            "tid": ret.get("tid_min"),
+            "sundhed": ret.get("sundhed", ""),
+            "billede": hv[3] if hv else None,
+            "personer": n,
+            "har": har,
+            "oenske": oenske,
+            "ingredienser": linjer,
+            "trin": ret.get("trin", []),
+            "koeb": varer,
+            "koeb_total": round(sum(v["kr"] for v in varer)),
+            "koeb_ca": not self.er_rema and any(not v["tilbud"] for v in varer),
+        }
+
+    async def async_slet_en_ret(self, ret_id: str) -> None:
+        self.en_ret = [r for r in self.en_ret if r["id"] != ret_id]
+        await self._gem()
+        self.opdater()
+
+    async def async_en_ret_paa_listen(self, ret_id: str) -> None:
+        """Det, der mangler til én ret, på den valgte indkøbsliste."""
+        ret = next((r for r in self.en_ret if r["id"] == ret_id), None)
+        liste = self.entry.options.get(CONF_INDKOBSLISTE)
+        if not ret or not liste:
+            raise HomeAssistantError("Vælg en indkøbsliste under integrationens indstillinger")
+        for v in ret["koeb"]:
+            await self.hass.services.async_call(
+                "todo", "add_item", {"entity_id": liste, "item": v["tekst"], "description": v["pris"]}, blocking=True
+            )
+        self._en_status(f"✅ {len(ret['koeb'])} varer lagt på indkøbslisten")
+
+    def _en_status(self, tekst: str) -> None:
+        self.en_ret_status = tekst
+        self.opdater()
 
     async def async_fjern_ret(self, dag: int) -> None:
         """Ingen aftensmad den dag (ude, rester osv.). 'Byt ret' giver en ret igen."""

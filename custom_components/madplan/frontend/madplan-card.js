@@ -140,7 +140,7 @@ class MadplanCard extends HTMLElement {
     const h = el.dataset.h;
     const dag = Number(el.dataset.dag || 0);
     const id = `${h}-${dag}`;
-    if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv"].includes(h) && this._bekraeft !== id) {
+    if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv", "enslet"].includes(h) && this._bekraeft !== id) {
       this._bekraeft = id;
       clearTimeout(this._timer);
       this._timer = setTimeout(() => {
@@ -236,6 +236,41 @@ class MadplanCard extends HTMLElement {
       case "farve":
         this._gemUdseende({ farve: el.dataset.v || null });
         break;
+      case "harfjern":
+        this._har.splice(Number(el.dataset.i), 1);
+        break;
+      case "enpers":
+        this._enPers = Math.min(30, Math.max(1, (this._enPers ?? Math.round(n || a.personer || 4)) + Number(el.dataset.d)));
+        break;
+      case "findret": {
+        // Det, der står i feltet, kommer også med.
+        const har = [...(this._har || []), (this._inputs.har || "").trim()].filter(Boolean);
+        this._kald("madplan", "en_ret", {
+          entity_id: plan,
+          har,
+          personer: this._enPers ?? Math.round(n || a.personer || 4),
+          oenske: (this._inputs.oenske || "").trim(),
+        });
+        this._har = har;
+        this._inputs.har = "";
+        this._enValgt = null;
+        break;
+      }
+      case "envaelg":
+        this._enValgt = el.dataset.id;
+        this._tilTop = true;
+        break;
+      case "enslet": {
+        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        if (r) this._kald("madplan", "slet_en_ret", { entity_id: plan, id: r.id });
+        this._enValgt = null;
+        break;
+      }
+      case "enliste": {
+        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        if (r) this._kald("madplan", "en_ret_paa_listen", { entity_id: plan, id: r.id }).catch(() => {});
+        break;
+      }
       case "toemkurv":
         this._kald("madplan", "toem_kurv", { entity_id: plan });
         break;
@@ -293,6 +328,11 @@ class MadplanCard extends HTMLElement {
       const tekst = (this._inputs.behov || "").trim();
       if (tekst.length >= 2 && !this._kladde.some((k) => k.toLowerCase() === tekst.toLowerCase())) this._kladde.push(tekst);
       this._inputs.behov = "";
+    } else if (form.dataset.form === "har") {
+      const tekst = (this._inputs.har || "").trim();
+      this._har = this._har || [];
+      if (tekst && !this._har.some((k) => k.toLowerCase() === tekst.toLowerCase())) this._har.push(tekst);
+      this._inputs.har = "";
     } else if (form.dataset.form === "rliste") {
       const felt = form.dataset.felt;
       const tekst = (this._inputs[`r_${felt}`] || "").trim();
@@ -467,7 +507,7 @@ class MadplanCard extends HTMLElement {
                 ? `<img src="${esc(a.billede)}" alt="" loading="lazy">`
                 : `<ha-icon icon="mdi:food"></ha-icon>`
           }</span>
-          <span class="pnavn">${a.fjernet ? "Ingen" : esc(d.state)}</span>
+          <span class="pnavn">${a.forbi ? "–" : a.fjernet ? "Ingen" : esc(d.state)}</span>
         </button>`;
       })
       .join("")}</div>`;
@@ -480,7 +520,9 @@ class MadplanCard extends HTMLElement {
     if (a.fjernet) {
       return `<div class="detalje tom-dag">
         <ha-icon icon="mdi:silverware-variant"></ha-icon>
-        <div><b>${DAGE[i]}: ingen aftensmad</b><br><small>Tryk "Byt ret" for at få en ret igen.</small></div>
+        <div><b>${DAGE[i]}: ${a.forbi ? "før planen" : "ingen aftensmad"}</b><br><small>${
+          a.forbi ? "Planen blev lavet senere på ugen. Tryk &quot;Byt ret&quot;, hvis I vil have en ret alligevel." : "Tryk &quot;Byt ret&quot; for at få en ret igen."
+        }</small></div>
         <div class="knapper">${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", dag)}</div>
       </div>`;
     }
@@ -991,8 +1033,8 @@ class MadplanPanel extends MadplanCard {
         const dato = (a.dato_kort || "").split("/")[0];
         return `<button class="dagrad ${a.fjernet ? "fjernet" : ""} ${a.dato && a.dato < idag ? "forbi" : ""}" data-h="aabn" data-dag="${i + 1}">
           <span class="datoblok"><small>${KORT[i]}</small><b>${esc(dato)}</b></span>
-          <span class="rtekst"><span class="rnavn">${a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
-            ${a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}</span>`}</span>
+          <span class="rtekst"><span class="rnavn">${a.forbi ? "Før planen" : a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
+            ${a.forbi ? `<span class="rinfo">Planen blev lavet senere</span>` : a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}</span>`}</span>
           ${this._billede(a, "rbillede")}
         </button>`;
       })
@@ -1081,6 +1123,60 @@ class MadplanPanel extends MadplanCard {
         <textarea name="r_krav" rows="3" placeholder="Fx frilandsæg og økologisk mælk. Børnene kan ikke lide stærk mad.">${esc(this._inputs.r_krav ?? r.krav ?? "")}</textarea>
       </section>
       ${this._udseendeKort(a)}`;
+  }
+
+  /** Én ret ud fra køleskabet - helt adskilt fra ugeplanen og dens indkøbsliste. */
+  _enRetSide(a, n) {
+    const liste = a.en_ret || [];
+    const status = a.en_ret_status || "";
+    const arbejder = status.endsWith("…");
+    const valgt = liste.find((r) => r.id === this._enValgt) || liste[0];
+    const pers = this._enPers ?? Math.round(Number(n || a.personer || 4));
+    const har = this._har || [];
+    let html = `<section class="rkort">
+      <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:fridge-outline"></ha-icon></span>
+        <span><b>Hvad har I i køleskabet?</b><small>Én ret til i dag – påvirker ikke ugeplanen</small></span></div>
+      ${har.length ? `<div class="chips">${har.map((h, i) => `<button class="chip-kladde" data-h="harfjern" data-i="${i}">${esc(h)}<ha-icon icon="mdi:close"></ha-icon></button>`).join("")}</div>` : ""}
+      <form class="behov-form" data-form="har"><input name="har" autocomplete="off" enterkeyhint="done" placeholder="Fx kylling, ris, peberfrugt"
+        value="${esc(this._inputs.har || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+      <input class="enoenske" name="oenske" autocomplete="off" enterkeyhint="done" placeholder="Ønske (valgfrit), fx noget asiatisk" value="${esc(this._inputs.oenske || "")}">
+      <div class="styring">
+        <div class="stepper"><button data-h="enpers" data-d="-1" aria-label="Færre">−</button>
+          <span><ha-icon icon="mdi:account-group"></ha-icon>${esc(pers)}</span><button data-h="enpers" data-d="1" aria-label="Flere">+</button></div>
+        <button class="knap stor" data-h="findret" ${arbejder ? "disabled" : ""}><ha-icon icon="${arbejder ? "mdi:timer-sand" : "mdi:star-four-points"}"></ha-icon>${arbejder ? "Finder …" : "Find en ret"}</button>
+      </div>
+      ${status && !arbejder ? `<div class="statuspille ${status.startsWith("✅") ? "ok" : "fejl"}"><ha-icon icon="mdi:information-outline"></ha-icon>${esc(status)}</div>` : ""}
+    </section>`;
+    if (!valgt) return html + `<div class="velkommen"><ha-icon icon="mdi:chef-hat"></ha-icon><h2>Ingen ret endnu</h2><p>Skriv hvad I har, og tryk "Find en ret".</p></div>`;
+    html += `<article class="ret">
+      ${valgt.billede ? `<div class="retbillede"><img src="${esc(valgt.billede)}" alt=""></div>` : ""}
+      <h1>${esc(valgt.navn)}</h1>
+      ${valgt.kort ? `<p class="kort">${esc(valgt.kort)}</p>` : ""}
+      <div class="fakta"><span><ha-icon icon="mdi:timer-outline"></ha-icon>${esc(valgt.tid ?? "?")} min</span>
+        <span><ha-icon icon="mdi:account-group"></ha-icon>${esc(valgt.personer)} pers.</span>
+        <span><ha-icon icon="mdi:cart-outline"></ha-icon>${valgt.koeb.length ? `${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}` : "Intet at købe"}</span></div>
+      ${valgt.har.length ? `<div class="harliste"><ha-icon icon="mdi:fridge-outline"></ha-icon><span>${valgt.har.map(esc).join(", ")}</span></div>` : ""}
+      ${
+        valgt.koeb.length
+          ? `<div class="kasse"><div class="overskrift"><ha-icon icon="mdi:cart-outline"></ha-icon>Skal købes<small>${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}</small></div>
+              ${valgt.koeb.map((v) => `<div class="koebrad"><span>${esc(v.tekst.replace(/^🏷️\s*/, ""))}${v.tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span><b>${esc(v.pris)}</b></div>`).join("")}
+              ${this._knap("enliste", "Læg på indkøbslisten", "mdi:playlist-plus", "fuld lille")}</div>`
+          : ""
+      }
+      <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser<small>${esc(valgt.personer)} personer</small></div>
+        <ul class="ing">${valgt.ingredienser.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
+        <ol class="trin">${valgt.trin.map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
+      <div class="knapper">${this._knap("enslet", "Slet retten", "mdi:delete-outline", "graa")}</div>
+    </article>`;
+    const andre = liste.filter((r) => r !== valgt);
+    if (andre.length)
+      html += `<div class="afsnit">Tidligere retter</div><div class="dagliste">${andre
+        .map((r) => `<button class="dagrad" data-h="envaelg" data-id="${esc(r.id)}">
+            <span class="datoblok"><small>${esc((r.lavet || "").slice(8, 10))}/${esc(String(Number((r.lavet || "").slice(5, 7))))}</small><ha-icon icon="mdi:fridge-outline"></ha-icon></span>
+            <span class="rtekst"><span class="rnavn">${esc(r.navn)}</span><span class="rinfo">${esc(r.tid ?? "?")} min · ${r.koeb.length} at købe</span></span></button>`)
+        .join("")}</div>`;
+    return html;
   }
 
   /** Udseende: kun for den, der er logget ind - ikke en del af familiens regler. */
@@ -1174,6 +1270,8 @@ class MadplanPanel extends MadplanCard {
       const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
       if (!harPlan && this._side === "regler") {
         krop = this._reglerSide(a);
+      } else if (!harPlan && this._side === "enret") {
+        krop = this._enRetSide(a, n);
       } else if (!harPlan) {
         krop = `${this._overblik(s, n)}<div class="velkommen"><ha-icon icon="mdi:chef-hat"></ha-icon><h2>Ingen madplan endnu</h2>
           <p>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</p></div>`;
@@ -1183,6 +1281,8 @@ class MadplanPanel extends MadplanCard {
         krop = this._indkob(s);
       } else if (this._side === "regler") {
         krop = this._reglerSide(a);
+      } else if (this._side === "enret") {
+        krop = this._enRetSide(a, n);
       } else {
         krop = this._ugeSide(s, n, dage);
       }
@@ -1204,7 +1304,7 @@ class MadplanPanel extends MadplanCard {
                   "Indkøb",
                   "mdi:cart-outline",
                   mangler,
-                )}${this._fane("regler", "Regler", "mdi:tune-variant")}</nav>`
+                )}${this._fane("enret", "Én ret", "mdi:fridge-outline")}${this._fane("regler", "Regler", "mdi:tune-variant")}</nav>`
               : ""
           }
         </header>
@@ -1431,6 +1531,20 @@ const PANEL_CSS = `
     .tile b { font-size: 16px; }
     .tile.hoved b { font-size: 18px; }
   }
+
+  /* Én ret */
+  .enoenske { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 10px 14px; border-radius: 22px; font: inherit;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); outline: none; }
+  .enoenske:focus { border-color: var(--brand); }
+  .rkort .styring .knap.stor[disabled] { opacity: .6; }
+  @container (max-width: 420px) { .rkort .styring .knap.stor { flex: 1; justify-content: center; } }
+  .harliste { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: 16px;
+    background: rgba(46,125,50,.12); color: var(--primary-text-color); font-size: 14px; }
+  .harliste ha-icon { color: #2e7d32; --mdc-icon-size: 18px; flex: none; }
+  .koebrad { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--divider-color); font-size: 14px; }
+  .koebrad b { white-space: nowrap; font-weight: 600; }
+  .kasse .knap.fuld { margin-top: 10px; }
+  .datoblok ha-icon { --mdc-icon-size: 18px; }
 
   /* Udseende */
   .designs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

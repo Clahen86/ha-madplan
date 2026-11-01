@@ -139,3 +139,31 @@ dag_personer:
         number:
           min: 0
           max: 30
+en_ret:
+  fields:
+    entity_id: *madplan
+    har:
+      example: ["kylling", "peberfrugt", "ris"]
+      selector:
+        text:
+          multiple: true
+    personer:
+      selector:
+        number:
+          min: 1
+          max: 30
+    oenske:
+      example: "noget asiatisk"
+      selector:
+        text:
+slet_en_ret:
+  fields:
+    entity_id: *madplan
+    id: &en_id
+      required: true
+      selector:
+        text:
+en_ret_paa_listen:
+  fields:
+    entity_id: *madplan
+    id: *en_id

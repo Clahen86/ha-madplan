@@ -17,8 +17,8 @@ STANDARD_REGLER = {
     "allergier": [],
     "undgaa": [],
     "favoritter": [],
-    "vegetar": 1,  # mindst så mange vegetarretter om ugen
-    "fisk": 1,
+    "vegetar": 0,  # mindst så mange vegetarretter om ugen
+    "fisk": 0,
     "max_tid": 40,  # minutter på hverdage
     "faste_dage": [],  # [{"dag": 5, "ret": "pizza"}], dag som indeks i DAGE
     "krav": "",

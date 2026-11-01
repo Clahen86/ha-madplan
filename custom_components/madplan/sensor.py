@@ -74,6 +74,8 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "ekstra_entitet": find("todo", "ekstra"),
             "behov": self.madplan.behov,
             "regler": self.madplan.regler,
+            "en_ret": self.madplan.en_ret,
+            "en_ret_status": self.madplan.en_ret_status,
             # Afkrydset i to-do-listerne er enten "i kurven" eller "har hjemme"; kortet skal kende forskel.
             "kurv": [v["key"] for v in p.get("varer", []) if v.get("kurv")]
             + [e["uid"] for e in p.get("ekstra", []) if e.get("kurv")],
@@ -125,6 +127,7 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "personer": n,
             "gaester": bool(r.get("personer")),
             "fjernet": bool(r.get("fjernet")),
+            "forbi": bool(r.get("forbi")),
             "dato": r.get("_dato"),
             "dato_kort": _kort_dato(r.get("_dato")),
             "kort": r.get("kort", ""),

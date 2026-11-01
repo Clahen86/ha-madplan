@@ -232,6 +232,56 @@
           "description": "0 = same as the rest of the week."
         }
       }
+    },
+    "en_ret": {
+      "name": "One dish",
+      "description": "One dinner for today from what you have in the fridge. Separate from the week plan.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "har": {
+          "name": "In the fridge",
+          "description": "What you already have."
+        },
+        "personer": {
+          "name": "People",
+          "description": "Default: the plan's number of people."
+        },
+        "oenske": {
+          "name": "Wish",
+          "description": "E.g. something Asian."
+        }
+      }
+    },
+    "slet_en_ret": {
+      "name": "Delete one dish",
+      "description": "Removes a saved dish.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
+    },
+    "en_ret_paa_listen": {
+      "name": "One dish to shopping list",
+      "description": "Adds what is missing for the dish to the shopping list.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
     }
   }
 }
