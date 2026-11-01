@@ -12,7 +12,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 
 - **Ugens madplan**, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10. Laves den midt på ugen, planlægges kun fra i dag til lørdag.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
-- **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder. Indkøbslisten deles op pr. butik.
+- **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder (Regler → *Handler også i*). Er samme vare mindst 10 % billigere pr. kg i en anden butik, flyttes den dertil – men kun hvis der skal købes mindst 3 varer i butikken, så du ikke går derhen for én vare. Indkøbslisten deles op pr. butik.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
 - **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
