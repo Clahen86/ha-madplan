@@ -18,7 +18,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import kilder
+from . import kilder, soeg
 from .const import (
     BUTIKKER,
     CONF_AI_ENTITY,
@@ -28,7 +28,6 @@ from .const import (
     DAGE,
     DOMAIN,
     HISTORIK_UGER,
-    IKKE_MAD,
     KATALOG_MAX_ALDER,
     SIGNAL_OPDATERET,
     STANDARD_PERSONER,
@@ -114,19 +113,25 @@ class Madplan:
                 start, slut = self._plan_uge()
                 await self._hent_data(start, slut, nye_tilbud=True)
                 undgaa = self._seneste_retter(start.isoformat())
+                # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
+                behov = list(self.behov)
                 instr = (
                     self._regler()
                     + f"Lav 7 aftensmåltider for {DAGE[0]} {start.isoformat()} til {DAGE[6]} {slut.isoformat()}.\n"
                     + (f"Undgå disse retter fra de seneste uger: {', '.join(undgaa)}.\n" if undgaa else "")
+                    + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov else "")
                     + 'Svar KUN med JSON: {"retter": [7 x '
                     + self._ret_skema()
-                    + "]} i rækkefølge søndag til lørdag.\n\n"
-                    + self._vare_tekst(start)
+                    + "]"
+                    + (", " + self._behov_skema() if behov else "")
+                    + "} med retterne i rækkefølge søndag til lørdag.\n\n"
+                    + self._vare_tekst()
                 )
                 svar = await self._spoerg_ai("Madplan uge", instr)
                 retter = svar.get("retter", [])[:7]
                 if len(retter) < 7:
                     raise HomeAssistantError(f"AI gav kun {len(retter)} retter")
+                self._find_varer(retter, start)
                 self.plan = {
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
@@ -141,14 +146,12 @@ class Madplan:
                 await self._gem()
                 self.opdater()
                 _LOGGER.info("Madplan lavet for %s - %s", start, slut)
-                # Faste behov (pålæg, madpakker …) får nye tilbud hver uge.
-                if self.behov:
-                    self._status("Finder tilbud til jeres ekstra varer …")
+                # Faste behov får nye tilbud hver uge.
+                if behov:
                     try:
-                        await self._loes_behov(self.behov)
+                        self._gem_behov(svar.get("varer", []), behov, start)
                     except Exception as e:  # noqa: BLE001 - planen er lavet; kun ekstra fejlede
                         _LOGGER.warning("Ekstra varer fejlede: %s", e)
-                    self.plan["status"] = "Klar"
                     await self._gem()
                     self.opdater()
             except Exception as e:  # noqa: BLE001 - vises i status på dashboardet
@@ -182,11 +185,12 @@ class Madplan:
                     + "Svar KUN med JSON: "
                     + self._ret_skema()
                     + "\n\n"
-                    + self._vare_tekst(start)
+                    + self._vare_tekst()
                 )
                 ret = await self._spoerg_ai("Madplan byt ret", instr)
                 if "retter" in ret:
                     ret = ret["retter"][0]
+                self._find_varer([ret], start)
                 self.plan["retter"][dag - 1] = ret
                 self._beregn()
                 self._gem_historik()
@@ -290,17 +294,30 @@ class Madplan:
             await self._hent_data(start, slut, nye_tilbud=True)
             self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
         instr = (
-            f"Du hjælper en dansk familie med indkøb i {self.butik_navn} ud over aftensmaden. For hvert behov "
-            "herunder: vælg konkrete, almindelige varer, som familien vil kunne lide, og brug så vidt muligt "
-            "tilbudsvarer (T:). Brug kun R:-varer, hvis der ikke er et passende tilbud. Hold det billigt, og "
-            "vælg højst 3-4 forskellige varer pr. behov. Brug KUN vare-id'er fra listen.\n"
-            f"Behov: {'; '.join(behov)}\n"
-            'Svar KUN med JSON: {"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "R:id", '
-            '"hvorfor": str (kort)}]}\n\n' + self._vare_tekst(start)
+            f"Du hjælper en dansk familie med indkøb i {self.butik_navn}. {self._behov_regler(behov)}\n"
+            "Svar KUN med JSON: {" + self._behov_skema() + "}\n\n" + self._vare_tekst()
         )
         svar = await self._spoerg_ai("Madplan ekstra varer", instr)
+        self._gem_behov(svar.get("varer", []), behov, start)
+
+    @staticmethod
+    def _behov_regler(behov: list[str]) -> str:
+        return (
+            "Ud over aftensmaden skal familien bruge varer til hvert behov herunder. Vælg konkrete, almindelige "
+            "varer, som familien vil kunne lide, og brug så vidt muligt tilbudsvarer (T:id fra listen). Er der "
+            "ikke et passende tilbud, så skriv varen som 'S:søgeord' (et kort, almindeligt dansk varenavn uden "
+            "mærke og mængde, fx 'S:leverpostej'). Hold det billigt, og vælg højst 3-4 forskellige varer pr. "
+            f"behov. Behov: {'; '.join(behov)}"
+        )
+
+    @staticmethod
+    def _behov_skema() -> str:
+        return '"varer": [{"behov": str (præcis som skrevet), "vare": "T:id" eller "S:søgeord", "hvorfor": str (kort)}]'
+
+    def _gem_behov(self, varer: list[dict], behov: list[str], start: datetime.date) -> None:
         nye = []
-        for i, v in enumerate(svar.get("varer", [])):
+        for i, v in enumerate(varer):
+            v["vare"] = self._find_vare(v.get("vare"), start, None, kun_mad=False)
             info = self._slaa_op(v.get("vare"), start)
             if not info:
                 continue
@@ -323,7 +340,8 @@ class Madplan:
                     "enhedspris": enhedspris,
                     "pris": round(antal * enhedspris, 2),
                     "tilbud": tilbud,
-                    "anslaaet": not tilbud and not self.er_rema,
+                    "anslaaet": not tilbud and not self.er_rema and not v["vare"].startswith("S:"),
+                    "ukendt": v["vare"].startswith("S:"),
                     "hvorfor": v.get("hvorfor", ""),
                     "hjemme": False,
                 }
@@ -416,25 +434,62 @@ class Madplan:
                 sidste_fejl = "tomt svar"
             except (HomeAssistantError, ValueError) as e:
                 sidste_fejl = str(e)
+            if re.search(r"per.?day|PerDay", sidste_fejl):
+                # Dagskvoten er brugt: nye forsøg ville bare bruge af morgendagens kvote.
+                raise HomeAssistantError("AI'ens gratis dagskvote er brugt op – prøv igen i morgen")
             _LOGGER.warning("AI-forsøg %s fejlede: %s", forsoeg + 1, sidste_fejl[:200])
-            await asyncio.sleep(20 + forsoeg * 20)
+            # Kvoten pr. minut (429) nulstilles efter et minut; hurtige forsøg bruger den bare op igen.
+            kvote = re.search(r"429|quota|resource.?exhausted|rate.?limit", sidste_fejl, re.I)
+            await asyncio.sleep(65 if kvote else 20 + forsoeg * 20)
         raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
 
-    def _vare_tekst(self, start: datetime.date) -> str:
-        linjer = ["TILBUD (id|vare|størrelse|pris kr):"]
-        for tid, t in self.tilbud.items():
-            linjer.append(f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}")
-        linjer.append("")
-        if self.er_rema:
-            linjer.append("REMA 1000 SORTIMENT (id|vare|størrelse|pris kr):")
-        else:
-            linjer.append("ALMINDELIGE VARER, cirkapriser (id|vare|størrelse|pris kr):")
-        for rid, v in self.katalog.items():
-            if IKKE_MAD.search(v["navn"]):
-                continue
-            if pris := kilder.rema_pris(v, start):
-                linjer.append(f"R:{rid}|{v['navn']}|{v['str']}|{pris}")
+    def _vare_tekst(self) -> str:
+        """Kun ugens tilbud. Resten skriver AI'en som søgeord, og de slås op i REMA's katalog
+        bagefter - hele sortimentet i hvert kald ville bruge ca. 50.000 tokens."""
+        linjer = [f"TILBUD I {self.butik_navn.upper()} (id|vare|størrelse|pris kr):"]
+        linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in self.tilbud.items()]
         return "\n".join(linjer)
+
+    def _find_vare(self, vare: Any, dato: datetime.date, behov: tuple[float, str] | None, kun_mad: bool = True) -> str:
+        """'S:søgeord' -> 'R:id' på den billigste passende vare. Andet (og søgeord uden fund) gives tilbage."""
+        v = str(vare or "").strip()
+        if not v.startswith("S:"):
+            return v
+        if vid := soeg.find_vare(self.katalog, v[2:], dato, behov, kun_mad):
+            return f"R:{vid}"
+        return "S:" + v[2:].strip().lower()
+
+    def _find_varer(self, retter: list[dict], dato: datetime.date) -> None:
+        """Slår AI'ens søgeord op for hele ugen på én gang, så samme vare bliver samme produkt,
+        og pakningen vælges efter den samlede mængde."""
+        mgd: dict[str, dict[str, float]] = {}
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                if str(ing.get("vare") or "").startswith("S:"):
+                    try:
+                        m = float(ing.get("pr_person") or 0) * self.personer
+                    except (TypeError, ValueError):
+                        m = 0.0
+                    e = mgd.setdefault(_soege_noegle(ing["vare"]), {})
+                    e[ing.get("enhed", "")] = e.get(ing.get("enhed", ""), 0.0) + m
+        fundet = {}
+        for v, enheder in mgd.items():
+            enhed, m = max(enheder.items(), key=lambda x: x[1])
+            fundet[v] = self._find_vare(v, dato, (m, enhed) if enhed in ("g", "ml", "stk") else None)
+        for ret in retter:
+            for ing in ret.get("ingredienser", []):
+                v = _soege_noegle(ing.get("vare"))
+                if v not in fundet:
+                    continue
+                ing["soeg"], ing["vare"] = v[2:], fundet[v]
+                # Den rigtige pakningsstørrelse frem for AI'ens gæt.
+                if ing["vare"].startswith("R:") and (
+                    (s := soeg.stoerrelse(self.katalog[ing["vare"][2:]]["str"])) and s[1] == ing.get("enhed")
+                ):
+                    ing["pakke"] = s[0]
+            hv = str(ret.get("hovedvare") or "").strip()
+            if hv.startswith("S:"):
+                ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)
 
     @property
     def er_rema(self) -> bool:
@@ -445,14 +500,15 @@ class Madplan:
             "Du er en dansk madplanlægger for en børnefamilie. Retterne skal være: billige, nemme, "
             "forholdsvis sunde (grøntsager i hver ret), hurtige (højst 40 min aktiv tid på hverdage, "
             "højst 60 min søndag og lørdag), børnevenlige og smage godt. Byg retterne primært på "
-            f"ugens tilbudsvarer fra {self.butik_navn} (T:) og supplér med almindelige varer (R:). "
-            "Brug KUN vare-id'er fra listen. "
+            f"ugens tilbudsvarer fra {self.butik_navn} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
+            "du som 'S:søgeord': et kort, almindeligt dansk varenavn, som det står i et supermarked, uden mærke "
+            "og mængde (fx 'S:hakkede tomater', 'S:piskefløde', 'S:basmati ris', 'S:løg', 'S:letmælk'). "
             + (
                 ""
                 if self.er_rema
-                else "R:-priserne er kun cirkapriser fra en anden kæde, så brug tilbudsvarer (T:) til så mange "
+                else "Varer uden tilbud får kun en cirkapris, så brug tilbudsvarer (T:) til så mange "
                 "ingredienser som muligt – altid til kød, fisk, ost og grøntsager, når der findes et passende "
-                "tilbud – og R:-varer kun til det, der ikke er på tilbud. "
+                "tilbud – og S:-varer kun til det, der ikke er på tilbud. "
             )
             + "Varier proteinet: mindst én fiskeret og én vegetarret om ugen, og samme protein højst to "
             "gange. Varier også køkkenet (dansk, italiensk, asiatisk, mexicansk osv.).\n"
@@ -462,7 +518,8 @@ class Madplan:
             "kun retter, der reelt kan nås inden for tidsgrænsen (fx ikke flæskesteg eller gryderetter "
             "med lang simretid).\n"
             "For hver ingrediens: 'pr_person' er mængden pr. person, 'enhed' er g, ml eller stk, og "
-            "'pakke' er hvor meget af samme enhed der er i den valgte vares pakning (læs størrelsen). "
+            "'pakke' er hvor meget af samme enhed der er i varens pakning (læs størrelsen på tilbud; for S:-varer "
+            "en almindelig pakningsstørrelse). "
             "Sæt 'basis': true for basisvarer de fleste har hjemme (salt, peber, olie, smør, mel, "
             "sukker, tørrede krydderier, bouillon). 'hovedvare' er id'et på rettens vigtigste vare.\n"
             "Opskriftens trin skal være korte og konkrete på dansk.\n"
@@ -472,9 +529,9 @@ class Madplan:
     def _ret_skema() -> str:
         return (
             '{"navn": str, "kort": str (én linje), "tid_min": int, "sundhed": str (kort), '
-            '"hovedvare": "T:id" eller "R:id", "trin": [str], '
+            '"hovedvare": "T:id" eller "S:søgeord", "trin": [str], '
             '"ingredienser": [{"navn": str, "pr_person": number, "enhed": "g"|"ml"|"stk", '
-            '"vare": "T:id" eller "R:id", "pakke": number, "basis": bool}]}'
+            '"vare": "T:id" eller "S:søgeord", "pakke": number, "basis": bool}]}'
         )
 
     # ------------------------------------------------------------------ beregning
@@ -491,6 +548,9 @@ class Madplan:
         elif kilde == "R" and (v := self.katalog.get(vid)):
             if pris := kilder.rema_pris(v, dato):
                 return v["navn"], v["str"], float(pris), v.get("billede"), False
+        elif kilde == "S" and vid.strip():
+            # Søgeord uden fund i kataloget: kommer på listen uden pris i stedet for et gæt.
+            return vid.strip().capitalize(), "", 0.0, None, False
         return None
 
     def _beregn(self, ny: bool = False) -> None:
@@ -519,7 +579,8 @@ class Madplan:
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
                 # Uden for REMA er normalprisen kun et cirkatal.
-                f["anslaaet"] = not tilbud and not self.er_rema
+                f["ukendt"] = ing["vare"].startswith("S:")
+                f["anslaaet"] = not tilbud and not self.er_rema and not f["ukendt"]
                 f["basis"] = f["basis"] and bool(ing.get("basis"))
                 if not ing.get("basis") and pakke > 0:
                     andel = mgd / pakke
@@ -544,6 +605,7 @@ class Madplan:
                     "pris": round(antal * f["pris"], 2),
                     "tilbud": f["tilbud"],
                     "anslaaet": f.get("anslaaet", False),
+                    "ukendt": f.get("ukendt", False),
                     "basis": f["basis"],
                     "hjemme": gamle.get(key, f["basis"]),
                 }
@@ -641,7 +703,15 @@ def vare_tekst(v: dict) -> str:
     return f"{mark}{antal}{v['navn']} ({strr})" if strr else f"{mark}{antal}{v['navn']}"
 
 
+def _soege_noegle(vare: Any) -> str:
+    """'S:Hakkede Tomater ' -> 'S:hakkede tomater', så samme søgeord kun slås op én gang."""
+    v = str(vare or "").strip()
+    return "S:" + v[2:].strip().lower() if v[:2].upper() == "S:" else v
+
+
 def pris_tekst(v: dict, decimaler: int = 2) -> str:
+    if v.get("ukendt"):
+        return "pris ukendt"
     return f"{'ca. ' if v.get('anslaaet') else ''}{v['pris']:.{decimaler}f} kr"
 
 

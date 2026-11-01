@@ -42,11 +42,11 @@ SIGNAL_OPDATERET = "madplan_opdateret_{}"
 DAGE = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag"]
 # Varer der aldrig indgår i aftensmad; holder AI-prompten kortere.
 IKKE_MAD = re.compile(
-    r"vask|skyl|shampoo|balsam|s[æa]be|tandpasta|tandb[øo]rste|deo|bleer|bind|toiletpapir|k[øo]kkenrulle|"
-    r"servietter|batteri|p[æa]re|lys\b|pose|folie|film|kattemad|hundemad|katte|hunde|snack|slik|chokolade|"
-    r"vingummi|lakrids|chips|kiks|kage|is\b|sodavand|cola|energidrik|[øo]l\b|vin\b|spiritus|vodka|gin\b|"
-    r"rom\b|whisky|cider|kaffe|te\b|kapsler|tyggegummi|plaster|creme|lotion|barber|mascara|neglelak|"
-    r"rengøring|klud|svamp|affaldsposer|fryseposer|gave|blomst",
+    r"vask(?!ed)|skyl|shampoo|balsam|s[æa]be|tandpasta|tandb[øo]rste|deo|bleer|bind|toiletpapir|k[øo]kkenrulle|"
+    r"servietter|batteri|led.?p[æa]re|\blys\b|\bposer?\b|folie|film|kattemad|hundemad|katte|hunde|snack|slik|"
+    r"chokolade|vingummi|lakrids|chips|kiks|kage|\bis\b|sodavand|cola|energidrik|\b[øo]l\b|\bvin\b|spiritus|"
+    r"vodka|\bgin\b|\brom\b|whisky|cider|kaffe|\bte\b|kapsler|tyggegummi|plaster|creme|lotion|barber|mascara|"
+    r"neglelak|rengøring|klud|\bsvamp\b|affaldsposer|fryseposer|gave|blomst",
     re.IGNORECASE,
 )
 # Aviser uden madvarer springes over (Bilka har fx legetøjs- og elektronikkataloger).
