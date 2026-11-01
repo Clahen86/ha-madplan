@@ -558,15 +558,18 @@ class MadplanCard extends HTMLElement {
   _vareLinje(v, liste) {
     const t = this._tilstand(v);
     const tilbud = v.summary.startsWith("🏷️");
-    let navn = v.summary.replace(/^🏷️\s*/, "");
-    // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
-    if (liste === "ekstra") navn = navn.replace(/^\d+ × /, "");
+    // "2 × REMA 1000 Hakket oksekød (400 g)" -> antal, navn og størrelse hver for sig, så navnet får plads.
+    const [, antal, raa, str] = /^(?:(\d+) × )?(.*?)(?: \(([^()]*)\))?$/.exec(v.summary.replace(/^🏷️\s*/, ""));
+    const navn = raa.replace(/^REMA 1000 /i, "");
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
+    // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
+    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ");
     return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
-      <span class="vnavn">${esc(navn)}${tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span>
-      <span class="vpris">${esc(pris)}</span>
-      ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}
+      <span class="vtekst"><span class="vnavn">${esc(navn)}</span>
+        ${meta || tilbud ? `<span class="vmeta">${meta}${tilbud ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}</span>
+      <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
+        ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}</span>
       ${
         t === "kurv"
           ? ""
@@ -805,11 +808,16 @@ const CSS = `
   .hjaelp { font-size: 13px; color: var(--secondary-text-color); margin: 4px 0 10px; }
   .fremdrift { height: 6px; border-radius: 3px; background: var(--divider-color); overflow: hidden; margin-bottom: 8px; }
   .fremdrift div { height: 100%; background: #2e7d32; border-radius: 3px; transition: width .3s; }
-  .vare { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
+  .vare { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
   .tjek { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--secondary-text-color); flex: none;
     display: grid; place-items: center; }
   .tjek ha-icon { --mdc-icon-size: 15px; }
-  .vnavn { flex: 1; }
+  .vtekst { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .vnavn { line-height: 1.3; overflow-wrap: anywhere; }
+  .vmeta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--secondary-text-color); }
+  .vmeta b { color: var(--primary-text-color); font-weight: 700; }
+  .vmeta .tag { margin-left: 0; }
+  .vhoejre { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
   .vare.hjemme .vnavn, .vare.kurv .vnavn { text-decoration: line-through; color: var(--secondary-text-color); }
   .vare.kurv .tjek { background: #2e7d32; border-color: #2e7d32; color: #fff; }
   .vare.hjemme .tjek { background: var(--secondary-background-color); border-color: var(--divider-color); color: var(--secondary-text-color); }
@@ -1406,7 +1414,19 @@ const PANEL_CSS = `
     background: var(--card-background-color); color: var(--primary-text-color); }
   .rkort textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--divider-color);
     font: inherit; resize: vertical; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }
-  @container (max-width: 400px) { .topfaner button span:not(.badge) { font-size: 13px; } .topfaner button { gap: 4px; padding: 10px 2px; } }
+  /* Smal telefon: ikon over tekst i fanerne, mindre tællere under Regler */
+  @container (max-width: 420px) {
+    .topfaner button { flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 12px; }
+    .topfaner ha-icon { --mdc-icon-size: 20px; }
+    .topfaner .badge { position: absolute; top: 2px; right: calc(50% - 26px); font-size: 10px; padding: 0 5px; }
+    .rlinje { gap: 10px; }
+    .rikon { width: 34px; height: 34px; border-radius: 12px; }
+    .rtitel b, .rnavn2 b { font-size: 15px; }
+    .rtitel small, .rnavn2 small { font-size: 12px; }
+    .rlinje .stepper button { width: 30px; height: 30px; font-size: 18px; }
+    .rlinje .stepper span { min-width: 40px; padding: 0 4px; }
+    .ramme { padding: 12px 10px 24px; }
+  }
 
   /* Udseende */
   .designs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
