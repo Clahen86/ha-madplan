@@ -1,10 +1,19 @@
 {
   "domain": "madplan",
   "name": "Madplan",
-  "codeowners": ["@Clahen86"],
+  "codeowners": [
+    "@Clahen86"
+  ],
   "config_flow": true,
-  "dependencies": ["ai_task", "todo"],
-  "after_dependencies": ["notify"],
+  "dependencies": [
+    "ai_task",
+    "frontend",
+    "http",
+    "todo"
+  ],
+  "after_dependencies": [
+    "notify"
+  ],
   "documentation": "https://github.com/Clahen86/ha-madplan",
   "integration_type": "service",
   "iot_class": "cloud_polling",

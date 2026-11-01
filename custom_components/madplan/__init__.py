@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import voluptuous as vol
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -19,13 +24,15 @@ from .planlaegger import Madplan
 PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+KORT_URL = "/madplan/madplan-card.js"
 DAG_SKEMA = vol.Schema({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Services: ny_plan, byt_ret, fjern_ret og overfoer."""
+    """Services: ny_plan, byt_ret, fjern_ret og overfoer, plus dashboard-kortet."""
+    await _registrer_kort(hass)
 
     def _madplan() -> Madplan:
         for entry in hass.config_entries.async_loaded_entries(DOMAIN):
@@ -51,6 +58,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "overfoer", overfoer)
     return True
+
+
+async def _registrer_kort(hass: HomeAssistant) -> None:
+    """Gør custom:madplan-card tilgængeligt uden at brugeren skal tilføje en ressource."""
+    if hass.http is None:
+        return
+    mappe = Path(__file__).parent
+    version = json.loads(await hass.async_add_executor_job((mappe / "manifest.json").read_text))["version"]
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True)]
+    )
+    add_extra_js_url(hass, f"{KORT_URL}?v={version}")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> bool:
