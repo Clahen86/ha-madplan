@@ -122,7 +122,7 @@ data:
 
 - **Allergier**: AI'en får besked om aldrig at bruge dem, og planen bliver tjekket for dem. Men AI kan tage fejl – læs altid ingredienserne, hvis nogen har en alvorlig allergi.
 - **Priser** er vejledende. Tilbud kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser (eller hentet fra Salling Group, hvis du bruger en nøgle).
-- **Tilbud** skal gælde på den dag, I handler (planens første dag eller i dag). Indkøbslisten viser, hvornår det første tilbud udløber.
+- **Tilbud** skal gælde på den dag, I handler (planens første dag eller i dag). Kæderne skifter avis på forskellige dage, så du behøver ikke vente – planen bruger de tilbud, der gælder, når du handler. Den automatiske lørdagsplan venter til søndag kl. 7, hvis næste uges avis ikke er ude endnu. Indkøbslisten viser, hvornår det første tilbud udløber.
 - Data om planer, regler og kurv bliver i din Home Assistant. AI'en får kun tilbud, regler og antal personer.
 
 ## Licens

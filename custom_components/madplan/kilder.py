@@ -72,13 +72,15 @@ async def hent_rema_katalog(hass: HomeAssistant) -> dict[str, dict]:
 async def hent_tilbud(hass: HomeAssistant, dealer: str, start: datetime.date, slut: datetime.date) -> dict[str, dict]:
     """Madvarer på tilbud fra eTilbudsavis på indkøbsdagen (planens start eller i dag).
 
-    Der handles ind én gang, så tilbuddet skal gælde den dag. Kæderne skifter avis på
-    forskellige ugedage, så det kan ikke kræves, at det gælder hele planugen.
+    Der handles ind én gang, så tilbuddet skal gælde den dag (kl. 12-20). Kæderne skifter avis på
+    forskellige ugedage (ABC onsdag, 365 torsdag, Salling/Coop fredag, Netto lørdag, REMA/Lidl søndag),
+    så det kan ikke kræves, at det gælder dagen efter - så ville en plan lavet dagen før et avisskifte
+    næsten ikke få tilbud.
     """
     tz = dt_util.get_default_time_zone()
     fra = max(start, dt_util.now().date())
     vindue_fra = datetime.datetime.combine(fra, datetime.time(12, 0), tz)
-    vindue_til = vindue_fra + datetime.timedelta(days=1)
+    vindue_til = vindue_fra + datetime.timedelta(hours=8)
     tilbud: dict[str, dict] = {}
     # Hent pr. avis: API'et bladrer højst 1000 tilbud, og fx Bilka har flere i alt.
     aviser = await _hent_json(hass, TJEK_CATALOGS_URL.format(dealer=dealer)) or []

@@ -210,12 +210,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
     entry.runtime_data = madplan
 
     @callback
-    def _lordag(now) -> None:
-        # Ny plan lørdag formiddag, når næste uges avis er ude.
-        if dt_util.as_local(now).weekday() == 5:
-            entry.async_create_background_task(hass, madplan.async_ny_plan(), "madplan_lordag")
+    def _automatisk(now) -> None:
+        nu = dt_util.as_local(now)
+        # Lørdag kl. 10: næste uges plan - venter, hvis den nye avis ikke er ude endnu.
+        if nu.weekday() == 5 and nu.hour == 10:
+            entry.async_create_background_task(hass, madplan.async_ny_plan(vent_paa_tilbud=True), "madplan_lordag")
+        # Søndag kl. 7: lav planen, hvis lørdagens ventede (eller ikke blev lavet).
+        elif nu.weekday() == 6 and nu.hour == 7 and madplan.plan.get("start") != nu.date().isoformat():
+            entry.async_create_background_task(hass, madplan.async_ny_plan(), "madplan_sondag")
 
-    entry.async_on_unload(async_track_time_change(hass, _lordag, hour=10, minute=0, second=0))
+    entry.async_on_unload(async_track_time_change(hass, _automatisk, hour=[7, 10], minute=0, second=0))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Hovedsensoren peger på de andre enheder; nu er de alle registreret.
     madplan.opdater()

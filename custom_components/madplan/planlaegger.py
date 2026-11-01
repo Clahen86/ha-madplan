@@ -41,6 +41,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 MAKS_PAKKER = 10
+# Færre tilbud end dette til næste uge betyder, at den nye avis ikke er ude endnu.
+MIN_TILBUD = 20
 
 
 class ForLangtSvar(HomeAssistantError):
@@ -183,7 +185,9 @@ class Madplan:
 
     # ------------------------------------------------------------------ handlinger
 
-    async def async_ny_plan(self) -> None:
+    async def async_ny_plan(self, vent_paa_tilbud: bool = False) -> None:
+        """Ny ugeplan. vent_paa_tilbud: den automatiske lørdagsplan venter til søndag morgen,
+        hvis næste uges avis ikke er ude endnu (fx REMA og Lidl, der skifter søndag)."""
         if self.optaget:
             return
         async with self._laas:
@@ -191,6 +195,10 @@ class Madplan:
                 self._status("Henter tilbud og laver madplan …")
                 start, slut = self._plan_uge()
                 await self._hent_data(start, slut, nye_tilbud=True)
+                if vent_paa_tilbud and len(self.tilbud) < MIN_TILBUD:
+                    _LOGGER.info("%s: kun %s tilbud til næste uge - venter til søndag", self.butik_navn, len(self.tilbud))
+                    self._status("Næste uges tilbud er ikke ude endnu – planen laves søndag kl. 7")
+                    return
                 undgaa = self._seneste_retter(start.isoformat())
                 # Midt på ugen planlægges kun fra i dag; dagene før står som "forbi".
                 fra = max(0, min(6, (dt_util.now().date() - start).days))
