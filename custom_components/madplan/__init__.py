@@ -133,6 +133,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def slet_en_ret(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_slet_en_ret(call.data["id"])
 
+    async def dag_mail(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_dag_mail(call.data["dag"])
+
     async def en_ret_mail(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_en_ret_mail(call.data["id"])
 
@@ -170,6 +173,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "slet_en_ret", slet_en_ret, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "en_ret_paa_listen", en_ret_paa_listen, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "en_ret_mail", en_ret_mail, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "dag_mail", dag_mail, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)

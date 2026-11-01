@@ -309,6 +309,20 @@
           "description": "Rettens id."
         }
       }
+    },
+    "dag_mail": {
+      "name": "Send én dag på mail",
+      "description": "Sender én dags ret fra ugeplanen med indkøbsliste og opskrift.",
+      "fields": {
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        },
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        }
+      }
     }
   }
 }

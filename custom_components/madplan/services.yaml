@@ -171,3 +171,7 @@ en_ret_mail:
   fields:
     entity_id: *madplan
     id: *en_id
+dag_mail:
+  fields:
+    entity_id: *madplan
+    dag: *dag

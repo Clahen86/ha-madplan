@@ -266,6 +266,9 @@ class MadplanCard extends HTMLElement {
         this._enValgt = null;
         break;
       }
+      case "dagmail":
+        this._kald("madplan", "dag_mail", { entity_id: plan, dag }).catch(() => {});
+        break;
       case "enmail": {
         const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
         if (r) this._kald("madplan", "en_ret_mail", { entity_id: plan, id: r.id }).catch(() => {});
@@ -1075,6 +1078,7 @@ class MadplanPanel extends MadplanCard {
       <div class="knapper">
         ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", i + 1)}
         ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", i + 1)}
+        ${this._hass.states[this._valgt]?.attributes.har_mail ? this._knap("dagmail", "Send på mail", "mdi:email-outline", "graa", i + 1) : ""}
       </div>
     </article>`;
   }

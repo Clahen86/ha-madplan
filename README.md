@@ -14,7 +14,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
 - **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
-- **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge.
+- **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
@@ -104,6 +104,7 @@ For hver butik:
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
 | `madplan.en_ret` | Én ret fra køleskabet, fx `har: ["kylling", "ris"]`. |
 | `madplan.en_ret_mail` / `madplan.en_ret_paa_listen` | Send det, der mangler til én ret, på mail eller indkøbslisten. |
+| `madplan.dag_mail` | Send én dags ret fra ugeplanen på mail med indkøbsliste og opskrift. |
 | `madplan.gem_regler` | Familiens regler. |
 | `madplan.overfoer` | Send indkøbslisten. |
 

@@ -350,6 +350,28 @@ class Madplan:
 
     def _beregn_en_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str], oenske: str) -> dict:
         """Mængder, og hvad der skal købes, for én ret. Ingen AI her."""
+        linjer, varer = self._koeb_til_ret(ret, n, dato, har)
+        hv = self._slaa_op(ret.get("hovedvare"), dato)
+        return {
+            "id": f"{int(time.time())}",
+            "lavet": dt_util.now().isoformat(timespec="minutes"),
+            "navn": ret.get("navn", ""),
+            "kort": ret.get("kort", ""),
+            "tid": ret.get("tid_min"),
+            "sundhed": ret.get("sundhed", ""),
+            "billede": hv[3] if hv else None,
+            "personer": n,
+            "har": har,
+            "oenske": oenske,
+            "ingredienser": linjer,
+            "trin": ret.get("trin", []),
+            "koeb": varer,
+            "koeb_total": round(sum(v["kr"] for v in varer)),
+            "koeb_ca": any(v["ca"] for v in varer),
+        }
+
+    def _koeb_til_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str]) -> tuple[list[str], list[dict]]:
+        """(ingredienslinjer, varer at købe) for én ret til n personer - uden basisvarer og det, man har."""
         linjer, koeb = [], {}
         for ing in ret.get("ingredienser", []):
             try:
@@ -376,24 +398,7 @@ class Madplan:
                  "tilbud": k["tilbud"], "ukendt": k["ukendt"], "anslaaet": k["ca"]}
             varer.append({"tekst": vare_tekst(v), "pris": pris_tekst(v, 0), "kr": 0 if k["ukendt"] else v["pris"],
                           "tilbud": k["tilbud"], "ca": k["ca"]})
-        hv = self._slaa_op(ret.get("hovedvare"), dato)
-        return {
-            "id": f"{int(time.time())}",
-            "lavet": dt_util.now().isoformat(timespec="minutes"),
-            "navn": ret.get("navn", ""),
-            "kort": ret.get("kort", ""),
-            "tid": ret.get("tid_min"),
-            "sundhed": ret.get("sundhed", ""),
-            "billede": hv[3] if hv else None,
-            "personer": n,
-            "har": har,
-            "oenske": oenske,
-            "ingredienser": linjer,
-            "trin": ret.get("trin", []),
-            "koeb": varer,
-            "koeb_total": round(sum(v["kr"] for v in varer)),
-            "koeb_ca": any(v["ca"] for v in varer),
-        }
+        return linjer, varer
 
     async def async_slet_en_ret(self, ret_id: str) -> None:
         self.en_ret = [r for r in self.en_ret if r["id"] != ret_id]
@@ -415,26 +420,46 @@ class Madplan:
     async def async_en_ret_mail(self, ret_id: str) -> None:
         """Det, der mangler til én ret, og opskriften - sendt med den valgte notify-tjeneste (fx mail)."""
         ret = next((r for r in self.en_ret if r["id"] == ret_id), None)
+        if not ret:
+            raise HomeAssistantError("Retten findes ikke længere")
+        await self._send_ret(ret["navn"], ret["personer"], ret.get("tid"), ret["koeb"], ret["ingredienser"],
+                             ret["trin"], ret.get("har"))
+        self._en_status("✅ Sendt på mail")
+
+    async def async_dag_mail(self, dag: int) -> None:
+        """Én dag fra ugeplanen på mail: varerne til netop den ret og opskriften."""
+        retter = self.plan.get("retter") or []
+        if not 1 <= dag <= len(retter) or retter[dag - 1].get("fjernet"):
+            raise HomeAssistantError("Der er ingen ret den dag")
+        ret = retter[dag - 1]
+        start = datetime.date.fromisoformat(self.plan["start"])
+        await self._hent_data(start, None)
+        n = int(ret.get("personer") or self.personer)
+        linjer, varer = self._koeb_til_ret(ret, n, start, [])
+        await self._send_ret(f"{DAGE[dag - 1]}: {ret.get('navn', '')}", n, ret.get("tid_min"), varer, linjer,
+                             ret.get("trin", []), None)
+        self._status(f"✅ {DAGE[dag - 1]} er sendt på mail")
+
+    async def _send_ret(self, navn: str, n: int, tid: Any, koeb: list[dict], ingredienser: list[str],
+                        trin: list[str], har: list[str] | None) -> None:
         notify = self.entry.options.get(CONF_NOTIFY)
-        if not ret or not notify:
+        if not notify:
             raise HomeAssistantError("Vælg en notify-tjeneste (fx mail) under integrationens indstillinger")
-        koeb = "\n".join(f"☐ {v['tekst']}  {v['pris']}" for v in ret["koeb"]) or "Intet – I har det hele 🎉"
+        total = round(sum(v["kr"] for v in koeb))
+        ca = any(v["ca"] for v in koeb)
         besked = (
-            f"{ret['navn']} · {ret['personer']} personer · {ret.get('tid', '?')} min\n\n"
-            f"INDKØB · {self.butik_navn}"
-            + (f" · {'ca. ' if ret.get('koeb_ca') else ''}{ret['koeb_total']} kr" if ret["koeb"] else "")
-            + f"\n{koeb}\n"
-            + (f"\nDet har I: {', '.join(ret['har'])}\n" if ret.get("har") else "")
-            + "\nIngredienser:\n"
-            + "\n".join(f"• {x}" for x in ret["ingredienser"])
-            + "\n\nSådan gør du:\n"
-            + "\n".join(f"{i}. {t}" for i, t in enumerate(ret["trin"], start=1))
+            f"{navn} · {n} personer · {tid or '?'} min\n\n"
+            f"INDKØB · {self.butik_navn}" + (f" · {'ca. ' if ca else ''}{total} kr" if koeb else "") + "\n"
+            + ("\n".join(f"☐ {v['tekst']}  {v['pris']}" for v in koeb) or "Intet – I har det hele 🎉")
+            + "\n(Basisvarer som salt, olie og mel er ikke med.)\n"
+            + (f"\nDet har I: {', '.join(har)}\n" if har else "")
+            + "\nIngredienser:\n" + "\n".join(f"• {x}" for x in ingredienser)
+            + "\n\nSådan gør du:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(trin, start=1))
         )
         domaene, _, tjeneste = notify.partition(".")
         await self.hass.services.async_call(
-            domaene, tjeneste, {"title": f"Indkøb til {ret['navn']}", "message": besked}, blocking=True
+            domaene, tjeneste, {"title": f"Indkøb til {navn}", "message": besked}, blocking=True
         )
-        self._en_status("✅ Sendt på mail")
 
     def _en_status(self, tekst: str) -> None:
         self.en_ret_status = tekst

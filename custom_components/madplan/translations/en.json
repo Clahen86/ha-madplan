@@ -309,6 +309,20 @@
           "description": "The dish's id."
         }
       }
+    },
+    "dag_mail": {
+      "name": "Send one day by e-mail",
+      "description": "Sends one day's dish from the week plan with its shopping list and recipe.",
+      "fields": {
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        },
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        }
+      }
     }
   }
 }
