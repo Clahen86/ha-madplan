@@ -26,6 +26,9 @@ PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 KORT_URL = "/madplan/madplan-card.js"
+NY_PLAN_SKEMA = vol.Schema(
+    {vol.Optional("entity_id"): cv.entity_id, vol.Optional("handler"): vol.In(["i_dag", "i_morgen"])}
+)
 SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id})
 _TEKST = vol.All(cv.string, vol.Length(min=2, max=80))
 BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): _TEKST})
@@ -104,7 +107,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def ny_plan(call: ServiceCall) -> None:
         for m in _madplaner(call, alle=True):
-            m.entry.async_create_background_task(hass, m.async_ny_plan(), "madplan_ny_plan")
+            m.entry.async_create_background_task(
+                hass, m.async_ny_plan(handler=call.data.get("handler")), "madplan_ny_plan"
+            )
 
     async def byt_ret(call: ServiceCall) -> None:
         m = _madplaner(call)[0]
@@ -162,7 +167,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def fjern_behov(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_fjern_behov(call.data["tekst"])
 
-    hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=SKEMA)
+    hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=NY_PLAN_SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "overfoer", overfoer, schema=SKEMA)

@@ -185,23 +185,26 @@ class Madplan:
 
     # ------------------------------------------------------------------ handlinger
 
-    async def async_ny_plan(self, vent_paa_tilbud: bool = False) -> None:
-        """Ny ugeplan. vent_paa_tilbud: den automatiske lørdagsplan venter til søndag morgen,
-        hvis næste uges avis ikke er ude endnu (fx REMA og Lidl, der skifter søndag)."""
+    async def async_ny_plan(self, vent_paa_tilbud: bool = False, handler: str | None = None) -> None:
+        """Ny ugeplan. handler: "i_dag" eller "i_morgen" - tilbuddene skal gælde den dag.
+        vent_paa_tilbud: den automatiske lørdagsplan venter til søndag morgen, hvis næste uges
+        avis ikke er ude endnu (fx REMA og Lidl, der skifter søndag)."""
         if self.optaget:
             return
         async with self._laas:
             try:
                 self._status("Henter tilbud og laver madplan …")
-                start, slut = self._plan_uge()
-                await self._hent_data(start, slut, nye_tilbud=True)
+                dag = self.handledag(handler)
+                start, slut = self._plan_uge(dag)
+                await self._hent_data(dag, slut, nye_tilbud=True)  # tilbuddene skal gælde på indkøbsdagen
                 if vent_paa_tilbud and len(self.tilbud) < MIN_TILBUD:
                     _LOGGER.info("%s: kun %s tilbud til næste uge - venter til søndag", self.butik_navn, len(self.tilbud))
                     self._status("Næste uges tilbud er ikke ude endnu – planen laves søndag kl. 7")
                     return
                 undgaa = self._seneste_retter(start.isoformat())
                 # Midt på ugen planlægges kun fra i dag; dagene før står som "forbi".
-                fra = max(0, min(6, (dt_util.now().date() - start).days))
+                # Planen begynder på indkøbsdagen; dagene før står som "før planen".
+                fra = max(0, min(6, (dag - start).days))
                 antal = 7 - fra
                 # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
                 behov = list(self.behov)
@@ -229,6 +232,7 @@ class Madplan:
                     "uge": (start + datetime.timedelta(days=1)).isocalendar()[1],
                     "tilbud": self.tilbud,
                     "salling_priser": self._salling_priser,
+                    "handledag": dag.isoformat(),
                     "salling_fejl": self._salling_fejl,
                     "retter": retter,
                     "lavet": dt_util.now().isoformat(timespec="minutes"),
@@ -696,13 +700,22 @@ class Madplan:
 
     # ------------------------------------------------------------------ data
 
-    def _plan_uge(self) -> tuple[datetime.date, datetime.date]:
-        """Lørdag planlægges næste uge; søndag-fredag den igangværende uge."""
+    @staticmethod
+    def handledag(valg: str | None = None) -> datetime.date:
+        """Indkøbsdagen: i dag eller i morgen. Standard er i dag - om lørdagen i morgen (søndag),
+        så næste uges plan bruger søndagens tilbud."""
         idag = dt_util.now().date()
-        if idag.weekday() == 5:
-            start = idag + datetime.timedelta(days=1)
+        if valg is None:
+            valg = "i_morgen" if idag.weekday() == 5 else "i_dag"
+        return idag + datetime.timedelta(days=1 if valg == "i_morgen" else 0)
+
+    def _plan_uge(self, handledag: datetime.date | None = None) -> tuple[datetime.date, datetime.date]:
+        """Ugen (søndag-lørdag), der handles ind til. Handles der om lørdagen, er det næste uge."""
+        dag = handledag or self.handledag()
+        if dag.weekday() == 5:
+            start = dag + datetime.timedelta(days=1)
         else:
-            start = idag - datetime.timedelta(days=(idag.weekday() + 1) % 7)
+            start = dag - datetime.timedelta(days=(dag.weekday() + 1) % 7)
         return start, start + datetime.timedelta(days=6)
 
     async def _hent_data(self, start: datetime.date, slut: datetime.date | None, nye_tilbud: bool = False) -> None:

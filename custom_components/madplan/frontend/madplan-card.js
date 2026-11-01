@@ -181,7 +181,11 @@ class MadplanCard extends HTMLElement {
         this._fane = el.dataset.fane;
         break;
       case "ny":
-        this._kald("madplan", "ny_plan", { entity_id: plan });
+        this._kald("madplan", "ny_plan", { entity_id: plan, handler: this._handler || a.handler_standard || "i_dag" });
+        this._handler = null;
+        break;
+      case "handler":
+        this._handler = el.dataset.v;
         break;
       case "byt":
         this._kald("madplan", "byt_ret", { entity_id: plan, dag });
@@ -401,6 +405,15 @@ class MadplanCard extends HTMLElement {
 
   _farve(a) {
     return this._udseende?.farve || a.butik_farve || "#3f51b5";
+  }
+
+  /** Hvornår der handles: tilbuddene i den nye plan skal gælde den dag. */
+  _handlerValg(a) {
+    const v = this._handler || a.handler_standard || "i_dag";
+    return `<div class="handler" role="group" aria-label="Jeg handler">
+      <span>Jeg handler</span>
+      <button class="${v === "i_dag" ? "valgt" : ""}" data-h="handler" data-v="i_dag">I dag</button>
+      <button class="${v === "i_morgen" ? "valgt" : ""}" data-h="handler" data-v="i_morgen">I morgen</button></div>`;
   }
 
   /** Antal personer én dag - fx når der kommer gæster. */
@@ -998,7 +1011,7 @@ class MadplanPanel extends MadplanCard {
              <div class="atekst"><span>${kr(a.pris_praecis)} tilbudspriser</span><span>ca. ${kr(a.pris_ca)} anslået</span></div></div>`
           : ""
       }
-      ${a.handl_senest ? `<div class="info"><ha-icon icon="mdi:calendar-clock"></ha-icon>Tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
+      ${a.handl_senest ? `<div class="info"><ha-icon icon="mdi:calendar-clock"></ha-icon>${a.handledag ? `Handles ${esc(this._dato(a.handledag))} · ` : ""}tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
       ${
         (a.advarsler || []).length
           ? `<button class="advarsler" data-h="side" data-side="regler"><ha-icon icon="mdi:alert-outline"></ha-icon>
@@ -1019,6 +1032,7 @@ class MadplanPanel extends MadplanCard {
                <button data-h="plus" aria-label="Flere">+</button></div>`
             : ""
         }
+        ${this._handlerValg(a)}
         ${this._knap("ny", "Ny madplan", "mdi:auto-fix", "stor")}
       </div>
     </section>`;
@@ -1578,6 +1592,12 @@ const PANEL_CSS = `
   .koebrad { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--divider-color); font-size: 14px; }
   .koebrad b { white-space: nowrap; font-weight: 600; }
   .enknapper { display: flex; gap: 8px; margin-top: 10px; }
+  .handler { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 20px; background: var(--secondary-background-color);
+    font-size: 13px; }
+  .handler span { padding: 0 8px 0 6px; color: var(--secondary-text-color); }
+  .handler button { border: none; border-radius: 16px; padding: 6px 10px; background: none; cursor: pointer; font: inherit;
+    font-weight: 600; color: var(--primary-text-color); }
+  .handler button.valgt { background: var(--brand); color: var(--brand-tekst); }
   .enknapper .knap { flex: 1; justify-content: center; }
   .datoblok ha-icon { --mdc-icon-size: 18px; }
 

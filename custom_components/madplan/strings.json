@@ -59,6 +59,10 @@
         "entity_id": {
           "name": "Madplan",
           "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "handler": {
+          "name": "Indkøbsdag",
+          "description": "i_dag eller i_morgen. Tilbuddene skal gælde den dag. Standard: i dag – om lørdagen i morgen."
         }
       }
     },

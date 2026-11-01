@@ -5,6 +5,11 @@ ny_plan:
         entity:
           integration: madplan
           domain: sensor
+    handler:
+      example: "i_morgen"
+      selector:
+        select:
+          options: ["i_dag", "i_morgen"]
 byt_ret:
   fields:
     entity_id: *madplan

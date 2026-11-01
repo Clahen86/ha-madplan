@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DAGE, DOMAIN
 from .entity import MadplanEntity
@@ -101,6 +102,9 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "retter": [r.get("navn", "") for r in retter],
             "lavet": p.get("lavet"),
             "handl_senest": p.get("handl_senest"),
+            "handledag": p.get("handledag"),
+            # Standardvalget for næste plan: i morgen om lørdagen (søndagens tilbud), ellers i dag.
+            "handler_standard": "i_morgen" if self.madplan.handledag() > dt_util.now().date() else "i_dag",
         }
 
 

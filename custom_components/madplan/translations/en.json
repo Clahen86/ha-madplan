@@ -59,6 +59,10 @@
         "entity_id": {
           "name": "Meal plan",
           "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "handler": {
+          "name": "Shopping day",
+          "description": "i_dag (today) or i_morgen (tomorrow). The offers must be valid that day. Default: today – tomorrow on Saturdays."
         }
       }
     },
