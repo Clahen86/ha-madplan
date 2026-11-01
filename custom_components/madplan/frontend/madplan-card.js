@@ -685,7 +685,7 @@ const CSS = `
   .tom > ha-icon { --mdc-icon-size: 40px; color: var(--brand, var(--primary-color)); }
 `;
 
-/** Sidepanel: Madplan som en app med faner i bunden. Registreres automatisk af integrationen. */
+/** Sidepanel: Madplan som en app med faner i toppen. Registreres automatisk af integrationen. */
 class MadplanPanel extends MadplanCard {
   constructor() {
     super();
@@ -710,46 +710,138 @@ class MadplanPanel extends MadplanCard {
     if (m) m.hass = hass;
   }
 
-  _ugeListe(dage) {
+  _billede(a, klasse) {
+    return `<span class="${klasse}">${
+      a.fjernet
+        ? `<ha-icon icon="mdi:silverware-variant"></ha-icon>`
+        : a.billede
+          ? `<img src="${esc(a.billede)}" alt="" loading="lazy">`
+          : `<ha-icon icon="mdi:food"></ha-icon>`
+    }</span>`;
+  }
+
+  _overblik(s, n) {
+    const a = s.attributes;
+    const status = a.status && a.status !== "Klar" ? a.status : "";
+    const arbejder = status.endsWith("…");
+    return `<section class="overblik">
+      <div class="tiles">
+        <div class="tile hoved"><span class="ikon"><ha-icon icon="mdi:cart"></ha-icon></span>
+          <b>${a.pris_ca ? "ca. " : ""}${kr(s.state)}</b><small>at købe</small></div>
+        <div class="tile"><span class="ikon"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></span>
+          <b>${esc(String(a.pr_kuvert || 0).replace(".", ","))} kr</b><small>pr. kuvert</small></div>
+        <div class="tile"><span class="ikon"><ha-icon icon="mdi:home-heart"></ha-icon></span>
+          <b>${kr(a.sparet || 0)}</b><small>har I hjemme</small></div>
+      </div>
+      ${
+        a.pris_ca
+          ? `<div class="andel"><div class="abar"><div style="width:${Math.round(((a.pris_praecis || 0) / ((a.pris_praecis || 0) + a.pris_ca)) * 100)}%"></div></div>
+             <div class="atekst"><span>${kr(a.pris_praecis)} tilbudspriser</span><span>ca. ${kr(a.pris_ca)} anslået</span></div></div>`
+          : ""
+      }
+      ${a.handl_senest ? `<div class="info"><ha-icon icon="mdi:calendar-clock"></ha-icon>Tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
+      ${
+        status
+          ? `<div class="statuspille ${arbejder ? "" : status.startsWith("✅") ? "ok" : "fejl"}">${arbejder ? '<span class="prik-puls"></span>' : '<ha-icon icon="mdi:information-outline"></ha-icon>'}${esc(status)}</div>`
+          : ""
+      }
+      <div class="styring">
+        ${
+          n !== undefined
+            ? `<div class="stepper"><button data-h="minus" aria-label="Færre">−</button>
+               <span><ha-icon icon="mdi:account-group"></ha-icon>${esc(Math.round(Number(n)))} pers.</span>
+               <button data-h="plus" aria-label="Flere">+</button></div>`
+            : ""
+        }
+        ${this._knap("ny", "Ny madplan", "mdi:auto-fix", "stor")}
+      </div>
+    </section>`;
+  }
+
+  _ugeSide(s, n, dage) {
     const idag = idagIso();
-    return `<div class="dagliste">${dage
+    const iAften = dage.findIndex((d) => d?.attributes.dato === idag);
+    let html = this._overblik(s, n);
+    if (iAften >= 0 && !dage[iAften].attributes.fjernet) {
+      const d = dage[iAften];
+      const a = d.attributes;
+      html += `<button class="aften" data-h="aabn" data-dag="${iAften + 1}">
+        ${this._billede(a, "abillede")}
+        <span class="atekst2"><span class="etiket"><ha-icon icon="mdi:star-four-points"></ha-icon>I aften</span>
+          <span class="anavn">${esc(d.state)}</span>
+          <span class="ameta"><span><ha-icon icon="mdi:timer-outline"></ha-icon>${esc(a.tid ?? "?")} min</span>
+            <span><ha-icon icon="mdi:cash"></ha-icon>${kr(a.pris)}</span></span></span>
+        <ha-icon class="pil" icon="mdi:arrow-right"></ha-icon></button>`;
+    }
+    html += `<div class="afsnit">Ugens retter</div><div class="dagliste">${dage
       .map((d, i) => {
-        if (!d) return "";
+        if (!d || i === iAften) return "";
         const a = d.attributes;
-        const erIdag = a.dato === idag;
-        return `<button class="dagrad ${erIdag ? "idag" : ""} ${a.fjernet ? "fjernet" : ""}" data-h="aabn" data-dag="${i + 1}">
-          <span class="rbillede">${
-            a.fjernet
-              ? `<ha-icon icon="mdi:silverware-variant"></ha-icon>`
-              : a.billede
-                ? `<img src="${esc(a.billede)}" alt="" loading="lazy">`
-                : `<ha-icon icon="mdi:food"></ha-icon>`
-          }</span>
-          <span class="rtekst">
-            <span class="rdag">${DAGE[i]} ${esc(a.dato_kort || "")}${erIdag ? " · I aften" : ""}</span>
-            <span class="rnavn">${a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
-            ${a.fjernet ? "" : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}</span>`}
-          </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
+        const dato = (a.dato_kort || "").split("/")[0];
+        return `<button class="dagrad ${a.fjernet ? "fjernet" : ""} ${a.dato && a.dato < idag ? "forbi" : ""}" data-h="aabn" data-dag="${i + 1}">
+          <span class="datoblok"><small>${KORT[i]}</small><b>${esc(dato)}</b></span>
+          <span class="rtekst"><span class="rnavn">${a.fjernet ? "Ingen aftensmad" : esc(d.state)}</span>
+            ${a.fjernet ? `<span class="rinfo">Spiser ude</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}</span>`}</span>
+          ${this._billede(a, "rbillede")}
         </button>`;
       })
       .join("")}</div>`;
+    return html;
   }
 
-  _ret(dage) {
+  _retSide(dage) {
     const i = this._dagValgt;
-    const a = dage[i]?.attributes || {};
-    return `<div class="retnav">
+    const d = dage[i];
+    const a = d?.attributes || {};
+    const nav = `<div class="retnav">
         <button data-h="forrige" aria-label="Forrige dag"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
-        <span>${DAGE[i]} ${esc(a.dato_kort || "")}</span>
-        <button data-h="naeste" aria-label="Næste dag"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
-      </div>${this._dag(dage[i], i)}`;
+        <span>${DAGE[i]} <small>${esc(a.dato_kort || "")}</small></span>
+        <button data-h="naeste" aria-label="Næste dag"><ha-icon icon="mdi:chevron-right"></ha-icon></button></div>`;
+    if (!d || a.fjernet || d.state === "–") return nav + this._dag(d, i);
+    return `${nav}<article class="ret">
+      <div class="retbillede">${a.billede ? `<img src="${esc(a.billede)}" alt="">` : `<ha-icon icon="mdi:food"></ha-icon>`}</div>
+      <h1>${esc(d.state)}</h1>
+      ${a.kort ? `<p class="kort">${esc(a.kort)}</p>` : ""}
+      <div class="fakta">
+        <span><ha-icon icon="mdi:timer-outline"></ha-icon>${esc(a.tid ?? "?")} min</span>
+        <span><ha-icon icon="mdi:cash"></ha-icon>${kr(a.pris)}</span>
+        <span><ha-icon icon="mdi:account"></ha-icon>${esc(String(a.pr_person ?? "?").replace(".", ","))} kr/pers.</span>
+      </div>
+      ${a.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(a.sundhed)}</div>` : ""}
+      <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser
+          <small>${esc(this._personer())} personer</small></div>
+        <ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
+        <ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
+      <div class="knapper">
+        ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", i + 1)}
+        ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", i + 1)}
+      </div>
+    </article>`;
   }
 
   _fane(side, tekst, ikon, antal = 0) {
     return `<button class="${this._side === side ? "aktiv" : ""}" data-h="side" data-side="${side}">
-      <span class="ikonramme"><ha-icon icon="${ikon}"></ha-icon></span>${tekst}
-      ${antal ? `<span class="badge">${antal}</span>` : ""}</button>`;
+      <ha-icon icon="${ikon}"></ha-icon><span>${tekst}</span>${antal ? `<span class="badge">${antal}</span>` : ""}</button>`;
+  }
+
+  _butikChips(planer) {
+    if (planer.length < 2) return "";
+    const totaler = planer
+      .map((e) => this._hass.states[e])
+      .filter((s) => s.attributes.antal_retter)
+      .map((s) => s.attributes.total_alle);
+    const min = totaler.length > 1 ? Math.min(...totaler) : null;
+    return `<div class="bchips">${planer
+      .map((e) => {
+        const a = this._hass.states[e].attributes;
+        const billigst = min !== null && a.antal_retter && a.total_alle === min;
+        return `<button class="bchip ${e === this._valgt ? "valgt" : ""}" data-h="butik" data-id="${esc(e)}">
+          ${a.butik_logo ? `<img src="${esc(a.butik_logo)}" alt="">` : ""}<span>${esc(a.butik)}</span>
+          <small>${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}` : "–"}</small>
+          ${billigst ? `<em>Billigst</em>` : ""}</button>`;
+      })
+      .join("")}</div>`;
   }
 
   _tegn() {
@@ -759,15 +851,21 @@ class MadplanPanel extends MadplanCard {
     const gammel = this.shadowRoot.querySelector(".indhold");
     const rul = gammel && !this._tilTop ? gammel.scrollTop : 0;
     this._tilTop = false;
-    const tilfoej = `<a class="tilfoej" href="/config/integrations/dashboard/add?domain=madplan"><ha-icon icon="mdi:plus"></ha-icon>Butik</a>`;
+    const fokus = this.shadowRoot.activeElement?.name === "behov";
+    const tilfoejUrl = "/config/integrations/dashboard/add?domain=madplan";
     let farve = "#3f51b5";
     let krop;
+    let under = "";
+    let logo = "";
     if (!s) {
-      krop = `<div class="tom"><ha-icon icon="mdi:storefront-outline"></ha-icon><div><b>Vælg din første butik</b><br>
-        <small>Madplanen laves ud fra ugens tilbud i den butik, du vælger.</small><br>${tilfoej}</div></div>`;
+      krop = `<div class="velkommen"><ha-icon icon="mdi:storefront-outline"></ha-icon><h2>Vælg din første butik</h2>
+        <p>Madplanen laves ud fra ugens tilbud i den butik, du vælger.</p>
+        <a class="knap stor" href="${tilfoejUrl}"><ha-icon icon="mdi:plus"></ha-icon>Tilføj butik</a></div>`;
     } else {
       const a = s.attributes;
       farve = a.butik_farve || farve;
+      logo = a.butik_logo ? `<span class="hlogo"><img src="${esc(a.butik_logo)}" alt=""></span>` : "";
+      under = `${esc(a.butik)}${a.uge ? ` · uge ${esc(a.uge)}` : ""}${a.periode ? ` · ${esc(a.periode)}` : ""}`;
       const n = this._hass.states[a.personer_entitet]?.state;
       const dage = (a.dag_entiteter || []).map((e) => this._hass.states[e]);
       if (this._dagValgt == null) {
@@ -776,33 +874,38 @@ class MadplanPanel extends MadplanCard {
       }
       const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
       if (!harPlan) {
-        krop = `${this._top(s, n)}<div class="tom"><ha-icon icon="mdi:chef-hat"></ha-icon><div><b>Ingen madplan endnu</b><br>
-          <small>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</small></div></div>`;
+        krop = `${this._overblik(s, n)}<div class="velkommen"><ha-icon icon="mdi:chef-hat"></ha-icon><h2>Ingen madplan endnu</h2>
+          <p>Tryk "Ny madplan" for at få ugens retter ud fra tilbuddene i ${esc(a.butik)}.</p></div>`;
       } else if (this._side === "ret") {
-        krop = this._ret(dage);
+        krop = this._retSide(dage);
       } else if (this._side === "indkob") {
         krop = this._indkob(s);
       } else {
-        krop = `${this._top(s, n)}${this._ugeListe(dage)}`;
+        krop = this._ugeSide(s, n, dage);
       }
     }
     const mangler = [...this._varer, ...this._ekstra].filter((v) => v.status !== "completed").length;
-    const fokus = this.shadowRoot.activeElement?.name === "behov";
     this.shadowRoot.innerHTML = `<style>${CSS}${PANEL_CSS}</style>
       <div class="app" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
-        <header class="bar"><ha-menu-button></ha-menu-button><div class="bar-titel">Madplan</div></header>
-        ${s ? `<div class="butikbar">${planer.length > 1 ? this._butikker(planer) : ""}${tilfoej}</div>` : ""}
+        <header class="hero">
+          <div class="hrad">
+            <ha-menu-button></ha-menu-button>${logo}
+            <div class="htekst"><div class="htitel">Madplan</div>${under ? `<div class="hunder">${under}</div>` : ""}</div>
+            <a class="hplus" href="${tilfoejUrl}" title="Tilføj butik"><ha-icon icon="mdi:storefront-plus-outline"></ha-icon></a>
+          </div>
+          ${s ? this._butikChips(planer) : ""}
+          ${
+            s
+              ? `<nav class="topfaner">${this._fane("uge", "Uge", "mdi:calendar-week")}${this._fane("ret", "Opskrift", "mdi:chef-hat")}${this._fane(
+                  "indkob",
+                  "Indkøb",
+                  "mdi:cart-outline",
+                  mangler,
+                )}</nav>`
+              : ""
+          }
+        </header>
         <main class="indhold"><div class="ramme">${krop}</div></main>
-        ${
-          s
-            ? `<nav class="bund">${this._fane("uge", "Uge", "mdi:calendar-week")}${this._fane("ret", "Opskrift", "mdi:chef-hat")}${this._fane(
-                "indkob",
-                "Indkøb",
-                "mdi:cart-outline",
-                mangler,
-              )}</nav>`
-            : ""
-        }
       </div>`;
     const m = this.shadowRoot.querySelector("ha-menu-button");
     if (m) {
@@ -817,51 +920,150 @@ class MadplanPanel extends MadplanCard {
 const PANEL_CSS = `
   :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
   .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; }
-  .bar { display: flex; align-items: center; height: 56px; padding: 0 4px; flex: none;
-    background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff); }
-  .bar-titel { font-size: 20px; font-weight: 400; margin-left: 12px; }
-  .butikbar { display: flex; align-items: center; gap: 8px; flex: none; padding-right: 12px; }
-  .butikbar .butikker { flex: 1; padding-bottom: 4px; }
-  .butikbar .butikker + .tilfoej { margin: 12px 0 0; }
-  .butikbar > .tilfoej:only-child { margin: 12px 12px 0 auto; }
-  .tilfoej { display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; border-radius: 12px; flex: none;
-    border: 1px dashed var(--divider-color); color: var(--primary-text-color); text-decoration: none; font-weight: 500; margin-top: 8px; }
-  .indhold { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .ramme { max-width: 960px; margin: 0 auto; padding-bottom: 20px; }
-  .bund { flex: none; display: flex; background: var(--card-background-color); border-top: 1px solid var(--divider-color);
-    padding-bottom: env(safe-area-inset-bottom); }
-  .bund button { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 8px 0 10px; border: none; background: none; color: var(--secondary-text-color); font-size: 12px; cursor: pointer; }
-  .bund button.aktiv { color: var(--primary-text-color); font-weight: 600; }
-  .ikonramme { display: flex; padding: 4px 20px; border-radius: 16px; transition: background .2s; }
-  .bund .aktiv .ikonramme { background: color-mix(in srgb, var(--brand) 25%, transparent); }
-  .bund ha-icon { --mdc-icon-size: 24px; }
-  .badge { position: absolute; top: 4px; left: calc(50% + 10px); background: #d32f2f; color: #fff; font-size: 10px;
-    font-weight: 700; border-radius: 9px; padding: 1px 5px; }
-  .dagliste { display: grid; gap: 10px; padding: 0 12px; }
-  @container (min-width: 720px) { .dagliste { grid-template-columns: 1fr 1fr; } }
-  .dagrad { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border-radius: 16px; text-align: left;
-    border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; }
-  .dagrad:active { transform: scale(.99); }
-  .dagrad.idag { border: 2px solid var(--brand); }
-  .dagrad.fjernet { opacity: .6; }
-  .rbillede { width: 72px; height: 72px; border-radius: 12px; background: #fff; display: grid; place-items: center;
-    overflow: hidden; flex: none; color: #bdbdbd; }
-  .rbillede img { width: 100%; height: 100%; object-fit: contain; }
-  .rbillede ha-icon { --mdc-icon-size: 32px; }
-  .rtekst { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .rdag { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--secondary-text-color); }
-  .idag .rdag { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
-  .rnavn { font-weight: 600; font-size: 16px; line-height: 1.25; }
-  .rinfo { font-size: 13px; color: var(--secondary-text-color); }
-  .retnav { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px; font-weight: 600; font-size: 17px; }
-  .retnav button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--divider-color);
-    background: var(--card-background-color); cursor: pointer; display: grid; place-items: center; }
-  .retnav ha-icon { --mdc-icon-size: 24px; }
-  .ramme .indkob { margin-top: 12px; background: var(--card-background-color); border: 1px solid var(--divider-color); }
-  .ramme .detalje { background: var(--card-background-color); }
-`;
 
+  /* Top med kædens farver, butiksvalg og faner */
+  .hero { flex: none; color: var(--brand-tekst); padding: 0 12px 14px; border-radius: 0 0 28px 28px;
+    background:
+      radial-gradient(circle at 85% -20%, rgba(255,255,255,.28), transparent 45%),
+      radial-gradient(circle at 0% 120%, rgba(0,0,0,.25), transparent 50%),
+      linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand) 62%, #000));
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--brand) 35%, transparent); z-index: 1; }
+  .hrad { display: flex; align-items: center; gap: 10px; height: 60px; }
+  .hlogo { width: 40px; height: 40px; border-radius: 12px; background: #fff; display: grid; place-items: center;
+    padding: 4px; box-sizing: border-box; flex: none; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .hlogo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .htekst { flex: 1; min-width: 0; }
+  .htitel { font-size: 22px; font-weight: 800; letter-spacing: -.3px; line-height: 1.1; }
+  .hunder { font-size: 13px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hplus { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: inherit;
+    background: rgba(255,255,255,.18); flex: none; }
+  .hplus ha-icon { --mdc-icon-size: 22px; }
+  .bchips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 10px; }
+  .bchips::-webkit-scrollbar { display: none; }
+  .bchip { position: relative; display: flex; align-items: center; gap: 6px; flex: none; padding: 6px 12px 6px 6px;
+    border-radius: 20px; border: none; cursor: pointer; background: rgba(255,255,255,.18); color: inherit; }
+  .bchip img { width: 28px; height: 28px; border-radius: 50%; background: #fff; object-fit: contain; padding: 2px; box-sizing: border-box; }
+  .bchip span { font-weight: 600; }
+  .bchip small { opacity: .8; color: inherit; }
+  .bchip.valgt { background: #fff; color: #1c1c1c; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .bchip em { position: absolute; top: -8px; right: 4px; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .5px;
+    text-transform: uppercase; background: #2e7d32; color: #fff; border-radius: 6px; padding: 1px 5px; }
+  .topfaner { display: flex; width: 100%; box-sizing: border-box; gap: 4px; padding: 4px; border-radius: 18px; background: rgba(0,0,0,.2); }
+  .topfaner button { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 6px; border: none; border-radius: 14px; background: none; color: inherit; opacity: .85;
+    font-weight: 600; font-size: 14px; cursor: pointer; transition: background .2s; }
+  .topfaner button.aktiv { background: #fff; color: #1c1c1c; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+  .topfaner ha-icon { --mdc-icon-size: 20px; }
+  .badge { background: #e53935; color: #fff; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 1px 6px; }
+
+  .indhold { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .ramme { max-width: 920px; margin: 0 auto; padding: 16px 14px 28px; }
+
+  /* Overblik */
+  .overblik { background: var(--card-background-color); border-radius: 24px; padding: 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+  .tiles { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+  .tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 18px;
+    background: var(--secondary-background-color); min-width: 0; }
+  .tile .ikon { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 6px;
+    background: color-mix(in srgb, var(--brand) 18%, transparent); color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .tile.hoved { background: linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand) 70%, #000)); color: var(--brand-tekst); }
+  .tile.hoved .ikon { background: rgba(255,255,255,.22); color: inherit; }
+  .tile b { font-size: 19px; font-weight: 800; letter-spacing: -.3px; white-space: nowrap; }
+  .tile.hoved b { font-size: 22px; }
+  .tile small { font-size: 12px; opacity: .75; color: inherit; }
+  .andel { margin-top: 12px; }
+  .abar { height: 8px; border-radius: 4px; background: var(--secondary-background-color); overflow: hidden; }
+  .abar div { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 60%, #fff)); }
+  .atekst { display: flex; justify-content: space-between; font-size: 12px; color: var(--secondary-text-color); margin-top: 4px; }
+  .info { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--secondary-text-color); margin-top: 10px; }
+  .statuspille { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; border-radius: 14px; font-size: 14px;
+    background: color-mix(in srgb, var(--brand) 12%, transparent); }
+  .statuspille.ok { background: rgba(46,125,50,.12); color: #2e7d32; }
+  .statuspille.fejl { background: rgba(229,57,53,.12); color: #c62828; }
+  .prik-puls { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); animation: puls 1.2s ease-in-out infinite; flex: none; }
+  @keyframes puls { 0%,100% { transform: scale(.7); opacity: .5; } 50% { transform: scale(1.15); opacity: 1; } }
+  .styring { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .stepper { display: inline-flex; align-items: center; gap: 4px; padding: 4px; border-radius: 22px; background: var(--secondary-background-color); }
+  .stepper button { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--card-background-color);
+    font-size: 20px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.12); color: var(--primary-text-color); }
+  .stepper span { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; font-weight: 700; }
+  .knap.stor { padding: 12px 20px; font-weight: 700; box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 40%, transparent); text-decoration: none; }
+
+  /* I aften */
+  .aften { display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 16px; padding: 14px; border: none;
+    border-radius: 24px; text-align: left; cursor: pointer; color: var(--brand-tekst);
+    background: radial-gradient(circle at 100% 0%, rgba(255,255,255,.25), transparent 40%),
+      linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand) 65%, #000));
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 35%, transparent); }
+  .abillede { width: 92px; height: 92px; border-radius: 22px; background: #fff; display: grid; place-items: center;
+    overflow: hidden; flex: none; color: #bdbdbd; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+  .abillede img { width: 100%; height: 100%; object-fit: contain; }
+  .atekst2 { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .etiket { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; letter-spacing: .6px;
+    text-transform: uppercase; opacity: .9; }
+  .etiket ha-icon { --mdc-icon-size: 14px; }
+  .anavn { font-size: 20px; font-weight: 800; line-height: 1.2; letter-spacing: -.2px; }
+  .ameta { display: flex; gap: 12px; font-size: 13px; opacity: .9; }
+  .ameta span { display: inline-flex; align-items: center; gap: 4px; }
+  .ameta ha-icon { --mdc-icon-size: 15px; }
+  .pil { --mdc-icon-size: 22px; opacity: .8; }
+
+  /* Ugens retter */
+  .afsnit { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: var(--secondary-text-color);
+    margin: 22px 4px 10px; }
+  .dagliste { display: grid; gap: 10px; }
+  @container (min-width: 720px) { .dagliste { grid-template-columns: 1fr 1fr; } }
+  .dagrad { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border: none; border-radius: 20px;
+    text-align: left; cursor: pointer; background: var(--card-background-color); color: var(--primary-text-color);
+    box-shadow: 0 2px 10px rgba(0,0,0,.06); transition: transform .1s; }
+  .dagrad:active, .aften:active { transform: scale(.98); }
+  .dagrad.fjernet, .dagrad.forbi { opacity: .55; }
+  .datoblok { width: 50px; height: 56px; border-radius: 16px; flex: none; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; background: color-mix(in srgb, var(--brand) 14%, transparent);
+    color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .datoblok small { font-size: 11px; font-weight: 800; text-transform: uppercase; color: inherit; }
+  .datoblok b { font-size: 20px; font-weight: 800; line-height: 1; }
+  .rtekst { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .rnavn { font-weight: 700; font-size: 15px; line-height: 1.25; }
+  .rinfo { font-size: 13px; color: var(--secondary-text-color); }
+  .rbillede { width: 60px; height: 60px; border-radius: 16px; background: #fff; display: grid; place-items: center;
+    overflow: hidden; flex: none; color: #bdbdbd; border: 1px solid var(--divider-color); }
+  .rbillede img { width: 100%; height: 100%; object-fit: contain; }
+
+  /* Opskrift */
+  .retnav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-weight: 800; font-size: 18px; }
+  .retnav small { font-weight: 500; color: var(--secondary-text-color); font-size: 14px; }
+  .retnav button { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--card-background-color);
+    box-shadow: 0 2px 8px rgba(0,0,0,.1); cursor: pointer; display: grid; place-items: center; color: var(--primary-text-color); }
+  .retnav ha-icon { --mdc-icon-size: 24px; }
+  .ret { background: var(--card-background-color); border-radius: 26px; padding: 16px; box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+  .retbillede { height: 190px; border-radius: 20px; display: grid; place-items: center; color: #bdbdbd;
+    background: radial-gradient(circle, #fff 55%, color-mix(in srgb, var(--brand) 15%, #fff)); }
+  .retbillede img { max-height: 170px; max-width: 85%; object-fit: contain; }
+  .retbillede ha-icon { --mdc-icon-size: 64px; }
+  .ret h1 { font-size: 24px; font-weight: 800; letter-spacing: -.4px; line-height: 1.2; margin: 16px 0 4px; }
+  .ret .kort { margin: 0; color: var(--secondary-text-color); }
+  .ret .fakta span { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+  .ret .fakta ha-icon { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
+  .kasse { margin-top: 16px; padding: 14px; border-radius: 20px; background: var(--secondary-background-color); }
+  .kasse .overskrift { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+  .kasse .overskrift small { margin-left: auto; font-weight: 500; }
+  .kasse .overskrift ha-icon { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); --mdc-icon-size: 20px; }
+  .kasse .ing li { border-bottom-color: var(--divider-color); }
+  .kasse .trin li { padding: 8px 0; }
+
+  /* Indkøb */
+  .ramme .indkob { margin: 0; border-radius: 26px; background: var(--card-background-color); box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+  .ramme .sektion { font-size: 20px; font-weight: 800; }
+  .ramme .fremdrift { height: 8px; border-radius: 4px; }
+  .ramme .detalje { background: var(--card-background-color); margin: 0; border: none; border-radius: 24px; box-shadow: 0 4px 18px rgba(0,0,0,.07); }
+
+  .velkommen { text-align: center; padding: 40px 20px; }
+  .velkommen > ha-icon { --mdc-icon-size: 56px; color: var(--brand); }
+  .velkommen h2 { margin: 12px 0 4px; font-weight: 800; }
+  .velkommen p { color: var(--secondary-text-color); margin: 0 0 18px; }
+`;
 
 if (!customElements.get("madplan-card")) {
   customElements.define("madplan-card", MadplanCard);
