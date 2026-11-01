@@ -6,13 +6,14 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 
 <p align="center"><img src="docs/funktioner.jpg" alt="Ugens plan, opskrifter, indkøb og familiens regler" width="100%"></p>
 
-> **Uofficiel integration.** Den er ikke lavet af eller tilknyttet nogen af kæderne. Tilbud hentes fra eTilbudsavis, og normalpriser fra REMA 1000's åbne produkt-API.
+> **Uofficiel integration.** Den er ikke lavet af eller tilknyttet nogen af kæderne. Tilbud hentes fra eTilbudsavis, normalpriser fra REMA 1000's åbne produkt-API og – hvis du vil – fra Salling Groups API med din egen nøgle.
 
 ## Det kan den
 
 - **Ugens madplan**, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10. Laves den midt på ugen, planlægges kun fra i dag til lørdag.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
-- **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.").
+- **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
+- **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
@@ -63,6 +64,17 @@ Kopier mappen `custom_components/madplan` til `config/custom_components/` og gen
 
 Tilføj flere butikker ved at tilføje integrationen igen, eller tryk på butiksikonet øverst i Madplan.
 
+### Rigtige priser i Netto, føtex og Bilka (valgfrit)
+
+Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Salling Group får Netto, føtex og Bilka rigtige priser fra den butik, du vælger:
+
+1. Opret en gratis profil på [developer.sallinggroup.dev](https://developer.sallinggroup.dev).
+2. I API-kataloget: tryk **Request access** på **Stores API**, **Salling Group Products EAN API** og **Salling Group Recommendations API** (vælg *Production* og alle linjer).
+3. Opret en **Application** (type *Backend / Integration App*), sæt flueben ved alle linjer under *Scope*, og kopiér API-nøglen.
+4. I Home Assistant: **Madplan** (Netto, føtex eller Bilka) → **Konfigurer** → indsæt nøglen → vælg din butik. Listen er butikkerne nærmest hjemmets placering i Home Assistant.
+
+Nøglen er din egen og til ikke-kommerciel brug. Kan Salling ikke svare, bruger Madplan ca.-priser og viser en advarsel.
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:
@@ -112,7 +124,7 @@ data:
 ## Godt at vide
 
 - **Allergier**: AI'en får besked om aldrig at bruge dem, og planen bliver tjekket for dem. Men AI kan tage fejl – læs altid ingredienserne, hvis nogen har en alvorlig allergi.
-- **Priser** er vejledende. Tilbud kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser.
+- **Priser** er vejledende. Tilbud kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser (eller hentet fra Salling Group, hvis du bruger en nøgle).
 - **Tilbud** skal gælde på den dag, I handler (planens første dag eller i dag). Indkøbslisten viser, hvornår det første tilbud udløber.
 - Data om planer, regler og kurv bliver i din Home Assistant. AI'en får kun tilbud, regler og antal personer.
 
