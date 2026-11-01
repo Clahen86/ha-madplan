@@ -218,6 +218,30 @@ def _noegle(navn: str) -> str:
     return " ".join((navn or "").lower().split())
 
 
+# Undertitlen afslører en anden slags vare end navnet ("Citron" / "CHEASY, YOGHURT").
+_ANDEN_TYPE = re.compile(
+    r"\b(yoghurt|skyr|is|drik|juice|saft|sauce|dressing|chips|snack|suppe|dessert|kage|smoothie|marmelade|slik)\b",
+    re.IGNORECASE,
+)
+# Varianter af samme vare - den almindelige udgave foretrækkes ("Hakkede tomater" frem for "M/CHILI").
+_VARIANT = re.compile(r"\b[mu]/|lactofree|laktosefri|gluten|vegetar|vegansk|mini\b|bbq|chili|krydderi|hvidløg", re.I)
+
+
+def _undertitel(strr: str) -> str:
+    return strr.split(" / ", 1)[1] if " / " in strr else ""
+
+
+def _passer_type(soegeord: str, v: dict) -> bool:
+    """Falsk, hvis undertitlen siger en anden slags vare, end der søges efter."""
+    m = _ANDEN_TYPE.search(_undertitel(v["str"]))
+    return not m or m.group(1).lower() in (soegeord or "").lower() or m.group(1).lower() in v["navn"].lower()
+
+
+def _variant(soegeord: str, v: dict) -> bool:
+    m = _VARIANT.search(_undertitel(v["str"]))
+    return bool(m) and m.group(0).lower() not in (soegeord or "").lower()
+
+
 _navne_cache: dict[tuple, list[str]] = {}
 
 
@@ -252,9 +276,12 @@ def find_vare(
     """
     noegle = _noegle(soegeord)
     praecis = [
-        (_pris_for(pris, v["str"], behov), vid)
+        ((_pris_for(pris, v["str"], behov)[0], _variant(soegeord, v), _pris_for(pris, v["str"], behov)[1]), vid)
         for vid, v in katalog.items()
-        if _noegle(v["navn"]) == noegle and not _stykvare(v["str"]) and (pris := kilder.rema_pris(v, dato))
+        if _noegle(v["navn"]) == noegle
+        and not _stykvare(v["str"])
+        and _passer_type(soegeord, v)
+        and (pris := kilder.rema_pris(v, dato))
     ]
     if praecis:
         return min(praecis)[1]
@@ -266,14 +293,15 @@ def find_vare(
     # medmindre det er et bredt ord som "krydderi" - så det første.
     hoved = next((o for o in reversed(ord_) if o not in _GENERISK), None)
     for forsoeg in (ord_, [hoved]) if len(ord_) > 1 and hoved else (ord_,):
-        kandidater: list[tuple[int, tuple[bool, float], str]] = []
+        kandidater: list[tuple[int, tuple[bool, bool, float], str]] = []
         for vid, v in katalog.items():
-            if (kun_mad and IKKE_MAD.search(v["navn"])) or _stykvare(v["str"]):
+            if (kun_mad and IKKE_MAD.search(v["navn"])) or _stykvare(v["str"]) or not _passer_type(soegeord, v):
                 continue
             s = _score(forsoeg, _ord(v["navn"]))
             if s is None or not (pris := kilder.rema_pris(v, dato)):
                 continue
-            kandidater.append((s, _pris_for(pris, v["str"], behov), vid))
+            enhed_forkert, koster = _pris_for(pris, v["str"], behov)
+            kandidater.append((s, (enhed_forkert, _variant(soegeord, v), koster), vid))
         if kandidater:
             bedste = min(k[0] for k in kandidater)
             return min((k for k in kandidater if k[0] == bedste), key=lambda k: k[1])[2]
