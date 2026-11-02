@@ -77,6 +77,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "behov": self.madplan.behov,
             "regler": self.madplan.regler,
             "ekstra_butikker": self.madplan.ekstra_butikker,
+            "auto_plan": self.madplan.auto_plan,
             "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],
             "en_ret": self.madplan.en_ret,
             "en_ret_status": self.madplan.en_ret_status,

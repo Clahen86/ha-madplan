@@ -190,6 +190,9 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "rester", { entity_id: plan, dag, til: !da.dobbelt }).catch(() => {});
         break;
       }
+      case "autoplan":
+        this._kald("madplan", "auto_plan", { entity_id: plan, til: a.auto_plan === false });
+        break;
       case "ekstrabutik": {
         const valgt = new Set(a.ekstra_butikker || []);
         const k = el.dataset.k;
@@ -336,8 +339,10 @@ class MadplanCard extends HTMLElement {
       case "rstep": {
         const r = a.regler || {};
         const felt = el.dataset.felt;
-        const [min, max, trin] = { vegetar: [0, 7, 1], fisk: [0, 7, 1], max_tid: [15, 120, 5], max_tid_weekend: [15, 240, 15] }[felt];
-        const ny = Math.min(max, Math.max(min, Number(r[felt] || 0) + Number(el.dataset.d) * trin));
+        const [min, max, trin] = {
+          vegetar: [0, 7, 1], fisk: [0, 7, 1], max_tid: [15, 120, 5], max_tid_weekend: [15, 240, 15], min_varer_ekstra: [1, 5, 1],
+        }[felt];
+        const ny = Math.min(max, Math.max(min, Number(r[felt] ?? (felt === "min_varer_ekstra" ? 3 : 0)) + Number(el.dataset.d) * trin));
         this._gemRegler({ [felt]: ny });
         break;
       }
@@ -1189,6 +1194,10 @@ class MadplanPanel extends MadplanCard {
           value="${esc(this._inputs.r_budget ?? r.budget ?? "")}"><span>kr. pr. uge</span></label>
       </section>
       <section class="rkort">
+        <div class="rlinje bred"><span class="rikon"><ha-icon icon="mdi:silverware-variant"></ha-icon></span><span class="rnavn2"><b>Niveau</b><small>${{ hverdag: "Billigt og nemt", hygge: "Lidt festligere", gourmet: "Spændende retter" }[r.niveau || "hverdag"]}</small></span>
+          <div class="handler">${[["hverdag", "Hverdag"], ["hygge", "Hygge"], ["gourmet", "Gourmet"]]
+            .map(([v, t]) => `<button class="${(r.niveau || "hverdag") === v ? "valgt" : ""}" data-h="rvalg" data-felt="niveau" data-v="${v}">${t}</button>`)
+            .join("")}</div></div>
         <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:account-group-outline"></ha-icon></span><span class="rnavn2"><b>Husstand</b><small>Børnevenlige retter?</small></span>
           <div class="handler">${[["boernefamilie", "Børn"], ["voksne", "Voksne"]]
             .map(([v, t]) => `<button class="${(r.husstand || "boernefamilie") === v ? "valgt" : ""}" data-h="rvalg" data-felt="husstand" data-v="${v}">${t}</button>`)
@@ -1225,12 +1234,26 @@ class MadplanPanel extends MadplanCard {
   /** Andre kæder, man også handler i - kun for den valgte butik. */
   _butikkerKort(a) {
     const valgt = a.ekstra_butikker || [];
+    const min = (a.regler || {}).min_varer_ekstra ?? 3;
     return `<section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:storefront-outline"></ha-icon></span>
+          <span><b>${esc(a.butik)}</b><small>Gælder kun denne butik</small></span></div>
+        <div class="rlinje"><span class="rnavn2"><b>Automatisk plan</b><small>Ny plan hver lørdag – fra sparer AI-kald</small></span>
+          <button class="kontakt ${a.auto_plan !== false ? "til" : ""}" data-h="autoplan" role="switch" aria-checked="${a.auto_plan !== false}" aria-label="Automatisk plan"><span></span></button></div>
+      </section>
+      <section class="rkort">
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:store-plus-outline"></ha-icon></span>
           <span><b>Handler også i</b><small>Op til 2 kæder ud over ${esc(a.butik)} – kun deres tilbud bruges</small></span></div>
         <div class="chips">${(a.kaeder || [])
           .map(([k, navn]) => `<button class="rchip ${valgt.includes(k) ? "valgt" : "fra"}" data-h="ekstrabutik" data-k="${esc(k)}">${esc(navn)}${valgt.includes(k) ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</button>`)
           .join("")}</div>
+        ${
+          valgt.length
+            ? `<div class="rlinje"><span class="rnavn2"><b>Mindst varer pr. butik</b><small>${min === 1 ? "Ingen grænse" : `Færre end ${min} købes i ${esc(a.butik)}`}</small></span>
+                <div class="stepper"><button data-h="rstep" data-felt="min_varer_ekstra" data-d="-1" aria-label="Færre">−</button>
+                <span>${esc(min)}</span><button data-h="rstep" data-felt="min_varer_ekstra" data-d="1" aria-label="Flere">+</button></div></div>`
+            : ""
+        }
       </section>`;
   }
 
@@ -1609,6 +1632,10 @@ const PANEL_CSS = `
   .rikon.lyseroed { background: rgba(216,27,96,.14); color: #d81b60; }
   .rlinje { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
   .rlinje + .rlinje { border-top: 1px solid var(--divider-color); }
+  /* Niveau: knapperne på egen linje, så teksten ikke bliver klemt på en telefon. */
+  .rlinje.bred { flex-wrap: wrap; }
+  .rlinje.bred .handler { flex-basis: 100%; display: flex; }
+  .rlinje.bred .handler button { flex: 1; }
   .rnavn2 { flex: 1; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;

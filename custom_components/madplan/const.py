@@ -32,6 +32,8 @@ STANDARD_REGLER = {
     "faste_dage": [],  # [{"dag": 5, "ret": "pizza"}], dag som indeks i DAGE
     "fri_dage": [],  # dage uden madlavning (fx spiser ude onsdag), indeks i DAGE
     "krav": "",
+    "niveau": "hverdag",  # hverdag / hygge / gourmet
+    "min_varer_ekstra": 3,  # mindst så mange varer, før en ekstra butik bruges (1 = slået fra)
 }
 
 # Butik -> (navn, eTilbudsavis/Tjek dealer-id). Kun REMA har et åbent katalog med normalpriser;

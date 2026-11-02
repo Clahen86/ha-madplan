@@ -61,7 +61,9 @@ REGLER_SKEMA = vol.Schema(
             ],
             vol.Length(max=7),
         ),
-        vol.Optional("krav"): vol.All(cv.string, vol.Length(max=500)),
+        vol.Optional("krav"): vol.All(cv.string, vol.Length(max=2000)),
+        vol.Optional("niveau"): vol.In(["hverdag", "hygge", "gourmet"]),
+        vol.Optional("min_varer_ekstra"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
     }
 )
 ANTAL_SKEMA = SKEMA.extend(
@@ -133,6 +135,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_tilfoej_behov(call.data["tekst"]), "madplan_behov")
 
+    async def auto_plan(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_saet_auto_plan(call.data["til"])
+
     async def ekstra_butikker(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_saet_ekstra_butikker(call.data["butikker"])
 
@@ -196,6 +201,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "rester", rester, schema=RESTER_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_butikker", ekstra_butikker, schema=EKSTRA_BUTIKKER_SKEMA)
+    hass.services.async_register(DOMAIN, "auto_plan", auto_plan, schema=SKEMA.extend({vol.Required("til"): cv.boolean}))
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)
@@ -232,6 +238,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
 
     @callback
     def _automatisk(now) -> None:
+        if not madplan.auto_plan:
+            return  # "sovende" butik: laver kun plan, når man selv trykker
         nu = dt_util.as_local(now)
         # Lørdag kl. 10: næste uges plan - venter, hvis den nye avis ikke er ude endnu.
         if nu.weekday() == 5 and nu.hour == 10:

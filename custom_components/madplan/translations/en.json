@@ -209,6 +209,14 @@
         "fri_dage": {
           "name": "Days off",
           "description": "0 = Sunday … 6 = Saturday."
+        },
+        "niveau": {
+          "name": "Level",
+          "description": "hverdag (everyday, cheap), hygge (a bit more festive) or gourmet."
+        },
+        "min_varer_ekstra": {
+          "name": "Min. items per extra store",
+          "description": "1 = no limit and no warning."
         }
       }
     },
@@ -373,6 +381,20 @@
         "butikker": {
           "name": "Stores",
           "description": "E.g. netto."
+        }
+      }
+    },
+    "auto_plan": {
+      "name": "Automatic plan",
+      "description": "On: a new plan every Saturday. Off: the store only makes a plan when you ask (saves AI calls).",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "til": {
+          "name": "On",
+          "description": "On or off."
         }
       }
     }

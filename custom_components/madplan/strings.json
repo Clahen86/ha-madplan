@@ -209,6 +209,14 @@
         "fri_dage": {
           "name": "Dage uden madlavning",
           "description": "0 = søndag … 6 = lørdag."
+        },
+        "niveau": {
+          "name": "Niveau",
+          "description": "hverdag, hygge eller gourmet."
+        },
+        "min_varer_ekstra": {
+          "name": "Mindst varer pr. ekstra butik",
+          "description": "1 = ingen grænse og ingen advarsel."
         }
       }
     },
@@ -373,6 +381,20 @@
         "butikker": {
           "name": "Butikker",
           "description": "Fx netto."
+        }
+      }
+    },
+    "auto_plan": {
+      "name": "Automatisk plan",
+      "description": "Til: ny plan hver lørdag. Fra: butikken laver kun plan, når du trykker (sparer AI-kald).",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "til": {
+          "name": "Til",
+          "description": "Til eller fra."
         }
       }
     }

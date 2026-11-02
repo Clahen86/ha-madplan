@@ -46,6 +46,22 @@ MIN_TILBUD = 20
 MAKS_EKSTRA_BUTIKKER = 2
 # En anden butik bruges kun til mindst så mange forskellige varer - ellers købes de i hovedbutikken.
 MIN_PR_BUTIK = 3
+# Madens niveau: styrer pris, tilbehør og antal trin.
+NIVEAU_TEKST = {
+    "hverdag": "",
+    "hygge": "NIVEAU: Hygge – retterne må gerne være lidt festligere med godt tilbehør (fx hjemmelavet dressing, "
+    "ovnbagte grøntsager, god sauce), og en dyrere råvare er fin 1-2 gange om ugen. ",
+    "gourmet": "NIVEAU: Gourmet – retterne skal være spændende og restaurantagtige med flere komponenter, gode råvarer "
+    "(fx mørbrad, and, god fisk) og et godt tilbehør. Prisen er mindre vigtig end smagen. ",
+}
+# Ord, der afgør rettens hovedprotein eller -type (til tjek for gentagelser).
+RETTYPER = {
+    "kylling": ("kylling",),
+    "oksekød": ("okse", "bøf", "ungkvæg", "kalv"),
+    "svinekød": ("gris", "svin", "flæsk", "bacon", "pølse", "medister", "skinke", "frikadelle", "kotelet"),
+    "fisk": ("laks", "torsk", "sej", "fisk", "rødspætte", "rejer", "tun", "makrel", "sild"),
+    "pasta": ("pasta", "spaghetti", "penne", "lasagne", "fusilli", "tagliatelle", "makaroni"),
+}
 # En vare byttes til en anden butik, når den er mindst så meget billigere pr. kg/stk.
 MIN_BESPARELSE = 0.10
 # Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
@@ -122,6 +138,8 @@ class Madplan:
         self.en_ret: list[dict] = data.get("en_ret", [])
         # Andre kæder, familien også handler i (fx REMA + Netto, der ligger tæt). Kun tilbud derfra.
         self.ekstra_butikker: list[str] = [b for b in data.get("ekstra_butikker", []) if b in BUTIKKER]
+        # Automatisk plan lørdag/søndag. Slået fra = "sovende" butik, der kun laver plan, når man trykker.
+        self.auto_plan: bool = data.get("auto_plan", True)
         self.en_ret_status = ""
         if self._faelles["regler"] is None:
             gemt = await self._faelles["regler_store"].async_load() or {}
@@ -140,6 +158,7 @@ class Madplan:
                 "behov": self.behov,
                 "en_ret": self.en_ret,
                 "ekstra_butikker": self.ekstra_butikker,
+                "auto_plan": self.auto_plan,
             }
         )
 
@@ -165,12 +184,18 @@ class Madplan:
         for i, ret in aktive:
             tekst = " ".join([ret.get("navn", "")] + [str(x.get("navn", "")) for x in ret.get("ingredienser", [])]).lower()
             for ord_, slags in forbudt:
-                if ord_.strip() and re.search(rf"\b{re.escape(ord_.strip().lower())}", tekst):
+                if _indeholder(tekst, ord_):
                     ud.append(f"{DAGE[i]}: indeholder {ord_} ({slags})")
             if 1 <= i <= 5 and int(ret.get("tid_min") or 0) > r["max_tid"]:
                 ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r['max_tid']} på hverdage)")
             elif i in (0, 6) and int(ret.get("tid_min") or 0) > r.get("max_tid_weekend", 60):
                 ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r.get('max_tid_weekend', 60)} i weekenden)")
+        # Samme hovedprotein eller rettype mere end 2 gange på en uge.
+        typer: dict[str, int] = {}
+        for _, ret in aktive:
+            if t := _rettype(ret):
+                typer[t] = typer.get(t, 0) + 1
+        ud += [f"{t.capitalize()} går igen {n} gange i ugen" for t, n in typer.items() if n > 2]
         for felt, navn in (("vegetar", "vegetarretter"), ("fisk", "fiskeretter")):
             if not any(felt in ret for _, ret in aktive):
                 continue  # planen er lavet, før retterne blev markeret
@@ -191,7 +216,7 @@ class Madplan:
             if v.get("butik") and not v.get("hjemme"):
                 andre.setdefault(v["butik"], []).append(v["navn"])
         for butik, navne in andre.items():
-            if len(navne) < MIN_PR_BUTIK:  # kan ske efter "Byt ret"
+            if len(navne) < self._min_varer:  # kan ske efter "Byt ret"
                 ud.append(f"Kun {len(navne)} vare{'r' if len(navne) > 1 else ''} fra {butik} – er turen det værd?")
         if self.plan.get("salling_fejl"):
             ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
@@ -1049,7 +1074,7 @@ class Madplan:
             f"FLERE BUTIKKER: Familien handler i {self._alle_butikker()}, og butikkerne er ligestillede. Familien vil "
             "gerne spare: sammenlign aktivt kød, fisk, grønt og mejerivarer på tværs af butikkerne (se SAMMENLIGNING "
             "nederst) og vælg den billigste, når forskellen er mærkbar. Saml indkøbet: en butik bruges kun, hvis I "
-            f"køber mindst {MIN_PR_BUTIK} forskellige varer der – så vælg hellere flere gode tilbud fra samme butik. "
+            f"køber mindst {self._min_varer} forskellige varer der – så vælg hellere flere gode tilbud fra samme butik. "
             f"Varer, der ikke er på tilbud (S:), købes i {self.butik_navn}.\n"
         )
 
@@ -1125,9 +1150,14 @@ class Madplan:
         for ret in retter:
             for ing in ret.get("ingredienser", []):
                 v = str(ing.get("vare") or "")
-                if "_foer" in ing and len(pr_butik.get(self.tilbud.get(v[2:], {}).get("butik"), ())) < MIN_PR_BUTIK:
+                if "_foer" in ing and len(pr_butik.get(self.tilbud.get(v[2:], {}).get("butik"), ())) < self._min_varer:
                     ing["vare"], ing["pakke"] = ing["_foer"]
                 ing.pop("_foer", None)
+
+    @property
+    def _min_varer(self) -> int:
+        """Mindst så mange varer, før en ekstra butik bruges. 1 = ingen grænse (og ingen advarsel)."""
+        return max(1, int(self.regler.get("min_varer_ekstra", MIN_PR_BUTIK)))
 
     def _saml_butikker(self, retter: list[dict]) -> None:
         """En tur i en anden butik for 1-2 varer er ikke det værd: de varer købes i hovedbutikken i stedet.
@@ -1139,7 +1169,7 @@ class Madplan:
                 if self._anden_butik(v):
                     pr_butik.setdefault(self.tilbud[v[2:]]["butik"], set()).add(v)
         for butik, varer in pr_butik.items():
-            if len(varer) >= MIN_PR_BUTIK:
+            if len(varer) >= self._min_varer:
                 continue
             _LOGGER.info("Kun %s vare(r) fra %s - købes i %s i stedet", len(varer), BUTIKKER[butik][0], self.butik_navn)
             for ret in retter:
@@ -1155,6 +1185,11 @@ class Madplan:
             if (b := t.get("butik")) and b != self.butik and b in BUTIKKER:
                 return BUTIKKER[b][0]
         return None
+
+    async def async_saet_auto_plan(self, til: bool) -> None:
+        self.auto_plan = bool(til)
+        await self._gem()
+        self.opdater()
 
     async def async_saet_ekstra_butikker(self, butikker: list[str]) -> None:
         self.ekstra_butikker = [b for b in dict.fromkeys(butikker) if b in BUTIKKER and b != self.butik][
@@ -1174,7 +1209,8 @@ class Madplan:
                 f"(ca. {r['budget'] / 7 / n:.0f} kr pr. person pr. ret)."
             )
         else:
-            dele.append("BUDGET: sigt efter højst 15 kr pr. person pr. ret.")
+            kr = {"hverdag": 15, "hygge": 25, "gourmet": 45}.get(r.get("niveau", "hverdag"), 15)
+            dele.append(f"BUDGET: sigt efter højst {kr} kr pr. person pr. ret.")
         if r["allergier"]:
             dele.append(f"ALLERGI – må ALDRIG indgå i nogen ret, heller ikke i saucer o.l.: {', '.join(r['allergier'])}.")
         if r["undgaa"]:
@@ -1201,11 +1237,14 @@ class Madplan:
         if r["vegetar"]:
             varieret.append(f"mindst {r['vegetar']} vegetarret{'ter' if r['vegetar'] > 1 else ''}")
         boern = r.get("husstand", "boernefamilie") == "boernefamilie"
+        niveau = r.get("niveau", "hverdag")
         koekkener = ", ".join(r.get("koekkener") or []) or "dansk, italiensk, asiatisk, mexicansk osv."
         return (
             f"Du er en dansk madplanlægger for {'en børnefamilie' if boern else 'en husstand med voksne'}. "
-            "Retterne skal være: billige, nemme, "
-            f"forholdsvis sunde (grøntsager i hver ret), hurtige (højst {r['max_tid']} min fra start til "
+            + NIVEAU_TEKST[niveau]
+            + "Retterne skal være: "
+            + ("billige, nemme, " if niveau == "hverdag" else "gode og varierede, ")
+            + f"forholdsvis sunde (grøntsager i hver ret), hurtige (højst {r['max_tid']} min fra start til "
             f"servering på hverdage, højst {r.get('max_tid_weekend', 60)} min søndag og lørdag), "
             f"{'børnevenlige og ' if boern else ''}smage godt. Byg retterne primært på "
             f"ugens tilbudsvarer fra {self._alle_butikker()} (T:id fra listen). Varer, der ikke er på tilbud, skriver "
@@ -1226,9 +1265,13 @@ class Madplan:
             "grøntsager), så der bliver mindst muligt tilovers, og indkøbslisten bliver kort.\n"
             + self._flere_butikker()
             + self._familiens_regler()
-            + "Undgå dyre varer (and, mørbrad, oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør "
-            "retten billig.\n"
-            "TID: 'tid_min' er den samlede tid fra start til servering og skal være realistisk. Vælg "
+            + (
+                "Undgå dyre varer (and, mørbrad, oksesteg, rejer, færdigretter) med mindre tilbudsprisen gør "
+                "retten billig.\n"
+                if niveau == "hverdag"
+                else ""
+            )
+            + "TID: 'tid_min' er den samlede tid fra start til servering og skal være realistisk. Vælg "
             "kun retter, der reelt kan nås inden for tidsgrænsen for den dag (gryderetter, lasagne og "
             "steg kun, når der er tid nok).\n"
             "For hver ingrediens: 'pr_person' er mængden pr. person, 'enhed' er g, ml eller stk, og "
@@ -1236,7 +1279,8 @@ class Madplan:
             "en almindelig pakningsstørrelse). "
             "Sæt 'basis': true for basisvarer de fleste har hjemme (salt, peber, olie, smør, mel, "
             "sukker, tørrede krydderier, bouillon). 'hovedvare' er id'et på rettens vigtigste vare.\n"
-            "Opskriftens trin skal være korte og konkrete på dansk: højst 6 trin. 'kort' højst 12 ord og "
+            f"Opskriftens trin skal være korte og konkrete på dansk: højst {8 if niveau == 'gourmet' else 6} trin. "
+            "'kort' højst 12 ord og "
             "'sundhed' højst 8 ord. Svar med kompakt JSON uden linjeskift.\n"
         )
 
@@ -1448,6 +1492,23 @@ def vare_tekst(v: dict) -> str:
 def _basis(ing: dict) -> bool:
     """Basisvare (salt, olie, mel …): AI'en skal mene det, og navnet skal passe."""
     return bool(ing.get("basis")) and soeg.er_basis(str(ing.get("navn", "")))
+
+
+def _indeholder(tekst: str, ord_: str) -> bool:
+    """Allergi/undgå: fanger også sammensatte ord (løg -> rødløg, løgpulver) og "rød peberfrugt" -> peberfrugt."""
+    ord_ = ord_.strip().lower()
+    if not ord_:
+        return False
+    return ord_ in tekst or (" " in ord_ and ord_.split()[-1] in tekst)
+
+
+def _rettype(ret: dict) -> str | None:
+    """Rettens hovedprotein/-type ud fra navnet (og ellers hovedingrediensen)."""
+    for kilde in (str(ret.get("navn", "")).lower(), str((ret.get("ingredienser") or [{}])[0].get("navn", "")).lower()):
+        for t, ord_ in RETTYPER.items():
+            if any(o in kilde for o in ord_):
+                return t
+    return None
 
 
 def _soege_noegle(vare: Any) -> str:

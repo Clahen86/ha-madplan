@@ -119,6 +119,15 @@ gem_regler:
       example: '[{"dag": 5, "ret": "pizza"}]'
       selector:
         object:
+    niveau:
+      selector:
+        select:
+          options: ["hverdag", "hygge", "gourmet"]
+    min_varer_ekstra:
+      selector:
+        number:
+          min: 1
+          max: 5
     krav:
       example: "Frilandsæg og økologisk mælk"
       selector:
@@ -213,3 +222,10 @@ ekstra_butikker:
         select:
           multiple: true
           options: ["rema1000", "netto", "foetex", "bilka", "lidl", "365discount", "kvickly", "superbrugsen", "brugsen", "meny", "spar", "lovbjerg", "min_kobmand", "abc_lavpris"]
+auto_plan:
+  fields:
+    entity_id: *madplan
+    til:
+      required: true
+      selector:
+        boolean:
