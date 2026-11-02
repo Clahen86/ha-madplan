@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import BUTIKKER, DAGE, DOMAIN
 from .entity import MadplanEntity
+from .planlaegger import Madplan
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -84,7 +85,11 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             # Alle tilføjede butikker og om de laver plan automatisk - vises samlet under Regler.
             "auto_planer": [
                 [find_plan(m), m.butik_navn, m.auto_plan]
-                for m in (e.runtime_data for e in self.hass.config_entries.async_loaded_entries(DOMAIN))
+                for m in (
+                    e.runtime_data
+                    for e in self.hass.config_entries.async_entries(DOMAIN)
+                    if isinstance(getattr(e, "runtime_data", None), Madplan)
+                )
             ],
             "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],
             "en_ret": self.madplan.en_ret,
