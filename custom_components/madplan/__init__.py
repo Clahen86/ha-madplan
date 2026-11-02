@@ -12,14 +12,14 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
-from .const import BUTIKKER, DOMAIN, MAKS_MINE_RETTER
+from .const import BUTIKKER, DOMAIN
 from .planlaegger import Madplan
 
 PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
@@ -64,21 +64,6 @@ REGLER_SKEMA = vol.Schema(
         vol.Optional("krav"): vol.All(cv.string, vol.Length(max=2000)),
         vol.Optional("niveau"): vol.In(["hverdag", "hygge", "gourmet"]),
         vol.Optional("min_varer_ekstra"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
-        vol.Optional("mine_retter"): vol.All(
-            cv.ensure_list,
-            [
-                vol.Schema(
-                    {
-                        vol.Required("navn"): vol.All(cv.string, vol.Length(min=1, max=60)),
-                        # Kun almindelige web-links, så kortet aldrig viser et javascript:-link.
-                        vol.Optional("link", default=""): vol.Any("", vol.All(cv.string, vol.Length(max=300), vol.Match(r"^https?://"))),
-                        vol.Optional("noter", default=""): vol.All(cv.string, vol.Length(max=400)),
-                        vol.Optional("dage", default=1): vol.All(vol.Coerce(int), vol.In([1, 2])),
-                    }
-                )
-            ],
-            vol.Length(max=MAKS_MINE_RETTER),
-        ),
         vol.Optional("mine_hyppighed"): vol.In(["aldrig", "nogle", "ofte"]),
         vol.Optional("kcal"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=200, max=2000))),
         vol.Optional("protein"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=5, max=150))),
@@ -103,6 +88,22 @@ EN_RET_SKEMA = SKEMA.extend(
     }
 )
 EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
+# Familiens egen opskrift. Uden id oprettes en ny (eller den med samme navn rettes).
+MIN_RET_SKEMA = vol.Schema(
+    {
+        vol.Optional("id"): cv.string,
+        vol.Optional("navn"): vol.All(cv.string, vol.Length(min=1, max=60)),
+        vol.Optional("aktiv"): cv.boolean,
+        vol.Optional("dage"): vol.All(vol.Coerce(int), vol.In([1, 2])),
+        vol.Optional("portioner"): vol.All(vol.Coerce(int), vol.Range(min=1, max=30)),
+        # Kun almindelige web-links, så kortet aldrig viser et javascript:-link.
+        vol.Optional("link"): vol.Any("", vol.All(cv.string, vol.Length(max=300), vol.Match(r"^https?://"))),
+        vol.Optional("noter"): vol.All(cv.string, vol.Length(max=400)),
+        vol.Optional("ingredienser"): vol.All(cv.string, vol.Length(max=2000)),
+        vol.Optional("fremgangsmaade"): vol.All(cv.string, vol.Length(max=4000)),
+    }
+)
+MIN_RET_ID_SKEMA = vol.Schema({vol.Required("id"): cv.string})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 EKSTRA_BUTIKKER_SKEMA = SKEMA.extend(
     {vol.Required("butikker"): vol.All(cv.ensure_list, [vol.In(list(BUTIKKER))], vol.Length(max=2))}
@@ -201,6 +202,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         for m in madplaner:
             m.opdater()
 
+    def _alle() -> list[Madplan]:
+        """Mine retter er fælles for alle butikker."""
+        if not (indlaest := [e.runtime_data for e in hass.config_entries.async_loaded_entries(DOMAIN)]):
+            raise ServiceValidationError("Madplan er ikke sat op")
+        return indlaest
+
+    async def gem_min_ret(call: ServiceCall) -> ServiceResponse:
+        madplaner = _alle()
+        ret_id = await madplaner[0].async_gem_min_ret(dict(call.data))
+        for m in madplaner:
+            m.opdater()
+        return {"id": ret_id}
+
+    async def slet_min_ret(call: ServiceCall) -> None:
+        madplaner = _alle()
+        await madplaner[0].async_slet_min_ret(call.data["id"])
+        for m in madplaner:
+            m.opdater()
+
+    async def hent_min_ret(call: ServiceCall) -> ServiceResponse:
+        m = next((m for m in _alle()[0].mine_retter if m["id"] == call.data["id"]), None)
+        if m is None:
+            raise ServiceValidationError("Retten findes ikke")
+        return dict(m)
+
     async def ekstra_antal(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_ekstra_antal(call.data["uid"], call.data["antal"])
 
@@ -226,6 +252,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)
+    hass.services.async_register(
+        DOMAIN, "gem_min_ret", gem_min_ret, schema=MIN_RET_SKEMA, supports_response=SupportsResponse.OPTIONAL
+    )
+    hass.services.async_register(DOMAIN, "slet_min_ret", slet_min_ret, schema=MIN_RET_ID_SKEMA)
+    hass.services.async_register(
+        DOMAIN, "hent_min_ret", hent_min_ret, schema=MIN_RET_ID_SKEMA, supports_response=SupportsResponse.ONLY
+    )
     return True
 
 

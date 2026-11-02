@@ -44,7 +44,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
     _attr_icon = "mdi:silverware-fork-knife"
     _attr_native_unit_of_measurement = "kr"
     # Regler med egne opskrifter kan blive store - de skal ikke i historikken.
-    _unrecorded_attributes = frozenset({"regler", "en_ret"})
+    _unrecorded_attributes = frozenset({"regler", "en_ret", "mine_retter"})
 
     def __init__(self, madplan) -> None:
         super().__init__(madplan, "total")
@@ -91,6 +91,14 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "regler": self.madplan.regler,
             "ekstra_butikker": self.madplan.ekstra_butikker,
             "auto_plan": self.madplan.auto_plan,
+            # Kun overblikket - selve opskriften hentes med madplan.hent_min_ret, når den åbnes.
+            "mine_retter": [
+                {
+                    "id": m["id"], "navn": m["navn"], "aktiv": m.get("aktiv", True), "dage": m.get("dage", 1),
+                    "link": m.get("link", ""), "har_opskrift": bool(m.get("ingredienser") or m.get("fremgangsmaade")),
+                }
+                for m in self.madplan.mine_retter
+            ],
             # Alle tilføjede butikker og om de laver plan automatisk - vises samlet under Regler.
             "auto_planer": [
                 [find_plan(m), m.butik_navn, m.auto_plan]

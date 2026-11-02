@@ -128,10 +128,6 @@ gem_regler:
         number:
           min: 1
           max: 5
-    mine_retter:
-      example: '[{"navn": "Lasagne", "dage": 2, "noter": "Dobbelt portion, halvt hakket kød og halvt linser"}]'
-      selector:
-        object:
     mine_hyppighed:
       selector:
         select:
@@ -249,3 +245,54 @@ auto_plan:
       required: true
       selector:
         boolean:
+gem_min_ret:
+  fields:
+    id:
+      selector:
+        text:
+    navn:
+      example: "Lasagne"
+      selector:
+        text:
+    aktiv:
+      selector:
+        boolean:
+    dage:
+      selector:
+        number:
+          min: 1
+          max: 2
+    portioner:
+      selector:
+        number:
+          min: 1
+          max: 30
+    link:
+      selector:
+        text:
+          type: url
+    noter:
+      selector:
+        text:
+          multiline: true
+    ingredienser:
+      example: "500 g hakket oksekød\n1 dåse hakkede tomater\n12 lasagneplader"
+      selector:
+        text:
+          multiline: true
+    fremgangsmaade:
+      selector:
+        text:
+          multiline: true
+slet_min_ret:
+  fields:
+    id:
+      required: true
+      selector:
+        text:
+hent_min_ret:
+  fields:
+    id:
+      required: true
+      selector:
+        text:

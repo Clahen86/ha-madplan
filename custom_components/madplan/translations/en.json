@@ -218,10 +218,6 @@
           "name": "Min. items per extra store",
           "description": "1 = no limit and no warning."
         },
-        "mine_retter": {
-          "name": "My dishes",
-          "description": "The family's own dishes: name, link, notes and days (1 or 2)."
-        },
         "mine_hyppighed": {
           "name": "How often own dishes",
           "description": "aldrig (never), nogle (1 a week) or ofte (2-3 a week)."
@@ -411,6 +407,68 @@
         "til": {
           "name": "On",
           "description": "On or off."
+        }
+      }
+    },
+    "gem_min_ret": {
+      "name": "Save my dish",
+      "description": "Creates one of the family's own recipes, or updates one (by id or same name).",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "The dish id. Leave out for a new dish."
+        },
+        "navn": {
+          "name": "Name",
+          "description": "The dish name."
+        },
+        "aktiv": {
+          "name": "In the plan",
+          "description": "Off = saved but not used."
+        },
+        "dage": {
+          "name": "Days",
+          "description": "2 = lasts 2 days; the next day becomes leftovers."
+        },
+        "portioner": {
+          "name": "Servings",
+          "description": "How many the recipe serves."
+        },
+        "link": {
+          "name": "Link",
+          "description": "Link to the recipe (optional)."
+        },
+        "noter": {
+          "name": "Notes for the AI",
+          "description": "E.g. no chili."
+        },
+        "ingredienser": {
+          "name": "Ingredients",
+          "description": "One per line."
+        },
+        "fremgangsmaade": {
+          "name": "Method",
+          "description": "One step per line. Shown as written."
+        }
+      }
+    },
+    "slet_min_ret": {
+      "name": "Delete my dish",
+      "description": "Deletes one of the family's own recipes.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "The dish id."
+        }
+      }
+    },
+    "hent_min_ret": {
+      "name": "Get my dish",
+      "description": "Returns the full recipe.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "The dish id."
         }
       }
     }

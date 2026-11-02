@@ -23,7 +23,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
 - **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
 - **Familiens regler**: niveau (hverdag, hygge eller gourmet), husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingskøkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne (også allergener i sammensatte ord som "rødløg" og samme protein for mange gange), og brud vises som advarsler.
-- **Mine retter**: jeres eget kartotek med retter – med link til opskriften og jeres egne noter (fx "dobbelt portion, halvt linser"). Vælg hvor tit (aldrig, nogle gange eller ofte), så tager AI'en dem med, når tilbuddene passer, og følger jeres noter. En ret kan "række til 2 dage", så næste dag automatisk bliver rester. Tryk *Gem som min ret* under en opskrift, I kunne lide. Gamle yndlingsretter flyttes automatisk derind.
+- **Mine retter**: jeres egne opskrifter med ingredienser, fremgangsmåde, antal portioner, link og noter til AI'en. Hver opskrift kan slås til og fra, og under *Hvor tit* vælger I aldrig, nogle gange eller ofte. AI'en tager de tilslåede med, når tilbuddene passer, bruger jeres ingredienser (regnet om til jeres antal personer) og viser jeres egen fremgangsmåde. En opskrift kan "række til 2 dage", så næste dag automatisk bliver rester. Tryk *Gem som min ret* under en opskrift i planen for at gemme den og rette den til.
 - **Mål pr. portion** (valgfrit): sæt kcal og/eller protein pr. portion under Regler. Hver ret viser AI'ens skøn ("ca. 640 kcal · ca. 34 g protein"), og der kommer en advarsel, hvis retter ligger langt fra målet. Tallene er et skøn – ikke præcise næringsberegninger.
 - **Automatisk plan pr. butik**: vælg under Regler, hvilke butikker der laver plan hver lørdag. De andre laver kun plan, når du trykker (sparer AI-kald).
 - **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Fanerne i toppen kan rulles sidelæns på telefonen. Tre designs og frit valg af farve.
@@ -115,6 +115,9 @@ For hver butik:
 | `madplan.en_ret_mail` / `madplan.en_ret_paa_listen` | Send det, der mangler til én ret, på mail eller indkøbslisten. |
 | `madplan.dag_mail` | Send én dags ret fra ugeplanen på mail med indkøbsliste og opskrift. |
 | `madplan.gem_regler` | Familiens regler. |
+| `madplan.gem_min_ret` | Gem eller ret en egen opskrift (navn, ingredienser, fremgangsmåde, til/fra …). Giver id tilbage. |
+| `madplan.slet_min_ret` | Slet en egen opskrift. |
+| `madplan.hent_min_ret` | Hent hele opskriften (svar). |
 | `madplan.overfoer` | Send indkøbslisten. |
 
 Eksempel – 8 personer til aftensmad fredag:

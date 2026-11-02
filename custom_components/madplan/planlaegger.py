@@ -10,6 +10,7 @@ import math
 import random
 import re
 import time
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -34,6 +35,7 @@ from .const import (
     HISTORIK_UGER,
     KATALOG_MAX_ALDER,
     MAKS_MINE_RETTER,
+    NY_MIN_RET,
     SALLING,
     SIGNAL_OPDATERET,
     STANDARD_PERSONER,
@@ -95,6 +97,8 @@ class Madplan:
                 "ai_laas": asyncio.Lock(),
                 "regler_store": Store(hass, 1, f"{DOMAIN}.regler"),
                 "regler": None,
+                "mine_store": Store(hass, 1, f"{DOMAIN}.mine_retter"),
+                "mine": None,
             },
         )
         self._faelles = faelles
@@ -146,9 +150,15 @@ class Madplan:
         if self._faelles["regler"] is None:
             gemt = await self._faelles["regler_store"].async_load() or {}
             self._faelles["regler"] = {**STANDARD_REGLER, **gemt}
-            # Yndlingsretter (kun navne) bliver til "Mine retter".
-            if gemt.get("favoritter"):
-                await self.async_gem_regler({"favoritter": gemt["favoritter"]})
+        if self._faelles["mine"] is None:
+            self._faelles["mine"] = await self._faelles["mine_store"].async_load() or []
+            r = self._faelles["regler"]
+            # Fra 1.3: yndlingsretter (kun navne), fra 1.4.0: "mine_retter" i reglerne - nu eget lager.
+            gamle = [{"navn": f} for f in r.pop("favoritter", None) or []] + list(r.pop("mine_retter", None) or [])
+            for g in gamle:
+                await self.async_gem_min_ret(g)
+            if gamle:
+                await self._faelles["regler_store"].async_save(r)
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -174,14 +184,9 @@ class Madplan:
     async def async_gem_regler(self, nye: dict[str, Any]) -> None:
         """Gemmer familiens regler (fælles for alle butikker). De bruges fra næste plan."""
         regler = {**self.regler, **{k: v for k, v in nye.items() if k in STANDARD_REGLER}}
-        # Gamle yndlingsretter (fx fra en automatisering) lægges i "Mine retter".
-        if regler.get("favoritter"):
-            kendte = {m["navn"].lower() for m in regler["mine_retter"]}
-            regler["mine_retter"] = (
-                list(regler["mine_retter"])
-                + [{"navn": f, "link": "", "noter": "", "dage": 1} for f in regler["favoritter"] if f.lower() not in kendte]
-            )[:MAKS_MINE_RETTER]
-            regler["favoritter"] = []
+        # Yndlingsretter (fx fra en gammel automatisering) lægges i "Mine retter".
+        for f in nye.get("favoritter") or []:
+            await self.async_gem_min_ret({"navn": f})
         self._faelles["regler"] = regler
         await self._faelles["regler_store"].async_save(regler)
 
@@ -1279,44 +1284,81 @@ class Madplan:
             dele.append(f"Andre krav fra familien: {r['krav'].strip()}")
         return "\n".join(dele) + "\n"
 
+    # ------------------------------------------------------------------ mine retter
+
+    @property
+    def mine_retter(self) -> list[dict]:
+        """Familiens egne opskrifter - fælles for alle butikker."""
+        return self._faelles["mine"] or []
+
+    async def async_gem_min_ret(self, data: dict[str, Any]) -> str:
+        """Ny opskrift, eller ret felterne i en eksisterende (id). Samme navn = samme ret."""
+        mine = self._faelles["mine"] = list(self.mine_retter)
+        felter = {k: v for k, v in data.items() if k in NY_MIN_RET}
+        navn = str(felter.get("navn", "")).strip().lower()
+        m = next((m for m in mine if m["id"] == data.get("id") or (navn and m["navn"].strip().lower() == navn)), None)
+        if m is None:
+            if not navn:
+                raise HomeAssistantError("Retten skal have et navn")
+            if len(mine) >= MAKS_MINE_RETTER:
+                raise HomeAssistantError(f"Højst {MAKS_MINE_RETTER} retter")
+            m = {**NY_MIN_RET, "id": uuid.uuid4().hex[:8]}
+            mine.append(m)
+        elif m["id"] != data.get("id"):
+            felter.pop("navn", None)  # fundet på navnet - behold stavemåden
+        m.update(felter)
+        await self._faelles["mine_store"].async_save(mine)
+        return m["id"]
+
+    async def async_slet_min_ret(self, ret_id: str) -> None:
+        self._faelles["mine"] = [m for m in self.mine_retter if m["id"] != ret_id]
+        await self._faelles["mine_store"].async_save(self._faelles["mine"])
+
     def min_ret(self, ret: dict) -> dict | None:
         """Familiens egen ret, som dagens ret er lavet efter - eller None."""
         if ret.get("rester_fra") is not None or ret.get("fjernet"):
             return None
         navn = ret.get("min_ret") if isinstance(ret.get("min_ret"), str) else ret.get("navn")
         navn = str(navn or "").strip().lower()
-        return next((m for m in self.regler.get("mine_retter") or [] if m["navn"].strip().lower() == navn), None)
+        return next((m for m in self.mine_retter if m["navn"].strip().lower() == navn), None)
 
     def _marker_min_ret(self, ret: dict) -> None:
-        """AI'en skriver ikke altid navnet helt ens - fx "Lasagne med salat" for "Lasagne"."""
+        """AI'en skriver ikke altid navnet helt ens - fx "Lasagne med salat" for "Lasagne".
+        Har familien skrevet sin egen fremgangsmåde, er det den, der vises."""
         ret.pop("min_ret", None)
         navn = str(ret.get("navn", "")).lower()
-        mine = sorted(self.regler.get("mine_retter") or [], key=lambda m: -len(m["navn"]))
+        mine = sorted((m for m in self.mine_retter if m.get("aktiv", True)), key=lambda m: -len(m["navn"]))
         if m := next((m for m in mine if re.search(rf"\b{re.escape(m['navn'].strip().lower())}\b", navn)), None):
             ret["min_ret"] = m["navn"]
+            if trin := _linjer(m.get("fremgangsmaade", "")):
+                ret["trin"] = trin[:25]
 
     def _mine_retter_tekst(self, undgaa: list[str]) -> str:
-        """Familiens egne retter til ugeplanen. Højst 8 i prompten - det holder AI-kaldet lille."""
-        r = self.regler
-        mine = r.get("mine_retter") or []
-        hyppighed = r.get("mine_hyppighed", "nogle")
+        """Familiens egne retter til ugeplanen. Højst 8 i prompten - det holder AI-kaldet lille.
+        Fremgangsmåden sendes ikke med; den sættes ind bagefter."""
+        hyppighed = self.regler.get("mine_hyppighed", "nogle")
+        mine = [m for m in self.mine_retter if m.get("aktiv", True)]
         if not mine or hyppighed == "aldrig":
             return ""
         nylig = {u.lower() for u in undgaa}
-        kandidater = [m for m in mine if m["navn"].lower() not in nylig] or list(mine)
+        kandidater = [m for m in mine if m["navn"].lower() not in nylig] or mine
         kandidater = random.sample(kandidater, min(8, len(kandidater)))
-        linjer = [
-            f"- {m['navn']}"
-            + (" (rækker til 2 dage)" if m.get("dage") == 2 else "")
-            + (f": {' '.join(m['noter'].split())}" if m.get("noter") else "")
-            for m in kandidater
-        ]
+        linjer = []
+        for m in kandidater:
+            linje = f"- {m['navn']}" + (" (rækker til 2 dage)" if m.get("dage") == 2 else "")
+            if m.get("noter"):
+                linje += f": {' '.join(m['noter'].split())}"
+            if ing := _linjer(m.get("ingredienser", "")):
+                linje += f". Familiens ingredienser til {m.get('portioner') or 4} personer: {'; '.join(ing)[:800]}"
+            linjer.append(linje)
         antal = "2-3" if hyppighed == "ofte" else "1"
         return (
             f"FAMILIENS EGNE RETTER – tag {antal} af dem med denne uge, helst dem ugens tilbud passer til. "
-            "Skriv navnet præcis som her, og følg familiens noter om ingredienser og mængder (varerne skal stadig "
-            "være T:/S:-id'er). En ret, der rækker til 2 dage, må ikke ligge på sidste dag - dagen efter bliver "
-            "automatisk rester.\n" + "\n".join(linjer) + "\n"
+            "Skriv navnet præcis som her, og følg familiens noter. Står der ingredienser, bruger du PRÆCIS dem "
+            "(pr_person = mængden delt med antal personer i opskriften), men varerne skal stadig være T:/S:-id'er. "
+            "En ret, der rækker til 2 dage, må ikke ligge på sidste dag - dagen efter bliver automatisk rester.\n"
+            + "\n".join(linjer)
+            + "\n"
         )
 
     def _regler(self) -> str:
@@ -1590,6 +1632,11 @@ def _indeholder(tekst: str, ord_: str) -> bool:
     if not ord_:
         return False
     return ord_ in tekst or (" " in ord_ and ord_.split()[-1] in tekst)
+
+
+def _linjer(tekst: str) -> list[str]:
+    """Én ting pr. linje; punkttegn og numre ("1.", "-", "•") fjernes."""
+    return [l for l in (re.sub(r"^\s*(?:[-*•–]|\d+[.)])\s*", "", x).strip() for x in str(tekst or "").splitlines()) if l]
 
 
 def _rettype(ret: dict) -> str | None:

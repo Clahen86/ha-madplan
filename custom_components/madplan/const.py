@@ -22,7 +22,6 @@ STANDARD_REGLER = {
     "oeko": False,
     "allergier": [],
     "undgaa": [],
-    "favoritter": [],
     "vegetar": 0,  # mindst så mange vegetarretter om ugen
     "fisk": 0,
     "max_tid": 40,  # minutter på hverdage
@@ -34,8 +33,7 @@ STANDARD_REGLER = {
     "krav": "",
     "niveau": "hverdag",  # hverdag / hygge / gourmet
     "min_varer_ekstra": 3,  # mindst så mange varer, før en ekstra butik bruges (1 = slået fra)
-    # Familiens egne retter: [{"navn", "link", "noter", "dage"}]. Afløser "favoritter" (kun navne).
-    "mine_retter": [],
+    # Hvor tit familiens egne opskrifter ("Mine retter", eget lager) kommer med.
     "mine_hyppighed": "nogle",  # aldrig / nogle (1 om ugen) / ofte (2-3 om ugen)
     # Mål pr. portion (valgfrit). AI'en skønner kcal og protein for hver ret - det er cirkatal.
     "kcal": None,
@@ -88,4 +86,6 @@ IKKE_MAD_AVIS = re.compile(r"non.?food|legetøj|beauty|vin|elektronik|prosonic|t
 HISTORIK_UGER = 8
 UNDGAA_UGER = 4
 MAKS_MINE_RETTER = 40
+# En egen opskrift. Ingredienser og fremgangsmåde er familiens egen tekst, én linje pr. ting.
+NY_MIN_RET = {"navn": "", "aktiv": True, "dage": 1, "portioner": 4, "link": "", "noter": "", "ingredienser": "", "fremgangsmaade": ""}
 KATALOG_MAX_ALDER = 6 * 86400

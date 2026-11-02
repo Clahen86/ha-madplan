@@ -212,28 +212,49 @@ class MadplanCard extends HTMLElement {
       case "handler":
         this._handler = el.dataset.v;
         break;
-      // Mine retter: fælles for alle butikker, gemmes i reglerne.
+      // Mine retter: familiens egne opskrifter, fælles for alle butikker.
       case "gemmin": {
+        // Planens ret gemmes med de ingredienser og trin, den har nu - så kan den rettes til bagefter.
         const da = this._hass.states[(a.dag_entiteter || [])[dag - 1]];
-        const mine = (a.regler || {}).mine_retter || [];
-        if (da && !mine.some((m) => m.navn.toLowerCase() === da.state.toLowerCase()))
-          this._gemRegler({ mine_retter: [...mine, { navn: da.state.slice(0, 60), dage: da.attributes.dobbelt ? 2 : 1 }] });
+        if (!da) break;
+        const x = da.attributes;
+        this._minRet({
+          navn: da.state.slice(0, 60),
+          dage: x.dobbelt ? 2 : 1,
+          portioner: Math.min(30, Math.max(1, Number(x.personer || this._personer() || 4) * (x.dobbelt ? 2 : 1))),
+          ingredienser: (x.ingredienser || []).join("\n").slice(0, 2000),
+          fremgangsmaade: (x.trin || []).join("\n").slice(0, 4000),
+        });
         break;
       }
+      case "maktiv":
       case "mdage":
-      case "mslet": {
-        const mine = [...((a.regler || {}).mine_retter || [])];
-        const i = dag - 1;
-        if (!mine[i]) break;
-        if (h === "mslet") mine.splice(i, 1);
-        else mine[i] = { ...mine[i], dage: mine[i].dage === 2 ? 1 : 2 };
-        if (h === "mslet") this._mineAaben = null;
-        this._gemRegler({ mine_retter: mine });
+      case "mport": {
+        const m = (a.mine_retter || []).find((x) => x.id === el.dataset.id);
+        if (!m) break;
+        if (h === "maktiv") this._minRet({ id: m.id, aktiv: !m.aktiv });
+        else if (h === "mdage") this._minRet({ id: m.id, dage: m.dage === 2 ? 1 : 2 });
+        else {
+          const d = this._mineData[m.id];
+          const n = Math.min(30, Math.max(1, Number(d?.portioner || 4) + Number(el.dataset.d)));
+          if (d) d.portioner = n;
+          this._minRet({ id: m.id, portioner: n });
+        }
         break;
       }
-      case "maaben":
-        this._mineAaben = this._mineAaben === dag ? null : dag;
+      case "mslet": {
+        const m = (a.mine_retter || [])[dag - 1];
+        if (!m) break;
+        this._kald("madplan", "slet_min_ret", { id: m.id });
+        this._mineAaben = null;
         break;
+      }
+      case "maaben": {
+        const id = el.dataset.id;
+        this._mineAaben = this._mineAaben === id ? null : id;
+        if (this._mineAaben) this._hentMinRet(id);
+        break;
+      }
       case "byt":
         this._kald("madplan", "byt_ret", { entity_id: plan, dag });
         break;
@@ -405,11 +426,13 @@ class MadplanCard extends HTMLElement {
       this._inputs[`r_${felt}`] = "";
     } else if (form.dataset.form === "mny") {
       const navn = (this._inputs.m_navn || "").trim().slice(0, 60);
-      const mine = r.mine_retter || [];
-      if (navn && !mine.some((m) => m.navn.toLowerCase() === navn.toLowerCase())) {
-        this._gemRegler({ mine_retter: [...mine, { navn, dage: 1 }] });
-        this._mineAaben = mine.length + 1;
-      }
+      // Den nye ret åbnes med det samme, så man kan skrive opskriften ind.
+      if (navn)
+        this._minRet({ navn }).then((id) => {
+          if (!id) return;
+          this._mineAaben = id;
+          this._hentMinRet(id);
+        });
       this._inputs.m_navn = "";
     } else if (form.dataset.form === "rfast") {
       const dag = Number(form.querySelector("select").value);
@@ -434,21 +457,39 @@ class MadplanCard extends HTMLElement {
       delete this._inputs[navn];
     } else if (navn === "r_krav") {
       this._gemRegler({ krav: ev.target.value.trim() });
-    } else if (/^m_(link|noter)_\d+$/.test(navn)) {
-      const [, felt, nr] = navn.split("_");
-      const a = this._hass.states[this._valgt]?.attributes || {};
-      const mine = [...((a.regler || {}).mine_retter || [])];
+    } else if (/^m_(link|noter|ingredienser|fremgangsmaade)_\w+$/.test(navn)) {
+      const [, felt, id] = navn.split("_");
       let v = ev.target.value.trim();
       if (felt === "link" && v && !/^https?:\/\//i.test(v)) v = `https://${v}`;
-      if (!mine[nr - 1]) return;
-      mine[nr - 1] = { ...mine[nr - 1], [felt]: felt === "noter" ? v.slice(0, 400) : v.slice(0, 300) };
+      v = v.slice(0, { link: 300, noter: 400, ingredienser: 2000, fremgangsmaade: 4000 }[felt]);
+      if (this._mineData[id]) this._mineData[id][felt] = v;
       delete this._inputs[navn];
-      this._gemRegler({ mine_retter: mine });
+      this._minRet({ id, [felt]: v });
     }
   }
 
   _gemRegler(aendring) {
     this._kald("madplan", "gem_regler", aendring);
+  }
+
+  /** Gemmer en egen opskrift og giver dens id tilbage. */
+  _minRet(data) {
+    return this._hass.connection
+      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "gem_min_ret", service_data: data, return_response: true })
+      .then((r) => r?.response?.id)
+      .catch(() => null);
+  }
+
+  /** Hele opskriften hentes først, når den åbnes - sensoren har kun overblikket. */
+  _hentMinRet(id) {
+    this._mineData = this._mineData || {};
+    this._hass.connection
+      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "hent_min_ret", service_data: { id }, return_response: true })
+      .then((r) => {
+        if (r?.response) this._mineData[id] = r.response;
+        this._tegn();
+      })
+      .catch(() => {});
   }
 
   _fokuser(navn) {
@@ -1225,44 +1266,60 @@ class MadplanPanel extends MadplanCard {
     </article>`;
   }
 
-  /** Mine retter: familiens egne retter og opskrifter. Fælles for alle butikker. */
+  /** Mine retter: familiens egne opskrifter. Fælles for alle butikker; hver kan slås til og fra. */
   _mineSide(a) {
     const r = a.regler || {};
-    const mine = r.mine_retter || [];
+    const mine = a.mine_retter || [];
     const hyp = r.mine_hyppighed || "nogle";
+    this._mineData = this._mineData || {};
+    const felt = (titel, f, id, v, pladsholder, raekker, max) =>
+      `<label class="mfelt"><span>${titel}</span><textarea name="m_${f}_${esc(id)}" rows="${raekker}" maxlength="${max}"
+        placeholder="${pladsholder}">${esc(v)}</textarea></label>`;
     const rk = mine
       .map((m, i) => {
         const nr = i + 1;
-        const aaben = this._mineAaben === nr;
-        const slet = this._bekraeft === `mslet-${nr}`;
-        const info = [m.dage === 2 ? "Rækker til 2 dage" : "", m.noter ? "Noter" : "", m.link ? "Link" : ""].filter(Boolean).join(" · ");
-        return `<section class="rkort mret">
-          <div class="mrad"><button class="mnavn" data-h="maaben" data-dag="${nr}"><b>${esc(m.navn)}</b><small>${info || "Tryk for link og noter"}</small></button>
-            ${/^https?:\/\//i.test(m.link || "") ? `<a class="ikonknap" href="${esc(m.link)}" target="_blank" rel="noopener noreferrer" aria-label="Åbn opskrift"><ha-icon icon="mdi:open-in-new"></ha-icon></a>` : ""}
-            <button class="ikonknap ${slet ? "bekraeft" : ""}" data-h="mslet" data-dag="${nr}" aria-label="${slet ? "Tryk igen for at slette" : "Slet"}"><ha-icon icon="${slet ? "mdi:check-bold" : "mdi:close"}"></ha-icon></button></div>
+        const aaben = this._mineAaben === m.id;
+        const d = this._mineData[m.id];
+        const inp = (f) => this._inputs[`m_${f}_${m.id}`] ?? d?.[f] ?? "";
+        const info = [m.aktiv ? "" : "Slået fra", m.har_opskrift ? "Egen opskrift" : "", m.dage === 2 ? "2 dage" : "", m.link ? "Link" : ""]
+          .filter(Boolean)
+          .join(" · ");
+        return `<section class="rkort mret ${m.aktiv ? "" : "fra"}">
+          <div class="mrad"><button class="mnavn" data-h="maaben" data-id="${esc(m.id)}"><b>${esc(m.navn)}</b><small>${info || "Tryk for at skrive opskriften"}</small></button>
+            <button class="kontakt ${m.aktiv ? "til" : ""}" data-h="maktiv" data-id="${esc(m.id)}" role="switch" aria-checked="${m.aktiv}" aria-label="${esc(m.navn)} med i planen"><span></span></button></div>
           ${
-            aaben
-              ? `<div class="mdetaljer">
+            !aaben
+              ? ""
+              : !d
+                ? `<div class="mdetaljer"><small class="mhjaelp">Henter opskriften …</small></div>`
+                : `<div class="mdetaljer">
+                <div class="rlinje"><span class="rnavn2"><b>Portioner</b><small>Opskriften er til</small></span>
+                  <div class="stepper"><button data-h="mport" data-id="${esc(m.id)}" data-d="-1" aria-label="Færre">−</button><span>${esc(d.portioner || 4)} pers.</span>
+                  <button data-h="mport" data-id="${esc(m.id)}" data-d="1" aria-label="Flere">+</button></div></div>
+                ${felt("Ingredienser", "ingredienser", m.id, inp("ingredienser"), "Én pr. linje, fx&#10;500 g hakket oksekød&#10;1 dåse hakkede tomater", 6, 2000)}
+                ${felt("Fremgangsmåde", "fremgangsmaade", m.id, inp("fremgangsmaade"), "Ét trin pr. linje – vises præcis som I skriver det", 7, 4000)}
+                ${felt("Noter til AI'en", "noter", m.id, inp("noter"), "Valgfrit, fx ingen chili, eller server med ris", 2, 400)}
+                <input name="m_link_${esc(m.id)}" type="url" inputmode="url" autocomplete="off" placeholder="Link til opskriften (valgfrit)" value="${esc(inp("link"))}">
                 <div class="rlinje"><span class="rnavn2"><b>Rækker til 2 dage</b><small>Dagen efter bliver rester</small></span>
-                  <button class="kontakt ${m.dage === 2 ? "til" : ""}" data-h="mdage" data-dag="${nr}" role="switch" aria-checked="${m.dage === 2}" aria-label="Rækker til 2 dage"><span></span></button></div>
-                <input name="m_link_${nr}" type="url" inputmode="url" autocomplete="off" placeholder="Link til opskriften (valgfrit)" value="${esc(this._inputs[`m_link_${nr}`] ?? m.link ?? "")}">
-                <textarea name="m_noter_${nr}" rows="3" maxlength="400" placeholder="Jeres version, fx dobbelt portion, halvt hakket kød og halvt linser, ingen chili">${esc(this._inputs[`m_noter_${nr}`] ?? m.noter ?? "")}</textarea>
-                <small class="mhjaelp">Gemmes, når du trykker udenfor. AI'en følger noterne.</small></div>`
-              : ""
+                  <button class="kontakt ${m.dage === 2 ? "til" : ""}" data-h="mdage" data-id="${esc(m.id)}" role="switch" aria-checked="${m.dage === 2}" aria-label="Rækker til 2 dage"><span></span></button></div>
+                <small class="mhjaelp">Gemmes, når du trykker udenfor feltet. AI'en finder varerne i tilbuddene og regner mængderne om til jer.</small>
+                <div class="knapper">${/^https?:\/\//i.test(m.link || "") ? `<a class="knap graa" href="${esc(m.link)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:open-in-new"></ha-icon><span>Åbn link</span></a>` : ""}
+                  ${this._knap("mslet", "Slet opskriften", "mdi:delete-outline", "graa", nr)}</div></div>`
           }
         </section>`;
       })
       .join("");
-    return `<div class="rintro"><ha-icon icon="mdi:information-outline"></ha-icon>Jeres egne retter. AI'en tager dem med i ugeplanen, når tilbuddene passer. De gælder alle butikker.</div>
+    const aktive = mine.filter((m) => m.aktiv).length;
+    return `<div class="rintro"><ha-icon icon="mdi:information-outline"></ha-icon>Jeres egne opskrifter. Dem, der er slået til, tager AI'en med i ugeplanen, når tilbuddene passer. De gælder alle butikker.</div>
       <section class="rkort">
-        <div class="rlinje bred"><span class="rikon lyseroed"><ha-icon icon="mdi:heart-outline"></ha-icon></span><span class="rnavn2"><b>Hvor tit</b><small>${{ aldrig: "AI'en bruger dem ikke", nogle: "Cirka 1 om ugen", ofte: "2–3 om ugen" }[hyp]}</small></span>
+        <div class="rlinje bred"><span class="rikon lyseroed"><ha-icon icon="mdi:heart-outline"></ha-icon></span><span class="rnavn2"><b>Hvor tit</b><small>${{ aldrig: "AI'en bruger dem ikke", nogle: "Cirka 1 om ugen", ofte: "2–3 om ugen" }[hyp]}${mine.length ? ` · ${aktive} af ${mine.length} slået til` : ""}</small></span>
           <div class="handler">${[["aldrig", "Aldrig"], ["nogle", "Nogle gange"], ["ofte", "Ofte"]]
             .map(([v, t]) => `<button class="${hyp === v ? "valgt" : ""}" data-h="rvalg" data-felt="mine_hyppighed" data-v="${v}">${t}</button>`)
             .join("")}</div></div>
         <form class="behov-form" data-form="mny"><input name="m_navn" autocomplete="off" enterkeyhint="done" maxlength="60"
-          placeholder="Tilføj ret, fx lasagne" value="${esc(this._inputs.m_navn || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+          placeholder="Ny opskrift, fx lasagne" value="${esc(this._inputs.m_navn || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
       </section>
-      ${rk || `<div class="mtom"><ha-icon icon="mdi:heart-plus-outline"></ha-icon>Ingen retter endnu. Tilføj dem her, eller tryk "Gem som min ret" under en opskrift.</div>`}`;
+      ${rk || `<div class="mtom"><ha-icon icon="mdi:heart-plus-outline"></ha-icon>Ingen opskrifter endnu. Skriv et navn ovenfor, eller tryk "Gem som min ret" under en opskrift i planen.</div>`}`;
   }
 
   /** Familiens regler: fælles for alle butikker og bruges fra næste plan. Koster ingen ekstra AI-kald. */
@@ -1762,7 +1819,14 @@ const PANEL_CSS = `
   .mnavn b { font-size: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mnavn small { color: var(--secondary-text-color); font-size: 12.5px; }
   .mret .ikonknap { width: 36px; height: 36px; flex: none; text-decoration: none; }
-  .mret .ikonknap.bekraeft { background: #e53935; color: #fff; }
+  .mret.fra .mnavn b { opacity: .55; }
+  .mfelt { display: flex; flex-direction: column; gap: 4px; }
+  .mfelt span { font-size: 13px; font-weight: 700; }
+  .mfelt textarea { width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: 16px; border: 1px solid var(--divider-color);
+    font: inherit; font-size: 14px; resize: vertical; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }
+  .mfelt textarea:focus { border-color: var(--brand); }
+  .mdetaljer .knapper { margin-top: 2px; }
+  .mdetaljer a.knap { text-decoration: none; }
   .mdetaljer { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--divider-color); }
   .mdetaljer input { width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: 22px; border: 1px solid var(--divider-color);
     font: inherit; outline: none; background: var(--card-background-color); color: var(--primary-text-color); }

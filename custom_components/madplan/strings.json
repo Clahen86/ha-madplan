@@ -218,10 +218,6 @@
           "name": "Mindst varer pr. ekstra butik",
           "description": "1 = ingen grænse og ingen advarsel."
         },
-        "mine_retter": {
-          "name": "Mine retter",
-          "description": "Familiens egne retter: navn, link, noter og dage (1 eller 2)."
-        },
         "mine_hyppighed": {
           "name": "Hvor tit egne retter",
           "description": "aldrig, nogle (1 om ugen) eller ofte (2-3 om ugen)."
@@ -411,6 +407,68 @@
         "til": {
           "name": "Til",
           "description": "Til eller fra."
+        }
+      }
+    },
+    "gem_min_ret": {
+      "name": "Gem min ret",
+      "description": "Opretter en af familiens egne opskrifter, eller retter en eksisterende (med id eller samme navn).",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Rettens id. Udelades for en ny ret."
+        },
+        "navn": {
+          "name": "Navn",
+          "description": "Rettens navn."
+        },
+        "aktiv": {
+          "name": "Med i planen",
+          "description": "Fra = gemt, men bruges ikke."
+        },
+        "dage": {
+          "name": "Dage",
+          "description": "2 = rækker til 2 dage; dagen efter bliver rester."
+        },
+        "portioner": {
+          "name": "Portioner",
+          "description": "Hvor mange opskriften er til."
+        },
+        "link": {
+          "name": "Link",
+          "description": "Link til opskriften (valgfrit)."
+        },
+        "noter": {
+          "name": "Noter til AI'en",
+          "description": "Fx ingen chili."
+        },
+        "ingredienser": {
+          "name": "Ingredienser",
+          "description": "Én pr. linje."
+        },
+        "fremgangsmaade": {
+          "name": "Fremgangsmåde",
+          "description": "Ét trin pr. linje. Vises som I har skrevet den."
+        }
+      }
+    },
+    "slet_min_ret": {
+      "name": "Slet min ret",
+      "description": "Sletter en af familiens egne opskrifter.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "hent_min_ret": {
+      "name": "Hent min ret",
+      "description": "Giver hele opskriften tilbage.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
         }
       }
     }
