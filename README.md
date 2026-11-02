@@ -12,7 +12,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 
 - **Ugens madplan**, bygget på tilbuddene i den butik, du vælger. Ny plan kommer automatisk lørdag kl. 10. Laves den midt på ugen, planlægges kun fra i dag til lørdag.
 - **Flere butikker**: én plan pr. kæde, og du kan sammenligne dem. Den billigste bliver markeret.
-- **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder (Regler → *Handler også i*). Er samme vare mindst 10 % billigere pr. kg i en anden butik, flyttes den dertil – men kun hvis der skal købes mindst 3 varer i butikken, så du ikke går derhen for én vare. Indkøbslisten deles op pr. butik.
+- **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder (Regler → *Handler også i*). Er samme vare mindst 10 % billigere pr. kg i en anden butik, flyttes den dertil – men kun hvis der skal købes mindst 3 varer i butikken (kan ændres under Regler), så du ikke går derhen for én vare. Indkøbslisten deles op pr. butik.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
 - **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
@@ -22,7 +22,8 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Vælg dage**: slå dage fra (fx når I spiser ude onsdag), så planen kun laves for resten.
 - **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
 - **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
-- **Familiens regler**: husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingsretter og -køkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne, og brud vises som advarsler.
+- **Familiens regler**: niveau (hverdag, hygge eller gourmet), husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingsretter og -køkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne (også allergener i sammensatte ord som "rødløg" og samme protein for mange gange), og brud vises som advarsler.
+- **Automatisk plan pr. butik**: vælg under Regler, hvilke butikker der laver plan hver lørdag. De andre laver kun plan, når du trykker (sparer AI-kald).
 - **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail – også til flere modtagere (fx begge telefoner).
 
@@ -103,6 +104,7 @@ For hver butik:
 | `madplan.byt_ret` / `madplan.fjern_ret` | Byt eller fjern én dags ret (`dag`: 1 = søndag … 7 = lørdag). |
 | `madplan.dag_personer` | Antal personer én dag (0 = som resten af ugen). |
 | `madplan.rester` | Lav én dags ret til 2 dage (`til: false` fortryder). |
+| `madplan.auto_plan` | Automatisk lørdagsplan til/fra for en butik (`til: false`). |
 | `madplan.ekstra_butikker` | Andre kæder, planen også må bruge tilbud fra, fx `butikker: ["netto"]`. |
 | `madplan.tilfoej_behov` / `madplan.fjern_behov` | Ekstra varer, fx `tekst: ["pålæg", "frugt"]`. |
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
