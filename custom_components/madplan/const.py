@@ -34,6 +34,12 @@ STANDARD_REGLER = {
     "krav": "",
     "niveau": "hverdag",  # hverdag / hygge / gourmet
     "min_varer_ekstra": 3,  # mindst så mange varer, før en ekstra butik bruges (1 = slået fra)
+    # Familiens egne retter: [{"navn", "link", "noter", "dage"}]. Afløser "favoritter" (kun navne).
+    "mine_retter": [],
+    "mine_hyppighed": "nogle",  # aldrig / nogle (1 om ugen) / ofte (2-3 om ugen)
+    # Mål pr. portion (valgfrit). AI'en skønner kcal og protein for hver ret - det er cirkatal.
+    "kcal": None,
+    "protein": None,  # mindst så mange gram
 }
 
 # Butik -> (navn, eTilbudsavis/Tjek dealer-id). Kun REMA har et åbent katalog med normalpriser;
@@ -81,4 +87,5 @@ IKKE_MAD = re.compile(
 IKKE_MAD_AVIS = re.compile(r"non.?food|legetøj|beauty|vin|elektronik|prosonic|tekstil|bolig|have\b|jul\b|gaver", re.IGNORECASE)
 HISTORIK_UGER = 8
 UNDGAA_UGER = 4
+MAKS_MINE_RETTER = 40
 KATALOG_MAX_ALDER = 6 * 86400

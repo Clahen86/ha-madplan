@@ -172,7 +172,7 @@
         },
         "favoritter": {
           "name": "Yndlingsretter",
-          "description": "Kommer med en gang imellem."
+          "description": "Gammel - lægges i Mine retter."
         },
         "vegetar": {
           "name": "Vegetarretter",
@@ -217,6 +217,22 @@
         "min_varer_ekstra": {
           "name": "Mindst varer pr. ekstra butik",
           "description": "1 = ingen grænse og ingen advarsel."
+        },
+        "mine_retter": {
+          "name": "Mine retter",
+          "description": "Familiens egne retter: navn, link, noter og dage (1 eller 2)."
+        },
+        "mine_hyppighed": {
+          "name": "Hvor tit egne retter",
+          "description": "aldrig, nogle (1 om ugen) eller ofte (2-3 om ugen)."
+        },
+        "kcal": {
+          "name": "Kcal pr. portion",
+          "description": "Mål for en voksen portion. Tomt = intet mål."
+        },
+        "protein": {
+          "name": "Protein pr. portion",
+          "description": "Mindst så mange gram. Tomt = intet mål."
         }
       }
     },

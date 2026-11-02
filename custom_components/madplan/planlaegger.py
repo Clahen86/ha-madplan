@@ -7,6 +7,7 @@ import datetime
 import json
 import logging
 import math
+import random
 import re
 import time
 from collections.abc import Callable
@@ -32,6 +33,7 @@ from .const import (
     DOMAIN,
     HISTORIK_UGER,
     KATALOG_MAX_ALDER,
+    MAKS_MINE_RETTER,
     SALLING,
     SIGNAL_OPDATERET,
     STANDARD_PERSONER,
@@ -144,6 +146,9 @@ class Madplan:
         if self._faelles["regler"] is None:
             gemt = await self._faelles["regler_store"].async_load() or {}
             self._faelles["regler"] = {**STANDARD_REGLER, **gemt}
+            # Yndlingsretter (kun navne) bliver til "Mine retter".
+            if gemt.get("favoritter"):
+                await self.async_gem_regler({"favoritter": gemt["favoritter"]})
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -169,6 +174,14 @@ class Madplan:
     async def async_gem_regler(self, nye: dict[str, Any]) -> None:
         """Gemmer familiens regler (fælles for alle butikker). De bruges fra næste plan."""
         regler = {**self.regler, **{k: v for k, v in nye.items() if k in STANDARD_REGLER}}
+        # Gamle yndlingsretter (fx fra en automatisering) lægges i "Mine retter".
+        if regler.get("favoritter"):
+            kendte = {m["navn"].lower() for m in regler["mine_retter"]}
+            regler["mine_retter"] = (
+                list(regler["mine_retter"])
+                + [{"navn": f, "link": "", "noter": "", "dage": 1} for f in regler["favoritter"] if f.lower() not in kendte]
+            )[:MAKS_MINE_RETTER]
+            regler["favoritter"] = []
         self._faelles["regler"] = regler
         await self._faelles["regler_store"].async_save(regler)
 
@@ -208,6 +221,21 @@ class Madplan:
             if 0 <= i < len(retter) and ord_ and not retter[i].get("fjernet"):
                 if not any(o in retter[i].get("navn", "").lower() for o in ord_):
                     ud.append(f"{DAGE[i]}: skulle være {fast['ret']}")
+        # Makromål: kun en samlet advarsel - AI'ens tal er skøn.
+        kcal, protein = r.get("kcal"), r.get("protein")
+        def tal(v: Any) -> float | None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        skaev = [
+            ret for _, ret in aktive
+            if (kcal and (k := tal(ret.get("kcal"))) and abs(k - kcal) > kcal * 0.25)
+            or (protein and (p := tal(ret.get("protein"))) is not None and p < protein * 0.8)
+        ]
+        if skaev:
+            ud.append(f"{len(skaev)} {'ret ligger' if len(skaev) == 1 else 'retter ligger'} langt fra jeres kcal/protein-mål")
         for v in self.plan.get("varer", []):
             if v.get("for_mange"):
                 ud.append(f"Tjek mængden af {v['navn']} – sat til {MAKS_PAKKER} pakker")
@@ -264,6 +292,7 @@ class Madplan:
                 behov = list(self.behov)
                 instr = (
                     self._regler()
+                    + self._mine_retter_tekst(undgaa)
                     + f"Lav {antal} aftensmåltider for {datoer}.\n"
                     + (f"Undgå disse retter fra de seneste uger: {', '.join(undgaa)}.\n" if undgaa else "")
                     + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov else "")
@@ -282,6 +311,8 @@ class Madplan:
                 await self.hass.async_add_executor_job(self._find_varer, nye, start)
                 if self.ekstra_butikker:
                     await self.hass.async_add_executor_job(self._billigere_andre_steder, nye, dag)
+                for ret in nye:
+                    self._marker_min_ret(ret)
                 ai_retter = iter(nye)
                 retter = [
                     {"navn": "Før planen", "fjernet": True, "forbi": True}
@@ -292,6 +323,11 @@ class Madplan:
                     else next(ai_retter)
                     for i in range(7)
                 ]
+                # Egne retter, der rækker til 2 dage: dagen efter bliver rester.
+                for i in range(6):
+                    m = self.min_ret(retter[i])
+                    if m and m.get("dage") == 2 and self._kan_blive_rester(retter, i):
+                        self._lav_rester(retter, i)
                 self.plan = {
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
@@ -572,25 +608,39 @@ class Madplan:
         if til and not ret.get("dobbelt"):
             if retter[i + 1].get("rester_fra") is not None or retter[i + 1].get("forbi"):
                 raise HomeAssistantError(f"{DAGE[i + 1]} kan ikke blive restedag")
-            ret["dobbelt"] = True
-            retter[i + 1] = {
-                "navn": f"Rester: {ret.get('navn', '')}",
-                "rester_fra": i,
-                "kort": f"Rester fra {DAGE[i].lower()} - intet at købe.",
-                "tid_min": 10,
-                "hovedvare": ret.get("hovedvare"),
-                "vegetar": ret.get("vegetar"),
-                "fisk": ret.get("fisk"),
-                "trin": [f"Varm resterne fra {DAGE[i].lower()}, og server."],
-                "ingredienser": [],
-                "erstattet": retter[i + 1],
-            }
+            self._lav_rester(retter, i)
         elif not til:
             self._ophaev_rester(i)
         await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
         self._beregn()
         await self._gem()
         self.opdater()
+
+    @staticmethod
+    def _kan_blive_rester(retter: list[dict], i: int) -> bool:
+        if i + 1 >= len(retter) or retter[i].get("fjernet") or retter[i].get("dobbelt"):
+            return False
+        naeste = retter[i + 1]
+        return not (naeste.get("fjernet") or naeste.get("forbi") or naeste.get("dobbelt") or naeste.get("rester_fra") is not None)
+
+    @staticmethod
+    def _lav_rester(retter: list[dict], i: int) -> None:
+        ret = retter[i]
+        ret["dobbelt"] = True
+        retter[i + 1] = {
+            "navn": f"Rester: {ret.get('navn', '')}",
+            "rester_fra": i,
+            "kort": f"Rester fra {DAGE[i].lower()} - intet at købe.",
+            "tid_min": 10,
+            "hovedvare": ret.get("hovedvare"),
+            "vegetar": ret.get("vegetar"),
+            "fisk": ret.get("fisk"),
+            "kcal": ret.get("kcal"),
+            "protein": ret.get("protein"),
+            "trin": [f"Varm resterne fra {DAGE[i].lower()}, og server."],
+            "ingredienser": [],
+            "erstattet": retter[i + 1],
+        }
 
     def _ophaev_rester(self, i: int) -> None:
         """Byttes, fjernes eller fortrydes en dobbeltportion, får næste dag sin gamle ret igen - og omvendt."""
@@ -1217,17 +1267,57 @@ class Madplan:
             dele.append(f"Familien vil ikke have: {', '.join(r['undgaa'])}.")
         if r["oeko"]:
             dele.append("Vælg økologiske varer, når prisforskellen er lille (skriv fx 'S:økologisk letmælk').")
-        if r["favoritter"]:
-            dele.append(
-                f"Familiens yndlingsretter – tag gerne 1-2 med, hvis de ikke var med de seneste uger: "
-                f"{', '.join(r['favoritter'])}."
-            )
         if r["faste_dage"]:
             faste = "; ".join(f"{DAGE[int(f['dag'])]}: {f['ret']}" for f in r["faste_dage"] if 0 <= int(f["dag"]) < 7)
             dele.append(f"FASTE DAGE – disse dage SKAL have denne ret: {faste}.")
+        if r.get("kcal") or r.get("protein"):
+            maal = " og ".join(
+                ([f"ca. {r['kcal']} kcal"] if r.get("kcal") else []) + ([f"mindst {r['protein']} g protein"] if r.get("protein") else [])
+            )
+            dele.append(f"MAKROER: hver portion skal give {maal} (en voksen portion inkl. tilbehør).")
         if r["krav"].strip():
             dele.append(f"Andre krav fra familien: {r['krav'].strip()}")
         return "\n".join(dele) + "\n"
+
+    def min_ret(self, ret: dict) -> dict | None:
+        """Familiens egen ret, som dagens ret er lavet efter - eller None."""
+        if ret.get("rester_fra") is not None or ret.get("fjernet"):
+            return None
+        navn = ret.get("min_ret") if isinstance(ret.get("min_ret"), str) else ret.get("navn")
+        navn = str(navn or "").strip().lower()
+        return next((m for m in self.regler.get("mine_retter") or [] if m["navn"].strip().lower() == navn), None)
+
+    def _marker_min_ret(self, ret: dict) -> None:
+        """AI'en skriver ikke altid navnet helt ens - fx "Lasagne med salat" for "Lasagne"."""
+        ret.pop("min_ret", None)
+        navn = str(ret.get("navn", "")).lower()
+        mine = sorted(self.regler.get("mine_retter") or [], key=lambda m: -len(m["navn"]))
+        if m := next((m for m in mine if re.search(rf"\b{re.escape(m['navn'].strip().lower())}\b", navn)), None):
+            ret["min_ret"] = m["navn"]
+
+    def _mine_retter_tekst(self, undgaa: list[str]) -> str:
+        """Familiens egne retter til ugeplanen. Højst 8 i prompten - det holder AI-kaldet lille."""
+        r = self.regler
+        mine = r.get("mine_retter") or []
+        hyppighed = r.get("mine_hyppighed", "nogle")
+        if not mine or hyppighed == "aldrig":
+            return ""
+        nylig = {u.lower() for u in undgaa}
+        kandidater = [m for m in mine if m["navn"].lower() not in nylig] or list(mine)
+        kandidater = random.sample(kandidater, min(8, len(kandidater)))
+        linjer = [
+            f"- {m['navn']}"
+            + (" (rækker til 2 dage)" if m.get("dage") == 2 else "")
+            + (f": {' '.join(m['noter'].split())}" if m.get("noter") else "")
+            for m in kandidater
+        ]
+        antal = "2-3" if hyppighed == "ofte" else "1"
+        return (
+            f"FAMILIENS EGNE RETTER – tag {antal} af dem med denne uge, helst dem ugens tilbud passer til. "
+            "Skriv navnet præcis som her, og følg familiens noter om ingredienser og mængder (varerne skal stadig "
+            "være T:/S:-id'er). En ret, der rækker til 2 dage, må ikke ligge på sidste dag - dagen efter bliver "
+            "automatisk rester.\n" + "\n".join(linjer) + "\n"
+        )
 
     def _regler(self) -> str:
         r = self.regler
@@ -1288,7 +1378,7 @@ class Madplan:
     def _ret_skema() -> str:
         return (
             '{"navn": str, "kort": str (én linje), "tid_min": int, "sundhed": str (kort), '
-            '"vegetar": bool, "fisk": bool, '
+            '"vegetar": bool, "fisk": bool, "kcal": int (skøn pr. voksen portion), "protein": int (gram pr. portion), '
             '"hovedvare": "T:id" eller "S:navn", "trin": [str], '
             '"ingredienser": [{"navn": str, "pr_person": number, "enhed": "g"|"ml"|"stk", '
             '"vare": "T:id" eller "S:navn", "pakke": number, "basis": bool}]}'

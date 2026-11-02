@@ -19,7 +19,7 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
-from .const import BUTIKKER, DOMAIN
+from .const import BUTIKKER, DOMAIN, MAKS_MINE_RETTER
 from .planlaegger import Madplan
 
 PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
@@ -64,6 +64,24 @@ REGLER_SKEMA = vol.Schema(
         vol.Optional("krav"): vol.All(cv.string, vol.Length(max=2000)),
         vol.Optional("niveau"): vol.In(["hverdag", "hygge", "gourmet"]),
         vol.Optional("min_varer_ekstra"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        vol.Optional("mine_retter"): vol.All(
+            cv.ensure_list,
+            [
+                vol.Schema(
+                    {
+                        vol.Required("navn"): vol.All(cv.string, vol.Length(min=1, max=60)),
+                        # Kun almindelige web-links, så kortet aldrig viser et javascript:-link.
+                        vol.Optional("link", default=""): vol.Any("", vol.All(cv.string, vol.Length(max=300), vol.Match(r"^https?://"))),
+                        vol.Optional("noter", default=""): vol.All(cv.string, vol.Length(max=400)),
+                        vol.Optional("dage", default=1): vol.All(vol.Coerce(int), vol.In([1, 2])),
+                    }
+                )
+            ],
+            vol.Length(max=MAKS_MINE_RETTER),
+        ),
+        vol.Optional("mine_hyppighed"): vol.In(["aldrig", "nogle", "ofte"]),
+        vol.Optional("kcal"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=200, max=2000))),
+        vol.Optional("protein"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=5, max=150))),
     }
 )
 ANTAL_SKEMA = SKEMA.extend(

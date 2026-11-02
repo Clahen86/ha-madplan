@@ -217,6 +217,22 @@
         "min_varer_ekstra": {
           "name": "Min. items per extra store",
           "description": "1 = no limit and no warning."
+        },
+        "mine_retter": {
+          "name": "My dishes",
+          "description": "The family's own dishes: name, link, notes and days (1 or 2)."
+        },
+        "mine_hyppighed": {
+          "name": "How often own dishes",
+          "description": "aldrig (never), nogle (1 a week) or ofte (2-3 a week)."
+        },
+        "kcal": {
+          "name": "Kcal per serving",
+          "description": "Target for an adult serving. Empty = no target."
+        },
+        "protein": {
+          "name": "Protein per serving",
+          "description": "At least this many grams. Empty = no target."
         }
       }
     },

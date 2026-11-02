@@ -22,9 +22,11 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Vælg dage**: slå dage fra (fx når I spiser ude onsdag), så planen kun laves for resten.
 - **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
 - **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
-- **Familiens regler**: niveau (hverdag, hygge eller gourmet), husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingsretter og -køkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne (også allergener i sammensatte ord som "rødløg" og samme protein for mange gange), og brud vises som advarsler.
+- **Familiens regler**: niveau (hverdag, hygge eller gourmet), husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingskøkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne (også allergener i sammensatte ord som "rødløg" og samme protein for mange gange), og brud vises som advarsler.
+- **Mine retter**: jeres eget kartotek med retter – med link til opskriften og jeres egne noter (fx "dobbelt portion, halvt linser"). Vælg hvor tit (aldrig, nogle gange eller ofte), så tager AI'en dem med, når tilbuddene passer, og følger jeres noter. En ret kan "række til 2 dage", så næste dag automatisk bliver rester. Tryk *Gem som min ret* under en opskrift, I kunne lide. Gamle yndlingsretter flyttes automatisk derind.
+- **Mål pr. portion** (valgfrit): sæt kcal og/eller protein pr. portion under Regler. Hver ret viser AI'ens skøn ("ca. 640 kcal · ca. 34 g protein"), og der kommer en advarsel, hvis retter ligger langt fra målet. Tallene er et skøn – ikke præcise næringsberegninger.
 - **Automatisk plan pr. butik**: vælg under Regler, hvilke butikker der laver plan hver lørdag. De andre laver kun plan, når du trykker (sparer AI-kald).
-- **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Tre designs og frit valg af farve.
+- **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Fanerne i toppen kan rulles sidelæns på telefonen. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail – også til flere modtagere (fx begge telefoner).
 
 <p align="center"><img src="docs/designs.jpg" alt="Tre designs: Farverig, Lys og Mørk" width="100%"></p>

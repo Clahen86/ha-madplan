@@ -30,12 +30,21 @@ def _kort_dato(iso: str | None) -> str:
     return f"{d.day}/{d.month}"
 
 
+def _tal(v: Any) -> int | None:
+    try:
+        return round(float(v)) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 class MadplanSensor(MadplanEntity, SensorEntity):
     """Hvad der mangler at blive købt (kr), med ugens overblik som attributter."""
 
     _attr_name = None
     _attr_icon = "mdi:silverware-fork-knife"
     _attr_native_unit_of_measurement = "kr"
+    # Regler med egne opskrifter kan blive store - de skal ikke i historikken.
+    _unrecorded_attributes = frozenset({"regler", "en_ret"})
 
     def __init__(self, madplan) -> None:
         super().__init__(madplan, "total")
@@ -146,6 +155,7 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         r = self._ret()
         n = r.get("personer") or self.madplan.plan.get("personer") or self.madplan.personer
+        mit = self.madplan.min_ret(r) if r else None
         return {
             "dag": DAGE[self._i],
             "personer": n,
@@ -161,7 +171,14 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "pris": r.get("_pris"),
             "pr_person": round((r.get("_pris") or 0) / n, 1) if n else None,
             "sundhed": r.get("sundhed", ""),
+            # AI'ens skøn pr. voksen portion.
+            "kcal": _tal(r.get("kcal")),
+            "protein": _tal(r.get("protein")),
             "billede": r.get("_billede"),
             "ingredienser": r.get("_linjer", []),
             "trin": r.get("trin", []),
+            # Familiens egen ret: navnet i "Mine retter", link og noter.
+            "min_ret": mit["navn"] if mit else None,
+            "link": mit.get("link") if mit else None,
+            "noter": mit.get("noter") if mit else None,
         }

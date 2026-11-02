@@ -128,6 +128,26 @@ gem_regler:
         number:
           min: 1
           max: 5
+    mine_retter:
+      example: '[{"navn": "Lasagne", "dage": 2, "noter": "Dobbelt portion, halvt hakket kød og halvt linser"}]'
+      selector:
+        object:
+    mine_hyppighed:
+      selector:
+        select:
+          options: ["aldrig", "nogle", "ofte"]
+    kcal:
+      selector:
+        number:
+          min: 200
+          max: 2000
+          unit_of_measurement: kcal
+    protein:
+      selector:
+        number:
+          min: 5
+          max: 150
+          unit_of_measurement: g
     krav:
       example: "Frilandsæg og økologisk mælk"
       selector:
