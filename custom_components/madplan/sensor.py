@@ -63,6 +63,9 @@ class MadplanSensor(MadplanEntity, SensorEntity):
         def find(platform: str, noegle: str) -> str | None:
             return reg.async_get_entity_id(platform, DOMAIN, f"{eid}_{noegle}")
 
+        def find_plan(m) -> str | None:
+            return reg.async_get_entity_id("sensor", DOMAIN, f"{m.entry.entry_id}_total")
+
         info = self.madplan.butik_info
         return {
             "butik": self.madplan.butik_navn,
@@ -78,6 +81,11 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "regler": self.madplan.regler,
             "ekstra_butikker": self.madplan.ekstra_butikker,
             "auto_plan": self.madplan.auto_plan,
+            # Alle tilføjede butikker og om de laver plan automatisk - vises samlet under Regler.
+            "auto_planer": [
+                [find_plan(m), m.butik_navn, m.auto_plan]
+                for m in (e.runtime_data for e in self.hass.config_entries.async_loaded_entries(DOMAIN))
+            ],
             "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],
             "en_ret": self.madplan.en_ret,
             "en_ret_status": self.madplan.en_ret_status,

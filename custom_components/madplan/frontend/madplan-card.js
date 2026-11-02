@@ -191,7 +191,7 @@ class MadplanCard extends HTMLElement {
         break;
       }
       case "autoplan":
-        this._kald("madplan", "auto_plan", { entity_id: plan, til: a.auto_plan === false });
+        this._kald("madplan", "auto_plan", { entity_id: el.dataset.id, til: el.dataset.til !== "1" });
         break;
       case "ekstrabutik": {
         const valgt = new Set(a.ekstra_butikker || []);
@@ -1236,10 +1236,12 @@ class MadplanPanel extends MadplanCard {
     const valgt = a.ekstra_butikker || [];
     const min = (a.regler || {}).min_varer_ekstra ?? 3;
     return `<section class="rkort">
-        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:storefront-outline"></ha-icon></span>
-          <span><b>${esc(a.butik)}</b><small>Gælder kun denne butik</small></span></div>
-        <div class="rlinje"><span class="rnavn2"><b>Automatisk plan</b><small>Ny plan hver lørdag – fra sparer AI-kald</small></span>
-          <button class="kontakt ${a.auto_plan !== false ? "til" : ""}" data-h="autoplan" role="switch" aria-checked="${a.auto_plan !== false}" aria-label="Automatisk plan"><span></span></button></div>
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:calendar-sync-outline"></ha-icon></span>
+          <span><b>Automatisk plan</b><small>Ny plan hver lørdag – hver butik koster ét AI-kald</small></span></div>
+        ${(a.auto_planer || [])
+          .map(([id, navn, til]) => `<div class="rlinje"><span class="rnavn2"><b>${esc(navn)}</b><small>${til ? "Laver plan lørdag" : "Kun når du trykker"}</small></span>
+            <button class="kontakt ${til ? "til" : ""}" data-h="autoplan" data-id="${esc(id)}" data-til="${til ? 1 : 0}" role="switch" aria-checked="${til}" aria-label="Automatisk plan ${esc(navn)}"><span></span></button></div>`)
+          .join("")}
       </section>
       <section class="rkort">
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:store-plus-outline"></ha-icon></span>

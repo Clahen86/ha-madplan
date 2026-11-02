@@ -137,6 +137,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def auto_plan(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_saet_auto_plan(call.data["til"])
+        # Alle butikker viser den samlede liste, så de opdateres alle.
+        for e in hass.config_entries.async_loaded_entries(DOMAIN):
+            e.runtime_data.opdater()
 
     async def ekstra_butikker(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_saet_ekstra_butikker(call.data["butikker"])
