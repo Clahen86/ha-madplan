@@ -2,6 +2,8 @@
 
 # Madplan til Home Assistant
 
+[![Validate](https://github.com/Clahen86/ha-madplan/actions/workflows/validate.yml/badge.svg)](https://github.com/Clahen86/ha-madplan/actions/workflows/validate.yml)
+
 Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser. Madplan bruger den AI, du allerede har i Home Assistant, og virker med 14 danske kæder.
 
 <p align="center"><img src="docs/funktioner.jpg" alt="Ugens plan, opskrifter, indkøb og familiens regler" width="100%"></p>
