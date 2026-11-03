@@ -1,6 +1,9 @@
 {
   "domain": "madplan",
   "name": "Madplan",
+  "after_dependencies": [
+    "notify"
+  ],
   "codeowners": [
     "@Clahen86"
   ],
@@ -11,9 +14,6 @@
     "http",
     "panel_custom",
     "todo"
-  ],
-  "after_dependencies": [
-    "notify"
   ],
   "documentation": "https://github.com/Clahen86/ha-madplan",
   "integration_type": "service",

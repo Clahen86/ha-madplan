@@ -188,7 +188,7 @@
         },
         "faste_dage": {
           "name": "Faste dage",
-          "description": "Fx [{\"dag\": 5, \"ret\": \"pizza\"}]; dag 0 = søndag … 6 = lørdag."
+          "description": "Fx en liste med dag og ret (dag 5, ret pizza); dag 0 = søndag … 6 = lørdag."
         },
         "krav": {
           "name": "Andre krav",

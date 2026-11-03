@@ -188,7 +188,7 @@
         },
         "faste_dage": {
           "name": "Fixed days",
-          "description": "E.g. [{\"dag\": 5, \"ret\": \"pizza\"}]; day 0 = Sunday … 6 = Saturday."
+          "description": "E.g. a list of day and dish (day 5, dish pizza); day 0 = Sunday … 6 = Saturday."
         },
         "krav": {
           "name": "Other requirements",
