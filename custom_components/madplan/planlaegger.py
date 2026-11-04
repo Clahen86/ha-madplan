@@ -21,7 +21,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import kilder, soeg
+from . import allergener, kilder, soeg
 from .const import (
     BUTIKKER,
     CONF_AI_ENTITY,
@@ -198,11 +198,18 @@ class Madplan:
             return []
         ud: list[str] = []
         aktive = [(i, ret) for i, ret in enumerate(retter) if not ret.get("fjernet") and ret.get("rester_fra") is None]
-        forbudt = [(o, "allergi") for o in r["allergier"]] + [(o, "undgå") for o in r["undgaa"]]
+        forbudt = [(o, g, "allergi") for o, g in allergener.opdel(r["allergier"])]
+        forbudt += [(o, g, "undgå") for o, g in allergener.opdel(r["undgaa"])]
         for i, ret in aktive:
-            tekst = " ".join([ret.get("navn", "")] + [str(x.get("navn", "")) for x in ret.get("ingredienser", [])]).lower()
-            for ord_, slags in forbudt:
-                if _indeholder(tekst, ord_):
+            ing = [str(x.get("navn", "")) for x in ret.get("ingredienser", [])]
+            tekst = " ".join([ret.get("navn", "")] + ing).lower()
+            for ord_, g, slags in forbudt:
+                if g:
+                    # Hver vare for sig, så "glutenfri pasta" er ok, men "pasta" ikke er.
+                    hit = next((h for v in (ing or [ret.get("navn", "")]) if (h := allergener.rammer(v, g))), None)
+                    if hit:
+                        ud.append(f"{DAGE[i]}: indeholder {hit} ({ord_}, {slags})")
+                elif _indeholder(tekst, ord_):
                     ud.append(f"{DAGE[i]}: indeholder {ord_} ({slags})")
             if 1 <= i <= 5 and int(ret.get("tid_min") or 0) > r["max_tid"]:
                 ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r['max_tid']} på hverdage)")
@@ -1272,9 +1279,14 @@ class Madplan:
             kr = {"hverdag": 15, "hygge": 25, "gourmet": 45}.get(r.get("niveau", "hverdag"), 15)
             dele.append(f"BUDGET: sigt efter højst {kr} kr pr. person pr. ret.")
         if r["allergier"]:
-            dele.append(f"ALLERGI – må ALDRIG indgå i nogen ret, heller ikke i saucer o.l.: {', '.join(r['allergier'])}.")
+            dele.append(
+                "ALLERGI – må ALDRIG indgå i nogen ret, heller ikke i saucer, marinader, dej o.l.: "
+                + "; ".join(_forklar(o, g) for o, g in allergener.opdel(r["allergier"]))
+                + ". Brug i stedet varianter, der er fri for det, og skriv det i varens navn "
+                "(fx 'S:glutenfri pasta', 'S:laktosefri fløde', 'S:majstortillas')."
+            )
         if r["undgaa"]:
-            dele.append(f"Familien vil ikke have: {', '.join(r['undgaa'])}.")
+            dele.append(f"Familien vil ikke have: {'; '.join(_forklar(o, g) for o, g in allergener.opdel(r['undgaa']))}.")
         if r["oeko"]:
             dele.append("Vælg økologiske varer, når prisforskellen er lille (skriv fx 'S:økologisk letmælk').")
         if r["faste_dage"]:
@@ -1629,6 +1641,11 @@ def vare_tekst(v: dict) -> str:
 def _basis(ing: dict) -> bool:
     """Basisvare (salt, olie, mel …): AI'en skal mene det, og navnet skal passe."""
     return bool(ing.get("basis")) and soeg.er_basis(str(ing.get("navn", "")))
+
+
+def _forklar(ord_: str, g: str | None) -> str:
+    """'gluten' -> 'gluten (dvs. ingen hvede, pasta, …)', så selv en svag AI forstår det."""
+    return f"{ord_} (dvs. ingen {', '.join(allergener.varer(g))})" if g else ord_
 
 
 def _indeholder(tekst: str, ord_: str) -> bool:
