@@ -59,13 +59,26 @@ NIVEAU_TEKST = {
     "(fx mørbrad, and, god fisk) og et godt tilbehør. Prisen er mindre vigtig end smagen. ",
 }
 # Ord, der afgør rettens hovedprotein eller -type (til tjek for gentagelser).
+# rettype: (ord, undtagelser) - "=ord" skal stå alene (fx "=sej" må ikke ramme "sejt").
 RETTYPER = {
-    "kylling": ("kylling",),
-    "oksekød": ("okse", "bøf", "ungkvæg", "kalv"),
-    "svinekød": ("gris", "svin", "flæsk", "bacon", "pølse", "medister", "skinke", "frikadelle", "kotelet"),
-    "fisk": ("laks", "torsk", "sej", "fisk", "rødspætte", "rejer", "tun", "makrel", "sild"),
-    "pasta": ("pasta", "spaghetti", "penne", "lasagne", "fusilli", "tagliatelle", "makaroni"),
+    "kylling": (["kylling"], []),
+    "oksekød": (["okse", "bøf", "ungkvæg", "kalv"], []),
+    "svinekød": (
+        ["gris", "svin", "flæsk", "bacon", "pølse", "medister", "skinke", "frikadelle", "kotelet"],
+        ["kalkunbacon", "kyllingeskinke", "kalkunskinke", "kyllingepølse", "kalkunpølse", "vegetarpølse",
+         "vegetarfrikadelle", "grissini"],
+    ),
+    "fisk": (allergener.FISK, allergener.FISK_UNDTAG),
+    "pasta": (
+        ["pasta", "spaghetti", "penne", "lasagne", "fusilli", "tagliatelle", "makaroni"],
+        ["tomatpasta", "karrypasta", "currypasta", "chilipasta", "sesampasta", "misopasta", "hvidløgspasta",
+         "ingefærpasta"],
+    ),
 }
+# Fyldord, der ikke siger noget om retten ("Lasagne med salat" må ikke passe på "Kylling med ris").
+_FYLDORD = {"med", "og", "til", "fra", "den", "det", "der", "som", "på", "hjemmelavet", "hjemmelavede", "lækker",
+            "nem", "hurtig", "god", "gode", "dag", "aften", "fredag", "lørdag", "søndag", "mandag", "tirsdag",
+            "onsdag", "torsdag", "ret", "retter", "mad"}
 # En vare byttes til en anden butik, når den er mindst så meget billigere pr. kg/stk.
 MIN_BESPARELSE = 0.10
 # Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
@@ -229,7 +242,7 @@ class Madplan:
                 ud.append(f"Kun {antal} {navn} (ønsket: {r[felt]})")
         for fast in r["faste_dage"]:
             i, ret_navn = int(fast.get("dag", -1)), str(fast.get("ret", "")).lower()
-            ord_ = [o for o in re.findall(r"\w{3,}", ret_navn)]
+            ord_ = [_stamme(o) for o in re.findall(r"\w{3,}", ret_navn) if o not in _FYLDORD]
             if 0 <= i < len(retter) and ord_ and not retter[i].get("fjernet"):
                 if not any(o in retter[i].get("navn", "").lower() for o in ord_):
                     ud.append(f"{DAGE[i]}: skulle være {fast['ret']}")
@@ -1053,6 +1066,7 @@ class Madplan:
         """Slår AI'ens søgeord op for hele ugen på én gang, så samme vare bliver samme produkt,
         og pakningen vælges efter den samlede mængde."""
         for ret in retter:
+            _ret_slags(ret)
             for ing in ret.get("ingredienser", []):
                 # AI'en giver af og til et forkert tilbuds-id (fx clementiner til nudler) - så søges der i stedet.
                 v = str(ing.get("vare") or "")
@@ -1661,11 +1675,33 @@ def _linjer(tekst: str) -> list[str]:
     return [l for l in (re.sub(r"^\s*(?:[-*•–]|\d+[.)])\s*", "", x).strip() for x in str(tekst or "").splitlines()) if l]
 
 
+def _stamme(ord_: str) -> str:
+    """'tacos' -> 'taco', 'frikadeller' -> 'frikadell', så ental og flertal passer sammen."""
+    for hale in ("erne", "ene", "er", "es", "e", "s", "r"):
+        if ord_.endswith(hale) and len(ord_) - len(hale) >= 3:
+            return ord_[: -len(hale)]
+    return ord_
+
+
+def _ret_slags(ret: dict) -> None:
+    """Retter AI'ens vegetar/fisk ud fra varerne - en svag AI kalder fx en ret med bacon vegetar."""
+    ing = [str(x.get("navn", "")) for x in ret.get("ingredienser", []) if isinstance(x, dict)]
+    if not ing:
+        return
+    koed = any(allergener.er_koed(v) for v in ing)
+    fisk_smag = any(allergener.er_fisk(v, smag_taeller=True) for v in ing)
+    ret["vegetar"] = not koed and not fisk_smag
+    # Fiskeret: fisk/skaldyr som vare (ikke kun fiskesauce), og ikke en kødret med lidt rejer på.
+    hoved = " ".join([str(ret.get("hovedvare") or ""), ing[0]])
+    fisk = any(allergener.er_fisk(v) for v in ing)
+    ret["fisk"] = fisk and (not koed or bool(allergener.er_fisk(hoved)))
+
+
 def _rettype(ret: dict) -> str | None:
     """Rettens hovedprotein/-type ud fra navnet (og ellers hovedingrediensen)."""
     for kilde in (str(ret.get("navn", "")).lower(), str((ret.get("ingredienser") or [{}])[0].get("navn", "")).lower()):
-        for t, ord_ in RETTYPER.items():
-            if any(o in kilde for o in ord_):
+        for t, (ord_, undtag) in RETTYPER.items():
+            if allergener.find(kilde, ord_, undtag):
                 return t
     return None
 

@@ -241,9 +241,14 @@ def varer(navn: str) -> list[str]:
 def rammer(tekst: str, navn: str) -> str | None:
     """Første vare fra gruppen i tekst (én ingrediens), eller None hvis den er fri for det."""
     ord_, undtag, fri = GRUPPER[navn]
-    t = " " + str(tekst or "").lower() + " "
-    if any(f in t for f in fri):
+    if any(f in str(tekst or "").lower() for f in fri):
         return None
+    return find(tekst, ord_, undtag)
+
+
+def find(tekst: str, ord_: list[str], undtag: list[str] = ()) -> str | None:
+    """Første ord fra listen i tekst; undtagelser (fx 'tomatpasta') tæller ikke, '=ord' skal stå alene."""
+    t = " " + str(tekst or "").lower() + " "
     for u in sorted(undtag, key=len, reverse=True):
         t = t.replace(u, " ")
     for o in ord_:
@@ -253,3 +258,26 @@ def rammer(tekst: str, navn: str) -> str | None:
         elif o in t:
             return o
     return None
+
+
+# Kød og fisk - så koden selv kan se, om en ret er vegetar- eller fiskeret (en svag AI tager fejl).
+_KOED = GRUPPER["rødt kød"][0] + GRUPPER["fjerkræ"][0] + ["kød", "frikadelle", "kotelet", "kebab", "gyros", "spegepølse"]
+_KOED_UNDTAG = GRUPPER["rødt kød"][1] + ["kødfri", "sojakød", "vegetarkød", "plantekød", "vegetarfrikadelle"]
+FISK = GRUPPER["fisk"][0] + GRUPPER["skaldyr"][0] + GRUPPER["bløddyr"][0]
+# Smagsgivere, der ikke gør retten til en fiskeret (men heller ikke vegetar).
+FISK_UNDTAG = ["fiskesauce", "fiskefond", "østerssauce", "ansjos", "rejechips", "østershat", "østerssvamp"]
+_IKKE_KOED = ("vegetar", "vegansk", "plantebaseret", "plantefars")
+
+
+def er_koed(tekst: str) -> str | None:
+    if any(f in str(tekst or "").lower() for f in _IKKE_KOED):
+        return None
+    return find(tekst, _KOED, _KOED_UNDTAG)
+
+
+def er_fisk(tekst: str, smag_taeller: bool = False) -> str | None:
+    """Fisk/skaldyr i teksten. smag_taeller=True: også fiskesauce o.l. (til vegetar-tjekket)."""
+    if any(f in str(tekst or "").lower() for f in _IKKE_KOED):
+        return None
+    return find(tekst, FISK + (["fiskesauce", "fiskefond", "østerssauce"] if smag_taeller else []),
+                [] if smag_taeller else FISK_UNDTAG)
