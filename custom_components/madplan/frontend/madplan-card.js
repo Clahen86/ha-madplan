@@ -1371,7 +1371,7 @@ class MadplanPanel extends MadplanCard {
         <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:leaf"></ha-icon></span><span class="rnavn2"><b>Økologi</b><small>Når prisforskellen er lille</small></span>
           <button class="kontakt ${r.oeko ? "til" : ""}" data-h="rtoggle" data-felt="oeko" role="switch" aria-checked="${r.oeko ? "true" : "false"}" aria-label="Økologi"><span></span></button></div>
       </section>
-      ${liste("allergier", "mdi:alert-octagon-outline", "Allergier", "Må aldrig indgå", "Fx nødder", "roed")}
+      ${liste("allergier", "mdi:alert-octagon-outline", "Allergier", "Må aldrig indgå. Madplan fanger de fleste varer, men tjek altid varedeklarationen ved alvorlig allergi.", "Fx gluten, laktose, nødder", "roed")}
       ${liste("undgaa", "mdi:thumb-down-outline", "Undgå", "Det vil I ikke have", "Fx svampe eller lever")}
       ${liste("koekkener", "mdi:earth", "Yndlingskøkkener", "Ugen varieres mellem dem", "Fx italiensk, asiatisk")}
       <section class="rkort">

@@ -16,16 +16,22 @@ GRUPPER: dict[str, tuple[list[str], list[str], list[str]]] = {
          "lasagne", "tagliatelle", "pappardelle", "tortellini", "ravioli", "gnocchi", "nudler", "udon", "ramen",
          "tortilla", "wrap", "pita", "naan", "brød", "bolle", "flute", "baguette", "ciabatta", "focaccia", "rasp",
          "panko", "paneret", "couscous", "bulgur", "seitan", "sojasauce", "hoisin", "teriyaki", "=øl", "butterdej",
-         "tærtedej", "pizzadej", "pizzabund", "grissini", "kiks", "pandekage", "croutons", "orzo"],
+         "tærtedej", "pizzadej", "pizzabund", "grissini", "kiks", "pandekage", "croutons", "orzo",
+         # Færdigvarer, der næsten altid har hvede/rasp i.
+         "medister", "pølse", "frikadelle", "kebab", "gyros", "pizza", "lasagneplader", "burgerbolle",
+         "pålægschokolade", "bouillonterning", "panerede", "nuggets", "schnitzel", "fiskefilet pane"],
         ["boghvede", "majsmel", "rismel", "kartoffelmel", "mandelmel", "kikærtemel", "kokosmel", "melon", "karamel",
          "risnudler", "glasnudler", "majstortilla", "majs tortilla", "tamari", "risnudel", "melis", "tomatpasta",
          "karrypasta", "currypasta", "chilipasta", "sesampasta", "misopasta", "hvidløgspasta", "ingefærpasta",
-         "raspet", "grapetomat"],
+         "raspet", "grapetomat", "pizzasauce", "pizzatomat", "pizzakrydderi"],
         ["glutenfri", "uden gluten"],
     ),
     "mælk": (
         ["mælk", "fløde", "smør", "ost", "parmesan", "mozzarella", "feta", "cheddar", "mascarpone", "ricotta",
          "halloumi", "brie", "gouda", "burrata", "pecorino", "grana padano", "yoghurt", "creme fraiche",
+         # Færdigvarer med mælk i.
+         "tzatziki", "raita", "pesto", "bearnaise", "hollandaise", "flødekartof", "gratin", "ostesauce",
+         "kartoffelmos", "pommes duchesse", "ostehaps",
          "crème fraîche", "cremefraiche", "skyr", "kvark", "ymer", "valle", "bechamel", "ghee", "smørdej"],
         ["kokosmælk", "havremælk", "mandelmælk", "sojamælk", "rismælk", "kokosfløde", "havrefløde", "sojafløde",
          "jordnøddesmør", "peanutbutter", "nøddesmør", "mandelsmør", "smørbønne", "plantesmør", "kokosyoghurt",
@@ -312,10 +318,17 @@ BYT: dict[str, list[tuple[tuple[str, ...], str]]] = {
 }
 
 
+# Færdigvarer med skjult indhold: varen kan ikke bare byttes, så hele retten byttes.
+SAMMENSAT = ["flødekartof", "gratin", "ostesauce", "kartoffelmos", "pommes duchesse", "ostehaps", "tzatziki", "raita",
+             "pesto", "bearnaise", "hollandaise", "medister", "pølse", "frikadelle", "kebab", "gyros", "pizza",
+             "burgerbolle", "pålægschokolade", "bouillonterning", "panerede", "nuggets", "schnitzel", "smørdej",
+             "butterdej"]
+
+
 def byt(navn: str, allergi: str, g: str) -> str | None:
     """Fri variant af en vare ('Cheasy skyr', 'Laktose', 'mælk' -> 'laktosefri skyr'), ellers None."""
-    if not rammer(navn, g):
-        return None
+    if not rammer(navn, g) or find(navn, SAMMENSAT):
+        return None  # færdigvarer (flødekartofler, medister …) kan ikke byttes - så byttes retten
     noegle = "laktose" if g == "mælk" and "laktose" in str(allergi).lower() else g
     for ord_, ny in BYT.get(noegle, []):
         if find(navn, list(ord_), GRUPPER[g][1]):
