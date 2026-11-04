@@ -281,3 +281,43 @@ def er_fisk(tekst: str, smag_taeller: bool = False) -> str | None:
         return None
     return find(tekst, FISK + (["fiskesauce", "fiskefond", "østerssauce"] if smag_taeller else []),
                 [] if smag_taeller else FISK_UNDTAG)
+
+
+# Varer, der kan byttes til en fri variant uden et nyt AI-kald: (ord der rammer, ny vare).
+# Mælk byttes kun ved laktose - ved mælkeallergi er laktosefri ikke nok, så der byttes ret i stedet.
+BYT: dict[str, list[tuple[tuple[str, ...], str]]] = {
+    "gluten": [
+        (("lasagne",), "glutenfri lasagneplader"),
+        (("pasta", "spaghetti", "penne", "fusilli", "makaroni", "tagliatelle", "pappardelle", "orzo"),
+         "glutenfri pasta"),
+        (("tortilla", "wrap"), "majstortillas"),
+        (("pizzadej", "pizzabund"), "glutenfri pizzabund"),
+        (("rasp", "panko"), "glutenfri rasp"),
+        (("hvedemel", "mel"), "glutenfri mel"),
+        (("brød", "bolle", "flute", "baguette", "ciabatta", "focaccia", "pita", "naan"), "glutenfri brød"),
+        (("sojasauce",), "tamari"),
+        (("nudler", "udon", "ramen"), "risnudler"),
+        (("couscous", "bulgur"), "quinoa"),
+    ],
+    "laktose": [
+        (("piskefløde", "madlavningsfløde", "fløde"), "laktosefri fløde"),
+        (("creme fraiche", "crème fraîche", "cremefraiche"), "laktosefri creme fraiche"),
+        (("mælk",), "laktosefri mælk"),
+        (("skyr",), "laktosefri skyr"),
+        (("yoghurt",), "laktosefri yoghurt"),
+        (("mozzarella",), "laktosefri mozzarella"),
+        (("ost", "cheddar", "gouda", "parmesan", "pecorino", "grana padano"), "laktosefri revet ost"),
+        (("smør",), "laktosefri smør"),
+    ],
+}
+
+
+def byt(navn: str, allergi: str, g: str) -> str | None:
+    """Fri variant af en vare ('Cheasy skyr', 'Laktose', 'mælk' -> 'laktosefri skyr'), ellers None."""
+    if not rammer(navn, g):
+        return None
+    noegle = "laktose" if g == "mælk" and "laktose" in str(allergi).lower() else g
+    for ord_, ny in BYT.get(noegle, []):
+        if find(navn, list(ord_), GRUPPER[g][1]):
+            return ny
+    return None

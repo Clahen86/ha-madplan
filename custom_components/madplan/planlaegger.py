@@ -79,6 +79,8 @@ RETTYPER = {
 _FYLDORD = {"med", "og", "til", "fra", "den", "det", "der", "som", "på", "hjemmelavet", "hjemmelavede", "lækker",
             "nem", "hurtig", "god", "gode", "dag", "aften", "fredag", "lørdag", "søndag", "mandag", "tirsdag",
             "onsdag", "torsdag", "ret", "retter", "mad"}
+# Højst så mange retter byttes automatisk, når de bryder en allergi (ét AI-kald hver).
+MAKS_ALLERGI_BYT = 3
 # En vare byttes til en anden butik, når den er mindst så meget billigere pr. kg/stk.
 MIN_BESPARELSE = 0.10
 # Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
@@ -292,6 +294,7 @@ class Madplan:
         avis ikke er ude endnu (fx REMA og Lidl, der skifter søndag)."""
         if self.optaget:
             return
+        foer = self.plan.get("lavet")
         async with self._laas:
             try:
                 self._status("Henter tilbud og laver madplan …")
@@ -382,6 +385,13 @@ class Madplan:
             except Exception as e:  # noqa: BLE001 - vises i status på dashboardet
                 _LOGGER.exception("Madplan fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
+                return
+        if self.plan.get("lavet") == foer:
+            return  # ingen ny plan (fx venter på næste uges tilbud)
+        # Bryder en ret stadig en allergi (fx halloumi), byttes den - højst 3 retter, så AI-kvoten skånes.
+        for dag in self._allergi_dage()[:MAKS_ALLERGI_BYT]:
+            _LOGGER.info("Madplan: %s bryder en allergi - byttes", DAGE[dag - 1])
+            await self.async_byt_ret(dag)
 
     async def async_byt_ret(self, dag: int) -> None:
         if self.optaget or not self.plan.get("retter") or not 1 <= dag <= 7:
@@ -1066,6 +1076,7 @@ class Madplan:
         """Slår AI'ens søgeord op for hele ugen på én gang, så samme vare bliver samme produkt,
         og pakningen vælges efter den samlede mængde."""
         for ret in retter:
+            self._byt_allergener(ret)
             _ret_slags(ret)
             for ing in ret.get("ingredienser", []):
                 # AI'en giver af og til et forkert tilbuds-id (fx clementiner til nudler) - så søges der i stedet.
@@ -1092,6 +1103,8 @@ class Madplan:
                 v = _soege_noegle(ing.get("vare"))
                 if v not in fundet:
                     continue
+                if ing.get("byttet") and not self._er_fri_vare(fundet[v], v[2:], dato):
+                    continue  # butikken har ikke den frie variant - bliver stående som søgeord (ca.-pris ukendt)
                 ing["soeg"], ing["vare"] = v[2:], fundet[v]
         # Den rigtige pakningsstørrelse frem for AI'ens gæt - både for tilbud og katalogvarer.
         for ret in retter:
@@ -1115,6 +1128,42 @@ class Madplan:
             hv = str(ret.get("hovedvare") or "").strip()
             if hv.startswith("S:"):
                 ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)
+
+    def _byt_allergener(self, ret: dict) -> None:
+        """Bytter varer, der bryder en allergi, til en fri variant (pasta -> glutenfri pasta) uden AI-kald."""
+        grupper = [(o, g) for o, g in allergener.opdel(self.regler["allergier"]) if g]
+        for ing in ret.get("ingredienser", []):
+            if not isinstance(ing, dict):
+                continue
+            for allergi, g in grupper:
+                if ny := allergener.byt(str(ing.get("navn", "")), allergi, g):
+                    _LOGGER.debug("Allergi: %s byttes til %s", ing.get("navn"), ny)
+                    ing["navn"], ing["vare"], ing["byttet"] = ny, f"S:{ny}", True
+
+    def _er_fri_vare(self, vare_id: Any, soegeord: str, dato: datetime.date) -> bool:
+        """Er den fundne vare også fri for det (står 'glutenfri'/'laktosefri' i navnet)?"""
+        fri = [m for m in ("glutenfri", "laktosefri") if m in soegeord.lower()]
+        if not fri:
+            return True
+        info = self._slaa_op(vare_id, dato)
+        tekst = " ".join(str(x) for x in info[:2]).lower() if info else ""
+        return all(m in tekst or (m == "laktosefri" and "lactofree" in tekst) for m in fri)
+
+    def _allergi_dage(self) -> list[int]:
+        """Dage (1-7), hvor planen stadig bryder en allergi."""
+        dage = []
+        for i, ret in enumerate(self.plan.get("retter") or []):
+            if ret.get("fjernet") or ret.get("rester_fra") is not None:
+                continue
+            ing = [str(x.get("navn", "")) for x in ret.get("ingredienser", []) if isinstance(x, dict)]
+            tekst = " ".join([ret.get("navn", "")] + ing).lower()
+            for o, g in allergener.opdel(self.regler["allergier"]):
+                if (g and any(allergener.rammer(v, g) for v in ing or [ret.get("navn", "")])) or (
+                    not g and _indeholder(tekst, o)
+                ):
+                    dage.append(i + 1)
+                    break
+        return dage
 
     @property
     def er_rema(self) -> bool:
