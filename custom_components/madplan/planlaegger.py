@@ -958,12 +958,17 @@ class Madplan:
             self._salling_fejl = True
 
     async def _spoerg(self, opgave: str, byg: Callable[[bool], str]) -> dict:
-        """Spørg med navnelisten; bliver svaret for langt, så én gang til uden (som før listen kom)."""
+        """Spørg med navnelisten; bliver svaret for langt, så én gang til uden (som før listen kom).
+
+        Prompten bygges uden for HA's event loop: med andre butikker slår sammenligningen hver vare op i alle
+        butikkers tilbud, og det kan tage mærkbar tid (især på en Raspberry Pi)."""
         try:
-            return await self._spoerg_ai(opgave, byg(True))
+            instruktioner = await self.hass.async_add_executor_job(byg, True)
+            return await self._spoerg_ai(opgave, instruktioner)
         except ForLangtSvar:
             _LOGGER.warning("%s: svaret blev for langt - prøver uden navnelisten", opgave)
-            return await self._spoerg_ai(opgave, byg(False) + "\nHold svaret ekstra kort.")
+            instruktioner = await self.hass.async_add_executor_job(byg, False)
+            return await self._spoerg_ai(opgave, instruktioner + "\nHold svaret ekstra kort.")
 
     async def _spoerg_ai(self, opgave: str, instruktioner: str) -> dict:
         """Kalder ai_task; prøver igen ved travlhed (503/429). Hvert forsøg er et kald."""

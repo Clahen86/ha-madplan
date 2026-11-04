@@ -56,6 +56,11 @@ Gemini's gratis plan har et loft på antal kald om dagen. Almindelig brug ligger
 
 ### Med HACS
 
+1. Åbn HACS og søg efter **Madplan**.
+2. Installer, og genstart Home Assistant.
+
+Kan du ikke finde den i søgningen, kan du tilføje den som brugerdefineret repository:
+
 1. Åbn HACS, tryk på de tre prikker og vælg **Brugerdefinerede repositories**.
 2. Tilføj `https://github.com/Clahen86/ha-madplan` som type **Integration**.
 3. Søg efter **Madplan**, installer, og genstart Home Assistant.
