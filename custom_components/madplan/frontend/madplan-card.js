@@ -811,7 +811,10 @@ class MadplanCard extends HTMLElement {
     const pa = (this._hass.states[this._valgt] || {}).attributes || {};
     const md = liste === "varer" ? (pa.madspild || {})[v.uid] : null;
     const byttet = liste === "varer" && (pa.madspild_udsolgt || []).includes(v.uid);
-    const mdTekst = byttet
+    const rest = liste === "varer" && (pa.madspild_rest || []).includes(v.uid);
+    const mdTekst = rest
+      ? `<span class="mdtag graa"><ha-icon icon="mdi:cart-plus"></ha-icon>Resten – almindelig pris</span>`
+      : byttet
       ? `<span class="mdtag ud"><ha-icon icon="mdi:swap-horizontal"></ha-icon>Madspild udsolgt – almindelig pris</span>`
       : md
       ? md.udsolgt

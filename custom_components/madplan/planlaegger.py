@@ -1239,6 +1239,10 @@ class Madplan:
             if hv.startswith("S:"):
                 ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)
             self._find_billede(ret, dato)
+            # Madspild: den almindelige vare, hvis der er færre på lager, end retten skal bruge.
+            for ing in ret.get("ingredienser", []):
+                if str(ing.get("vare") or "").startswith("T:madspild-"):
+                    ing["reserve"] = self._find_vare(f"S:{ing.get('navn', '')}", dato, None)
 
     def _billede(self, ret: dict, dato: datetime.date) -> str | None:
         hv = self._slaa_op(ret.get("hovedvare"), dato)
@@ -1695,6 +1699,7 @@ class Madplan:
                 f["anslaaet"] = self._ca(ing["vare"])
                 f["basis"] = f["basis"] and _basis(ing)
                 f["madspild_udsolgt"] = f.get("madspild_udsolgt") or bool(ing.get("madspild_udsolgt"))
+                f["reserve"] = f.get("reserve") or ing.get("reserve")
                 if not _basis(ing) and (pakke > 0 or ing.get("pakke_ukendt")):
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
@@ -1735,6 +1740,7 @@ class Madplan:
                     if key.startswith("T:madspild-") and (self.tilbud.get(key[2:]) or {}).get("madspild") else None,
                 }
             )
+        varer += self._del_madspild(varer, forbrug, start)
         varer.sort(key=lambda v: (v["basis"], bool(v.get("butik")), not v["tilbud"], v["navn"]))
         self.plan["varer"] = varer
         self.plan["personer"] = n
@@ -1743,6 +1749,27 @@ class Madplan:
         self.plan["handl_senest"] = min((t["til"] for k, t in self.tilbud.items() if k in brugt and t.get("til")), default=None)
         self.plan["total_alle"] = round(sum(v["pris"] for v in varer))
         self._totaler()
+
+    def _del_madspild(self, varer: list[dict], forbrug: dict[str, dict], start: datetime.date) -> list[dict]:
+        """Færre madspild-varer på lager end retten skal bruge: de nedsatte på én linje, resten som almindelig vare."""
+        gamle = {v["key"]: v for v in self.plan.get("varer", [])}
+        nye = []
+        for v in varer:
+            md = v.get("madspild")
+            if not md or md.get("udsolgt") or not isinstance(md.get("stk"), (int, float)) or v["antal"] <= md["stk"]:
+                continue
+            info = self._slaa_op(forbrug[v["key"]].get("reserve"), start)
+            if not info:
+                continue  # ingen almindelig vare fundet: kortet viser "Kun X stk"
+            navn, strr, pris, _, tilbud = info
+            rest = v["antal"] - int(md["stk"])
+            enhed = v["pris"] / v["antal"]
+            v["antal"], v["pris"] = int(md["stk"]), round(int(md["stk"]) * enhed, 2)
+            key = f"{v['key']}#rest"
+            nye.append({**v, "key": key, "navn": navn, "str": strr, "antal": rest, "pris": round(rest * pris, 2),
+                        "tilbud": tilbud, "madspild": None, "madspild_rest": True,
+                        "hjemme": gamle.get(key, {}).get("hjemme", False), "kurv": gamle.get(key, {}).get("kurv", False)})
+        return nye
 
     def _totaler(self) -> None:
         varer = self.plan.get("varer", [])
