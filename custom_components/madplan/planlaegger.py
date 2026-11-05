@@ -515,7 +515,6 @@ class Madplan:
     def _beregn_en_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str], oenske: str) -> dict:
         """Mængder, og hvad der skal købes, for én ret. Ingen AI her."""
         linjer, varer = self._koeb_til_ret(ret, n, dato, har)
-        hv = self._slaa_op(ret.get("hovedvare"), dato)
         return {
             "id": f"{int(time.time())}",
             "lavet": dt_util.now().isoformat(timespec="minutes"),
@@ -523,7 +522,7 @@ class Madplan:
             "kort": ret.get("kort", ""),
             "tid": ret.get("tid_min"),
             "sundhed": ret.get("sundhed", ""),
-            "billede": hv[3] if hv else None,
+            "billede": self._billede(ret, dato),
             "personer": n,
             "har": har,
             "oenske": oenske,
@@ -1217,6 +1216,27 @@ class Madplan:
             hv = str(ret.get("hovedvare") or "").strip()
             if hv.startswith("S:"):
                 ret["hovedvare"] = fundet.get(_soege_noegle(hv)) or self._find_vare(hv, dato, None)
+            self._find_billede(ret, dato)
+
+    def _billede(self, ret: dict, dato: datetime.date) -> str | None:
+        hv = self._slaa_op(ret.get("hovedvare"), dato)
+        if hv and _godt_billede(hv[3]):
+            return hv[3]
+        reserve = self._slaa_op(ret.get("billede_vare"), dato)
+        return reserve[3] if reserve and _godt_billede(reserve[3]) else None
+
+    def _find_billede(self, ret: dict, dato: datetime.date) -> None:
+        """Har hovedvaren intet billede (fx madspild), så et billede af samme slags vare fra kataloget."""
+        ret.pop("billede_vare", None)
+        info = self._slaa_op(ret.get("hovedvare"), dato)
+        if info and _godt_billede(info[3]):
+            return
+        navne = ([info[0]] if info else []) + [str(i.get("navn") or "") for i in ret.get("ingredienser", [])[:3]]
+        for navn in filter(None, navne):
+            vid = self._find_vare(f"S:{navn}", dato, None)
+            if (i2 := self._slaa_op(vid, dato)) and _godt_billede(i2[3]):
+                ret["billede_vare"] = vid
+                return
 
     def _byt_allergener(self, ret: dict) -> None:
         """Bytter varer, der bryder en allergi, til en fri variant (pasta -> glutenfri pasta) uden AI-kald."""
@@ -1656,9 +1676,7 @@ class Madplan:
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
                     pris += andel * enhedspris
-            hv = self._slaa_op(ret.get("hovedvare"), start)
-            # Salling's tomme skabelon (".../image") er intet billede.
-            ret["_billede"] = hv[3] if hv and hv[3] and not str(hv[3]).rstrip("/").endswith("/image") else None
+            ret["_billede"] = self._billede(ret, start)
             ret["_pris"] = round(pris)
             ret["_linjer"] = linjer
             ret["_dato"] = (start + datetime.timedelta(days=i)).isoformat()
@@ -1785,6 +1803,11 @@ class Madplan:
             }
         )
         self.historik = h[-HISTORIK_UGER:]
+
+
+def _godt_billede(url: Any) -> bool:
+    """Et rigtigt billede - ikke Salling's tomme skabelon (".../upload/…/image")."""
+    return bool(url) and not str(url).rstrip("/").endswith("/image")
 
 
 def vare_tekst(v: dict) -> str:
