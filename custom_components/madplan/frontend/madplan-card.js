@@ -816,7 +816,9 @@ class MadplanCard extends HTMLElement {
       : md
       ? md.udsolgt
         ? `<span class="mdtag ud"><ha-icon icon="mdi:close-circle-outline"></ha-icon>Udsolgt – køb den almindelige</span>`
-        : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>${md.pct ? `−${esc(md.pct)} % · ` : ""}Nedsat i dag · ${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${this._mdBrug(md)}`
+        : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>Madspild${md.pct ? ` −${esc(md.pct)} %` : ""}</span><span class="mdtag graa">${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${
+          Number(antal || 1) > Number(md.stk) ? `<span class="mdtag ud"><ha-icon icon="mdi:alert-outline"></ha-icon>Kun ${esc(md.stk)} stk – køb resten almindelig</span>` : ""
+        }${this._mdBrug(md)}`
       : "";
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
     const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ")
@@ -1127,6 +1129,8 @@ const CSS = `
   .mdtag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px;
     background: rgba(245, 158, 11, 0.16); color: #b45309; }
   .mdtag ha-icon { --mdc-icon-size: 13px; }
+  .mdtag { white-space: nowrap; }
+  .mdtag.graa { background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .mdtag.ud { background: rgba(217, 45, 32, 0.14); color: #b42318; }
   .mdtag.frys { background: rgba(56, 152, 214, 0.15); color: #0b5f8a; }
   .kontakt:disabled { opacity: 0.4; cursor: default; }

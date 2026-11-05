@@ -86,9 +86,12 @@ Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Sall
 
 👉 **[Guide: hent en Salling-nøgle trin for trin](docs/guide-salling.md)** – også med *Food Waste API* til madspild.
 
+<p align="center"><img src="docs/madspild.png" alt="Indkøbslisten med madspild-varer: rabat, antal på lager og hvornår de bruges" width="360"></p>
+
 **Madspild:** slå *Madspild* til under **Regler**. Planen bruger så 1-2 ekstra nedsatte varer fra din Salling-butik i de første 2 dage (kød og fisk kan fryses og bruges senere). Varerne kan blive udsolgt, så:
 
 - Retten virker altid med den almindelige vare – madspild-varen er en bonus.
+- Er der færre på lager, end retten skal bruge, står der fx *Kun 1 stk – køb resten almindelig*.
 - Indkøbslisten viser fx *−50 % · Nedsat i dag · 3 stk kl. 14:30* og *Bruges i dag* (eller *Frys samme dag*, hvis kød/fisk først bruges senere).
 - Den tjekker hver halve time (kl. 7-21:30). Bliver en vare udsolgt, byttes den automatisk til den almindelige vare med rigtig pris, og linjen får mærket *Madspild udsolgt – almindelig pris*.
 - Madspild bruges kun, når der handles i dag eller i morgen. Det koster ingen ekstra AI-kald.
