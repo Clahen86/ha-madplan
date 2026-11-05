@@ -269,6 +269,9 @@ async def _registrer_kort(hass: HomeAssistant) -> None:
         return
     mappe = Path(__file__).parent
     version = json.loads(await hass.async_add_executor_job((mappe / "manifest.json").read_text))["version"]
+    # Også filens tid, så browseren henter kortet igen efter en rettelse uden ny version.
+    tid = int(await hass.async_add_executor_job(lambda: (mappe / "frontend" / "madplan-card.js").stat().st_mtime))
+    version = f"{version}-{tid}"
     await hass.http.async_register_static_paths(
         [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True)]
     )

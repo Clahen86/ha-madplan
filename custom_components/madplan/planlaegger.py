@@ -1657,7 +1657,8 @@ class Madplan:
                     f["andel"] += andel
                     pris += andel * enhedspris
             hv = self._slaa_op(ret.get("hovedvare"), start)
-            ret["_billede"] = hv[3] if hv else None
+            # Salling's tomme skabelon (".../image") er intet billede.
+            ret["_billede"] = hv[3] if hv and hv[3] and not str(hv[3]).rstrip("/").endswith("/image") else None
             ret["_pris"] = round(pris)
             ret["_linjer"] = linjer
             ret["_dato"] = (start + datetime.timedelta(days=i)).isoformat()

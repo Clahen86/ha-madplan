@@ -225,7 +225,8 @@ async def hent_salling_madspild(hass: HomeAssistant, noegle: str, butik_id: str)
                 "til": o.get("endTime"),
                 "opdateret": o.get("lastUpdate"),
                 "fryses": bool(_FRYSES.search(f"{kategori} {navn}")),
-                "billede": p.get("image"),
+                # Uden eget billede svarer Salling med en tom skabelon (".../upload/…/image").
+                "billede": p.get("image") if p.get("image") and not str(p["image"]).rstrip("/").endswith("/image") else None,
             }
         )
     return varer

@@ -56,7 +56,16 @@ class MadplanCard extends HTMLElement {
     this._hass = hass;
     if (this._udseende === undefined) this._hentUdseende();
     const planer = this._planer();
-    if (!this._valgt || !planer.includes(this._valgt)) this._valgt = planer[0];
+    if (!this._valgt || !planer.includes(this._valgt)) {
+      // Den butik, man sidst så på, også når Madplan åbnes igen.
+      let sidst = null;
+      try {
+        sidst = localStorage.getItem("madplan_butik");
+      } catch (e) {
+        /* privat vindue */
+      }
+      this._valgt = planer.includes(sidst) ? sidst : planer[0];
+    }
     const p = hass.states[this._valgt];
     if (this._cfg.vis_indkob && p && this._listeNoegle(p.attributes) !== this._lister) this._abonner(p.attributes);
     // Tegn kun igen, når madplanens egne enheder ændrer sig.
@@ -157,6 +166,11 @@ class MadplanCard extends HTMLElement {
     switch (h) {
       case "butik":
         this._valgt = el.dataset.id;
+        try {
+          localStorage.setItem("madplan_butik", this._valgt);
+        } catch (e) {
+          /* privat vindue: huskes ikke */
+        }
         this._dagValgt = null;
         if (this._hass.states[this._valgt]) this._abonner(this._hass.states[this._valgt].attributes);
         break;
