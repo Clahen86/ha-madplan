@@ -39,6 +39,7 @@ REGLER_SKEMA = vol.Schema(
     {
         vol.Optional("budget"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=0, max=10000))),
         vol.Optional("oeko"): cv.boolean,
+        vol.Optional("madspild"): cv.boolean,
         vol.Optional("allergier"): _LISTE,
         vol.Optional("undgaa"): _LISTE,
         vol.Optional("favoritter"): _LISTE,
@@ -303,6 +304,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
             entry.async_create_background_task(hass, madplan.async_ny_plan(), "madplan_sondag")
 
     entry.async_on_unload(async_track_time_change(hass, _automatisk, hour=[7, 10], minute=0, second=0))
+
+    @callback
+    def _madspild(_now) -> None:
+        # Er de nedsatte varer stadig der? Hver halve time i butikkernes åbningstid.
+        entry.async_create_background_task(hass, madplan.async_opdater_madspild(), "madplan_madspild")
+
+    entry.async_on_unload(
+        async_track_time_change(hass, _madspild, hour=list(range(7, 22)), minute=[0, 30], second=0)
+    )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Hovedsensoren peger på de andre enheder; nu er de alle registreret. De andre butikker opdateres også,
     # så deres samlede liste (automatisk plan) får den nye butik med.

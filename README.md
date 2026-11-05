@@ -17,6 +17,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Handl i to butikker** (valgfrit): ligger fx REMA og Netto tæt, kan planen også bruge tilbud fra op til 2 andre kæder (Regler → *Handler også i*). Er samme vare mindst 10 % billigere pr. kg i en anden butik, flyttes den dertil – men kun hvis der skal købes mindst 3 varer i butikken (kan ændres under Regler), så du ikke går derhen for én vare. Indkøbslisten deles op pr. butik.
 - **Ærlige priser**: tilbudspriser er butikkens egne. Uden for REMA 1000 er prisen på varer, der ikke er på tilbud, et cirkatal (vist som "ca.") – medmindre du bruger en Salling-nøgle (se nedenfor).
 - **Rigtige priser i Netto, føtex og Bilka** (valgfrit): med din egen gratis Salling Group-nøgle hentes priserne fra din egen butik.
+- **Madspild** (valgfrit, samme nøgle): ekstra nedsatte varer med kort dato bruges i planens første 2 dage. Indkøbslisten viser, om de stadig er der.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
@@ -83,6 +84,12 @@ Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Sall
 
 👉 **[Guide: hent en Salling-nøgle trin for trin](docs/guide-salling.md)**
 
+**Madspild:** slå *Madspild* til under **Regler**. Planen bruger så 1-2 ekstra nedsatte varer fra din Salling-butik i de første 2 dage (kød og fisk kan fryses og bruges senere). Varerne kan blive udsolgt, så:
+
+- Retten virker altid med den almindelige vare – madspild-varen er en bonus.
+- Indkøbslisten viser fx *−50 % · Nedsat i dag · 3 stk kl. 14:30* og tjekker hver halve time (kl. 7-22). Er den væk, står der *Udsolgt – køb den almindelige*.
+- Madspild bruges kun, når der handles i dag eller i morgen. Det koster ingen ekstra AI-kald.
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:
@@ -140,7 +147,7 @@ data:
 ## Godt at vide
 
 - **Allergier**: AI'en får besked om aldrig at bruge dem, og planen bliver tjekket for dem. Men AI kan tage fejl – læs altid ingredienserne, hvis nogen har en alvorlig allergi.
-- **Priser** er vejledende. Tilbud kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser (eller hentet fra Salling Group, hvis du bruger en nøgle).
+- **Priser** er vejledende. Tilbud og madspild-varer kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser (eller hentet fra Salling Group, hvis du bruger en nøgle).
 - **Tilbud** skal gælde på den dag, I handler (planens første dag eller i dag). Kæderne skifter avis på forskellige dage, så du behøver ikke vente – planen bruger de tilbud, der gælder, når du handler. Vælg **Jeg handler: I dag / I morgen** ved "Ny madplan". Den automatiske lørdagsplan venter til søndag kl. 7, hvis næste uges avis ikke er ude endnu. Indkøbslisten viser, hvornår det første tilbud udløber.
 - Data om planer, regler og kurv bliver i din Home Assistant. AI'en får kun tilbud, regler og antal personer.
 

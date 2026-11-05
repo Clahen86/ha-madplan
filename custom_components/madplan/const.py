@@ -20,6 +20,8 @@ STANDARD_PERSONER = 4
 STANDARD_REGLER = {
     "budget": None,  # kr pr. uge for hele familien
     "oeko": False,
+    # Salling Group's madspild-varer (ekstra nedsat, kort dato) i de første dage - kræver Salling-nøgle.
+    "madspild": False,
     "allergier": [],
     "undgaa": [],
     "vegetar": 0,  # mindst så mange vegetarretter om ugen

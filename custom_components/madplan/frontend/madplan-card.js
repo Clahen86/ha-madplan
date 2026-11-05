@@ -772,13 +772,21 @@ class MadplanCard extends HTMLElement {
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
     // Varer fra en anden kæde (fx Netto) har butikken efter prisen: "12.00 kr · Netto".
     const butik = liste === "varer" ? (v.description || "").split(" · ")[1] : "";
+    // Madspild: ekstra nedsat i dag og kan blive udsolgt. Reserven er den almindelige vare.
+    const md = liste === "varer" ? ((this._hass.states[this._valgt] || {}).attributes?.madspild || {})[v.uid] : null;
+    const mdTekst = md
+      ? md.udsolgt
+        ? `<span class="mdtag ud"><ha-icon icon="mdi:close-circle-outline"></ha-icon>Udsolgt – køb den almindelige</span>`
+        : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>${md.pct ? `−${esc(md.pct)} % · ` : ""}Nedsat i dag · ${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${md.fryses ? `<span class="mdtag frys"><ha-icon icon="mdi:snowflake"></ha-icon>Frys samme dag</span>` : ""}`
+      : "";
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
     const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ")
       + (butik ? ` <span class="butiktag">${esc(butik)}</span>` : "");
     return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
       <span class="vtekst"><span class="vnavn">${esc(navn)}</span>
-        ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}</span>
+        ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud && !md ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}
+        ${mdTekst ? `<span class="vmeta mdmeta">${mdTekst}</span>` : ""}</span>
       <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
         ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}</span>
       ${
@@ -1076,6 +1084,13 @@ const CSS = `
     border: 1px solid var(--divider-color); background: var(--card-background-color); cursor: pointer; font-size: 13px; }
   .chip-behov ha-icon { --mdc-icon-size: 14px; opacity: .6; }
   .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
+  .mdmeta { flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .mdtag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px;
+    background: rgba(245, 158, 11, 0.16); color: #b45309; }
+  .mdtag ha-icon { --mdc-icon-size: 13px; }
+  .mdtag.ud { background: rgba(217, 45, 32, 0.14); color: #b42318; }
+  .mdtag.frys { background: rgba(56, 152, 214, 0.15); color: #0b5f8a; }
+  .kontakt:disabled { opacity: 0.4; cursor: default; }
   .butiktag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--secondary-background-color);
     color: var(--primary-text-color); border: 1px solid var(--divider-color); }
   .gruppe ha-icon { --mdc-icon-size: 16px; vertical-align: -3px; }
@@ -1370,6 +1385,12 @@ class MadplanPanel extends MadplanCard {
         <div class="rlinje"><span class="rikon blaa"><ha-icon icon="mdi:fish"></ha-icon></span><span class="rnavn2"><b>Fiskeretter</b><small>Mindst pr. uge</small></span>${stepper("fisk", "")}</div>
         <div class="rlinje"><span class="rikon groen"><ha-icon icon="mdi:leaf"></ha-icon></span><span class="rnavn2"><b>Økologi</b><small>Når prisforskellen er lille</small></span>
           <button class="kontakt ${r.oeko ? "til" : ""}" data-h="rtoggle" data-felt="oeko" role="switch" aria-checked="${r.oeko ? "true" : "false"}" aria-label="Økologi"><span></span></button></div>
+        <div class="rlinje"><span class="rikon"><ha-icon icon="mdi:clock-fast"></ha-icon></span><span class="rnavn2"><b>Madspild</b><small>${
+          a.kan_madspild
+            ? "Ekstra nedsatte varer i de første 2 dage – kan blive udsolgt, så der er altid en almindelig reserve"
+            : 'Kun Netto, føtex og Bilka. Kræver gratis Salling-nøgle – se <a href="https://github.com/Clahen86/ha-madplan/blob/main/docs/guide-salling.md" target="_blank" rel="noopener">guiden</a>'
+        }</small></span>
+          <button class="kontakt ${r.madspild ? "til" : ""}" data-h="rtoggle" data-felt="madspild" role="switch" aria-checked="${r.madspild ? "true" : "false"}" aria-label="Madspild" ${a.kan_madspild ? "" : "disabled"}><span></span></button></div>
       </section>
       ${liste("allergier", "mdi:alert-octagon-outline", "Allergier", "Må aldrig indgå. Madplan fanger de fleste varer, men tjek altid varedeklarationen ved alvorlig allergi.", "Fx gluten, laktose, nødder", "roed")}
       ${liste("undgaa", "mdi:thumb-down-outline", "Undgå", "Det vil I ikke have", "Fx svampe eller lever")}

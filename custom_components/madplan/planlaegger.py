@@ -81,6 +81,9 @@ _FYLDORD = {"med", "og", "til", "fra", "den", "det", "der", "som", "på", "hjemm
             "onsdag", "torsdag", "ret", "retter", "mad"}
 # Højst så mange retter byttes automatisk, når de bryder en allergi (ét AI-kald hver).
 MAKS_ALLERGI_BYT = 3
+# Madspild: højst så mange varer med i AI'ens liste (de mest nedsatte), og kun i planens første dage.
+MAKS_MADSPILD = 40
+MADSPILD_DAGE = 2
 # En vare byttes til en anden butik, når den er mindst så meget billigere pr. kg/stk.
 MIN_BESPARELSE = 0.10
 # Varer, hvis kilopris sammenlignes på tværs af butikkerne i prompten.
@@ -99,6 +102,7 @@ class Madplan:
     """Holder planen, varelisten og historikken for én config entry."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self._madspild_dage = ""
         self.hass = hass
         self.entry = entry
         self.butik = entry.data[CONF_BUTIK]
@@ -277,6 +281,8 @@ class Madplan:
             ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
         if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
             ud.append(f"Koster {self.plan['total_alle']} kr (budget {r['budget']} kr)")
+        if self.plan.get("madspild_fejl"):
+            ud.append("Madspild: Salling-nøglen har ikke adgang til Food Waste API – se Salling-guiden")
         return ud
 
     def opdater(self) -> None:
@@ -305,6 +311,7 @@ class Madplan:
                     _LOGGER.info("%s: kun %s tilbud til næste uge - venter til søndag", self.butik_navn, len(self.tilbud))
                     self._status("Næste uges tilbud er ikke ude endnu – planen laves søndag kl. 7")
                     return
+                await self._hent_madspild(dag, start, fra=max(0, min(6, (dag - start).days)))
                 undgaa = self._seneste_retter(start.isoformat())
                 # Midt på ugen planlægges kun fra i dag; dagene før står som "forbi".
                 # Planen begynder på indkøbsdagen; dagene før står som "før planen".
@@ -364,6 +371,7 @@ class Madplan:
                     "salling_priser": self._salling_priser,
                     "handledag": dag.isoformat(),
                     "salling_fejl": self._salling_fejl,
+                    "madspild_fejl": getattr(self, "_madspild_fejl", False),
                     "retter": retter,
                     "lavet": dt_util.now().isoformat(timespec="minutes"),
                 }
@@ -972,6 +980,59 @@ class Madplan:
         else:
             self.tilbud = self.plan.get("tilbud") or {}
 
+    @property
+    def madspild_aktiv(self) -> bool:
+        return bool(self.regler.get("madspild")) and self.salling_aktiv
+
+    async def _hent_madspild(self, dag: datetime.date, start: datetime.date, fra: int) -> None:
+        """Salling's madspild-varer i den valgte butik, som ekstra tilbud til planens første dage.
+        Kun når der handles i dag eller i morgen - varerne holder sjældent længere."""
+        self._madspild_dage = ""
+        self._madspild_fejl = False
+        if not self.madspild_aktiv or (dag - dt_util.now().date()).days > 1:
+            return
+        o = self.entry.options
+        try:
+            varer = await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], o[CONF_SALLING_BUTIK])
+        except Exception as e:  # noqa: BLE001 - planen laves uden madspild
+            _LOGGER.warning("Madspild fra %s kunne ikke hentes: %s", self.butik_navn, e)
+            # 401/403: nøglen har ikke fået adgang til Food Waste API - det skal brugeren vide.
+            self._madspild_fejl = getattr(e, "status", None) in (401, 403)
+            return
+        varer = [v for v in varer if not IKKE_MAD.search(v["navn"])]
+        varer.sort(key=lambda v: -v["pct"])
+        nu = dt_util.now().strftime("%H:%M")
+        for v in varer[:MAKS_MADSPILD]:
+            self.tilbud[f"madspild-{v['ean']}"] = {
+                "navn": v["navn"], "str": "", "pris": v["pris"], "billede": v.get("billede"), "butik": self.butik,
+                "madspild": {"ean": v["ean"], "foer": v["foer"], "pct": v["pct"], "stk": v["stk"], "til": v["til"],
+                             "fryses": v["fryses"], "tjekket": nu, "udsolgt": False},
+            }
+        frie = {int(d) for d in self.regler.get("fri_dage") or []}
+        dage = [i for i in range(fra, 7) if i not in frie][:MADSPILD_DAGE]
+        self._madspild_dage = " og ".join(DAGE[i] for i in dage)
+
+    async def async_opdater_madspild(self) -> None:
+        """Er madspild-varerne på listen stadig der? Tjekkes jævnligt, så man ved det, før man går ned."""
+        varer = [v for v in self.plan.get("varer", []) if v.get("madspild") and not v.get("kurv") and not v.get("hjemme")]
+        if not varer or not self.salling_aktiv or self.optaget:
+            return
+        o = self.entry.options
+        try:
+            nu = {v["ean"]: v for v in await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], o[CONF_SALLING_BUTIK])}
+        except Exception as e:  # noqa: BLE001 - prøver igen næste gang
+            _LOGGER.debug("Madspild-tjek fejlede: %s", e)
+            return
+        tid = dt_util.now().strftime("%H:%M")
+        for v in varer:
+            m = v["madspild"]
+            fundet = nu.get(m["ean"])
+            m.update({"tjekket": tid, "udsolgt": fundet is None, "stk": fundet["stk"] if fundet else 0})
+            if (t := (self.plan.get("tilbud") or {}).get(v["key"][2:])) and t.get("madspild"):
+                t["madspild"] = dict(m)
+        await self._gem()
+        self.opdater()
+
     async def _hent_salling(self) -> None:
         """Kædens katalog fra Salling (gemt en uge). Fejler det, bruges REMA's katalog som før."""
         brand, feed, _ = SALLING[self.butik]
@@ -1039,8 +1100,10 @@ class Madplan:
 
         Uden liste (reserveforsøget efter et for langt svar) sendes også højst 150 tilbud."""
         tilbud = [
-            (tid, t) for tid, t in self.tilbud.items() if not (aftensmad and soeg.IKKE_AFTENSMAD.search(t["navn"]))
+            (tid, t) for tid, t in self.tilbud.items()
+            if not t.get("madspild") and not (aftensmad and soeg.IKKE_AFTENSMAD.search(t["navn"]))
         ]
+        madspild = [(tid, t) for tid, t in self.tilbud.items() if t.get("madspild") and not t["madspild"].get("udsolgt")]
         if not liste:
             tilbud = tilbud[:150]
         linjer = []
@@ -1052,6 +1115,18 @@ class Madplan:
             linjer += ["" if linjer else None, f"TILBUD I {BUTIKKER[butik][0].upper()}{anden} (id|vare|størrelse|pris kr):"]
             linjer += [f"T:{tid}|{t['navn']}|{t['str']}|{t['pris']}" for tid, t in egne]
         linjer = [x for x in linjer if x is not None]
+        if madspild and getattr(self, "_madspild_dage", ""):
+            linjer += [
+                "",
+                f"MADSPILD I {BUTIKKER[self.butik][0].upper()} – ekstra nedsat, kort dato, få stk. Brug gerne 1-2 af dem, "
+                f"men KUN i retterne {self._madspild_dage}. Varer mærket FRYS (kød/fisk) må også bruges senere i ugen "
+                "(de fryses samme dag). Brug ikke flere, end der er stk. (id|vare|pris kr|før kr|stk):",
+            ]
+            linjer += [
+                f"T:{tid}|{t['navn']}|{t['pris']}|{t['madspild']['foer'] or ''}|{t['madspild']['stk']}"
+                + ("|FRYS" if t["madspild"]["fryses"] else "")
+                for tid, t in madspild
+            ]
         if self.ekstra_butikker:
             linjer += self._sammenligning(tilbud)
         if liste and self._navne:
@@ -1595,13 +1670,16 @@ class Madplan:
                     "hjemme": gamle.get(key, f["basis"]),
                     "kurv": key in i_kurv,
                     "butik": f.get("butik"),
+                    # Madspild: ekstra nedsat i dag og kan blive udsolgt - reserven er den almindelige vare.
+                    "madspild": dict((self.tilbud.get(key[2:]) or {}).get("madspild") or {}) or None
+                    if key.startswith("T:madspild-") else None,
                 }
             )
         varer.sort(key=lambda v: (v["basis"], bool(v.get("butik")), not v["tilbud"], v["navn"]))
         self.plan["varer"] = varer
         self.plan["personer"] = n
         # Tilbuddene skal købes, før det første af dem udløber.
-        brugt = {k[2:] for k in forbrug if k.startswith("T:")}
+        brugt = {k[2:] for k in forbrug if k.startswith("T:") and not k.startswith("T:madspild-")}
         self.plan["handl_senest"] = min((t["til"] for k, t in self.tilbud.items() if k in brugt and t.get("til")), default=None)
         self.plan["total_alle"] = round(sum(v["pris"] for v in varer))
         self._totaler()

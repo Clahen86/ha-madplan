@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -194,6 +195,37 @@ async def hent_salling_katalog(hass: HomeAssistant, noegle: str, feed: str) -> d
             "billede": p.get("image"),
         }
     _LOGGER.debug("Salling-katalog %s: %s varer", feed, len(varer))
+    return varer
+
+
+_FRYSES = re.compile(r"kød|kod|fjerkræ|kylling|okse|svin|gris|lam|hakket|fisk|laks|torsk|rejer|pølse|bacon|kalkun|and\b", re.I)
+
+
+async def hent_salling_madspild(hass: HomeAssistant, noegle: str, butik_id: str) -> list[dict]:
+    """Butikkens madspild-varer (ekstra nedsat, kort dato) med lager lige nu:
+    [{ean, navn, pris, foer, pct, stk, til, opdateret, fryses, billede}]."""
+    d = await _salling(hass, noegle, f"/v1/food-waste/{butik_id}")
+    varer = []
+    for c in (d or {}).get("clearances") or []:
+        o, p = c.get("offer") or {}, c.get("product") or {}
+        navn = (p.get("description") or "").strip()
+        if not navn or not o.get("newPrice") or (o.get("stock") or 0) <= 0:
+            continue
+        kategori = " ".join(str(v) for v in (p.get("categories") or {}).values())
+        varer.append(
+            {
+                "ean": o.get("ean") or p.get("ean") or "",
+                "navn": navn[:1].upper() + navn[1:],
+                "pris": float(o["newPrice"]),
+                "foer": float(o.get("originalPrice") or 0) or None,
+                "pct": round(float(o.get("percentDiscount") or 0)),
+                "stk": o.get("stock"),
+                "til": o.get("endTime"),
+                "opdateret": o.get("lastUpdate"),
+                "fryses": bool(_FRYSES.search(f"{kategori} {navn}")),
+                "billede": p.get("image"),
+            }
+        )
     return varer
 
 
