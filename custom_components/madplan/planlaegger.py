@@ -33,6 +33,7 @@ from .const import (
     DAGE,
     DOMAIN,
     HISTORIK_UGER,
+    IKKE_MAD,
     KATALOG_MAX_ALDER,
     MAKS_MINE_RETTER,
     NY_MIN_RET,
