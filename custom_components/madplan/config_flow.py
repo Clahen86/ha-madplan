@@ -33,6 +33,14 @@ INDSTILLINGER = {
 }
 
 
+def _forslag(options: dict[str, Any]) -> dict[str, Any]:
+    """Gemte indstillinger som forslag. Ældre versioner gemte notify-tjenesterne som én tekst."""
+    o = dict(options)
+    if isinstance(o.get(CONF_NOTIFY), str):
+        o[CONF_NOTIFY] = [t.strip() for t in o[CONF_NOTIFY].split(",") if t.strip()]
+    return o
+
+
 class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
     """Første opsætning."""
 
@@ -66,7 +74,7 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
         if forrige:
-            skema = self.add_suggested_values_to_schema(skema, forrige.options)
+            skema = self.add_suggested_values_to_schema(skema, _forslag(forrige.options))
         return self.async_show_form(step_id="user", data_schema=skema)
 
     @staticmethod
@@ -105,9 +113,7 @@ class MadplanOptionsFlow(OptionsFlow):
                     self._data = {**user_input, CONF_SALLING_NOEGLE: noegle}
                     return await self.async_step_butik()
                 fejl["base"] = "ingen_butikker"
-        forslag = dict(user_input or self.config_entry.options)
-        if isinstance(forslag.get(CONF_NOTIFY), str):  # gemt som én tekst før 1.1.0
-            forslag[CONF_NOTIFY] = [t.strip() for t in forslag[CONF_NOTIFY].split(",") if t.strip()]
+        forslag = _forslag(user_input or self.config_entry.options)
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), forslag),
