@@ -58,7 +58,7 @@ Du kan beholde din nøgle – der skal ikke indsættes noget nyt i Home Assistan
 
 ## Godt at vide
 
-- Har du flere af kæderne, sættes nøglen på hver af dem (samme nøgle kan bruges).
+- **Én nøgle til alle:** har du sat nøglen ind i én af kæderne, bruger Netto, føtex og Bilka den automatisk. Tilføjer du en ny af dem, skal du kun vælge din lokale butik.
 - Varer, der ikke er blandt kædens ca. 1.000 mest købte, får stadig en ca.-pris.
 - **"Nøglen virkede ikke":** Tjek at API'erne står som *Granted*, og at de er valgt under *Scope* på din application.
 - **Madspild kommer ikke med:** Tjek at *Food Waste API* står som *Granted* og er valgt under *Scope*. Madspild bruges kun, når der handles i dag eller i morgen, og kun hvis butikken har nedsatte madvarer lige nu.

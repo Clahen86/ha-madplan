@@ -41,6 +41,37 @@ def _forslag(options: dict[str, Any]) -> dict[str, Any]:
     return o
 
 
+def _faelles_noegle(hass, undtagen: str | None = None) -> str:
+    """Én Salling-nøgle til alle kæderne: den, der allerede er sat ind i en anden butik."""
+    for e in hass.config_entries.async_entries(DOMAIN):
+        if e.entry_id != undtagen and (n := e.options.get(CONF_SALLING_NOEGLE)):
+            return n
+    return ""
+
+
+def _butik_skema(butikker: list[dict], nu: str | None) -> vol.Schema:
+    """Vælg butikken; listen er de nærmeste ved hjemmets placering i Home Assistant."""
+    valg = [
+        selector.SelectOptionDict(
+            value=b["id"], label=f"{b['navn']}" + (f" ({b['km']:.1f} km)" if isinstance(b.get("km"), (int, float)) else "")
+        )
+        for b in butikker
+    ]
+    standard = nu if any(v["value"] == nu for v in valg) else valg[0]["value"]
+    return vol.Schema(
+        {
+            vol.Required(CONF_SALLING_BUTIK, default=standard): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=valg, mode=selector.SelectSelectorMode.DROPDOWN)
+            )
+        }
+    )
+
+
+async def _hent_butikker(hass, noegle: str, butik: str) -> list[dict]:
+    brand, _, radius = SALLING[butik]
+    return await kilder.hent_salling_butikker(hass, noegle, brand, hass.config.latitude, hass.config.longitude, radius)
+
+
 class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
     """Første opsætning."""
 
@@ -55,9 +86,17 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
             butik = user_input.pop(CONF_BUTIK)
             await self.async_set_unique_id(butik)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=f"Madplan {BUTIKKER[butik][0]}", data={CONF_BUTIK: butik}, options=user_input
-            )
+            self._butik, self._valg = butik, user_input
+            # Netto, føtex og Bilka bruger den Salling-nøgle, der allerede er sat ind: vælg kun butikken.
+            if butik in SALLING and (noegle := _faelles_noegle(self.hass)):
+                try:
+                    self._butikker = await _hent_butikker(self.hass, noegle, butik)
+                except Exception:  # noqa: BLE001 - nøglen kan sættes ind senere under Konfigurer
+                    self._butikker = []
+                if self._butikker:
+                    self._valg = {**user_input, CONF_SALLING_NOEGLE: noegle}
+                    return await self.async_step_butik()
+            return self._opret(self._valg)
         # Forslag fra en eksisterende butik, så man ikke skal vælge AI-agent igen.
         forrige = next(iter(self._async_current_entries()), None)
         skema = vol.Schema(
@@ -76,6 +115,20 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
         if forrige:
             skema = self.add_suggested_values_to_schema(skema, _forslag(forrige.options))
         return self.async_show_form(step_id="user", data_schema=skema)
+
+    def _opret(self, options: dict[str, Any]) -> ConfigFlowResult:
+        return self.async_create_entry(
+            title=f"Madplan {BUTIKKER[self._butik][0]}", data={CONF_BUTIK: self._butik}, options=options
+        )
+
+    async def async_step_butik(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Din lokale butik i kæden - Salling-nøglen er allerede sat ind i en anden butik."""
+        if user_input is not None:
+            valgt = next((b for b in self._butikker if b["id"] == user_input[CONF_SALLING_BUTIK]), {})
+            return self._opret(
+                {**self._valg, CONF_SALLING_BUTIK: user_input[CONF_SALLING_BUTIK], CONF_SALLING_BUTIK_NAVN: valgt.get("navn") or ""}
+            )
+        return self.async_show_form(step_id="butik", data_schema=_butik_skema(self._butikker, None))
 
     @staticmethod
     @callback
@@ -101,11 +154,8 @@ class MadplanOptionsFlow(OptionsFlow):
             noegle = (user_input.pop(CONF_SALLING_NOEGLE, None) or "").strip()
             if not noegle or butik not in SALLING:
                 return self.async_create_entry(data=user_input)
-            brand, _, radius = SALLING[butik]
             try:
-                self._butikker = await kilder.hent_salling_butikker(
-                    self.hass, noegle, brand, self.hass.config.latitude, self.hass.config.longitude, radius
-                )
+                self._butikker = await _hent_butikker(self.hass, noegle, butik)
             except Exception:  # noqa: BLE001 - forkert nøgle eller Salling nede
                 fejl["base"] = "salling_fejl"
             else:
@@ -114,6 +164,8 @@ class MadplanOptionsFlow(OptionsFlow):
                     return await self.async_step_butik()
                 fejl["base"] = "ingen_butikker"
         forslag = _forslag(user_input or self.config_entry.options)
+        if butik in SALLING and not forslag.get(CONF_SALLING_NOEGLE):
+            forslag[CONF_SALLING_NOEGLE] = _faelles_noegle(self.hass, self.config_entry.entry_id)
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), forslag),
@@ -125,24 +177,17 @@ class MadplanOptionsFlow(OptionsFlow):
         if user_input is not None:
             valgt = next((b for b in self._butikker if b["id"] == user_input[CONF_SALLING_BUTIK]), {})
             navn = valgt.get("navn") or ""
+            self._del_noegle(self._data[CONF_SALLING_NOEGLE])
             return self.async_create_entry(
                 data={**self._data, CONF_SALLING_BUTIK: user_input[CONF_SALLING_BUTIK], CONF_SALLING_BUTIK_NAVN: navn}
             )
-        nu = self.config_entry.options.get(CONF_SALLING_BUTIK)
-        valg = [
-            selector.SelectOptionDict(
-                value=b["id"], label=f"{b['navn']}" + (f" ({b['km']:.1f} km)" if isinstance(b.get("km"), (int, float)) else "")
-            )
-            for b in self._butikker
-        ]
-        standard = nu if any(v["value"] == nu for v in valg) else valg[0]["value"]
         return self.async_show_form(
-            step_id="butik",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_SALLING_BUTIK, default=standard): selector.SelectSelector(
-                        selector.SelectSelectorConfig(options=valg, mode=selector.SelectSelectorMode.DROPDOWN)
-                    )
-                }
-            ),
+            step_id="butik", data_schema=_butik_skema(self._butikker, self.config_entry.options.get(CONF_SALLING_BUTIK))
         )
+
+    def _del_noegle(self, noegle: str) -> None:
+        """Én nøgle til alle kæderne: en ny nøgle her bruges også af de andre Salling-butikker."""
+        for e in self.hass.config_entries.async_entries(DOMAIN):
+            if e.entry_id != self.config_entry.entry_id and e.data.get(CONF_BUTIK) in SALLING \
+                    and e.options.get(CONF_SALLING_NOEGLE) and e.options[CONF_SALLING_NOEGLE] != noegle:
+                self.hass.config_entries.async_update_entry(e, options={**e.options, CONF_SALLING_NOEGLE: noegle})

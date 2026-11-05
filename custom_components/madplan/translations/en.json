@@ -15,6 +15,13 @@
           "notify_service": "One or more, e.g. notify.madplan_mail and notify.mobile_app_… for both phones in the household.",
           "butik": "Offers come from eTilbudsavis. Outside REMA 1000, prices of items not on offer are estimates."
         }
+      },
+      "butik": {
+        "title": "Your store",
+        "description": "The Salling key from your other store is used here too. Pick your local store – the nearest to your home location in Home Assistant.",
+        "data": {
+          "salling_butik": "Store"
+        }
       }
     },
     "abort": {
