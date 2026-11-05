@@ -808,8 +808,12 @@ class MadplanCard extends HTMLElement {
     // Varer fra en anden kæde (fx Netto) har butikken efter prisen: "12.00 kr · Netto".
     const butik = liste === "varer" ? (v.description || "").split(" · ")[1] : "";
     // Madspild: ekstra nedsat i dag og kan blive udsolgt. Reserven er den almindelige vare.
-    const md = liste === "varer" ? ((this._hass.states[this._valgt] || {}).attributes?.madspild || {})[v.uid] : null;
-    const mdTekst = md
+    const pa = (this._hass.states[this._valgt] || {}).attributes || {};
+    const md = liste === "varer" ? (pa.madspild || {})[v.uid] : null;
+    const byttet = liste === "varer" && (pa.madspild_udsolgt || []).includes(v.uid);
+    const mdTekst = byttet
+      ? `<span class="mdtag ud"><ha-icon icon="mdi:swap-horizontal"></ha-icon>Madspild udsolgt – almindelig pris</span>`
+      : md
       ? md.udsolgt
         ? `<span class="mdtag ud"><ha-icon icon="mdi:close-circle-outline"></ha-icon>Udsolgt – køb den almindelige</span>`
         : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>${md.pct ? `−${esc(md.pct)} % · ` : ""}Nedsat i dag · ${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${this._mdBrug(md)}`

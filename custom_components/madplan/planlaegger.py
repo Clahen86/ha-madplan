@@ -1033,14 +1033,36 @@ class Madplan:
             _LOGGER.debug("Madspild-tjek fejlede: %s", e)
             return
         tid = dt_util.now().strftime("%H:%M")
+        udsolgt: set[str] = set()
         for v in varer:
             m = v["madspild"]
             fundet = nu.get(m["ean"])
             m.update({"tjekket": tid, "udsolgt": fundet is None, "stk": fundet["stk"] if fundet else 0})
             if (t := (self.plan.get("tilbud") or {}).get(v["key"][2:])) and t.get("madspild"):
                 t["madspild"] = dict(m)
+            if fundet is None:
+                udsolgt.add(v["key"])
+        if udsolgt:
+            await self._erstat_udsolgt(udsolgt)
         await self._gem()
         self.opdater()
+
+    async def _erstat_udsolgt(self, keys: set[str]) -> None:
+        """Udsolgte madspild-varer byttes til den almindelige vare med dens rigtige pris. Ingen AI."""
+        async with self._laas:
+            for ret in self.plan.get("retter") or []:
+                for ing in ret.get("ingredienser", []):
+                    if ing.get("vare") in keys:
+                        ing["vare"] = f"S:{ing.get('navn', '')}"
+                        ing["madspild_udsolgt"] = True
+                if ret.get("hovedvare") in keys:
+                    ret["hovedvare"] = None
+            start = datetime.date.fromisoformat(self.plan["start"])
+            await self._hent_data(start, None)
+            await self.hass.async_add_executor_job(self._find_varer, self.plan["retter"], start)
+            self._beregn()
+            self.plan["salling_priser"] = self._salling_priser
+            _LOGGER.info("Madspild udsolgt - byttet til almindelige varer: %s", ", ".join(sorted(keys)))
 
     async def _hent_salling(self) -> None:
         """Kædens katalog fra Salling (gemt en uge). Fejler det, bruges REMA's katalog som før."""
@@ -1672,6 +1694,7 @@ class Madplan:
                 f["ukendt"] = ing["vare"].startswith("S:")
                 f["anslaaet"] = self._ca(ing["vare"])
                 f["basis"] = f["basis"] and _basis(ing)
+                f["madspild_udsolgt"] = f.get("madspild_udsolgt") or bool(ing.get("madspild_udsolgt"))
                 if not _basis(ing) and (pakke > 0 or ing.get("pakke_ukendt")):
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
@@ -1706,6 +1729,7 @@ class Madplan:
                     "hjemme": gamle.get(key, f["basis"]),
                     "kurv": key in i_kurv,
                     "butik": f.get("butik"),
+                    "madspild_udsolgt": f.get("madspild_udsolgt", False),
                     # Madspild: ekstra nedsat i dag og kan blive udsolgt - reserven er den almindelige vare.
                     "madspild": {**((self.tilbud.get(key[2:]) or {}).get("madspild") or {}), "brug": f.get("brug")}
                     if key.startswith("T:madspild-") and (self.tilbud.get(key[2:]) or {}).get("madspild") else None,

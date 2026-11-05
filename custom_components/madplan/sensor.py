@@ -86,6 +86,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "kan_madspild": self.madplan.salling_aktiv,
             "madspild_fundet": p.get("madspild_fundet"),
             "madspild": {v["key"]: v["madspild"] for v in p.get("varer", []) if v.get("madspild")},
+            "madspild_udsolgt": [v["key"] for v in p.get("varer", []) if v.get("madspild_udsolgt")],
             "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],
             "personer_entitet": find("number", "personer"),
             "varer_entitet": find("todo", "varer"),
