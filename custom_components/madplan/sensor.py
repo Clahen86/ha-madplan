@@ -84,6 +84,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "anslaaede_priser": not self.madplan.er_rema and not self.madplan.salling_aktiv,
             "salling_butik": self.madplan.entry.options.get("salling_butik_navn") if self.madplan.salling_aktiv else None,
             "kan_madspild": self.madplan.salling_aktiv,
+            "madspild_fundet": p.get("madspild_fundet"),
             "madspild": {v["key"]: v["madspild"] for v in p.get("varer", []) if v.get("madspild")},
             "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],
             "personer_entitet": find("number", "personer"),

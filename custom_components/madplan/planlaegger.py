@@ -373,6 +373,7 @@ class Madplan:
                     "handledag": dag.isoformat(),
                     "salling_fejl": self._salling_fejl,
                     "madspild_fejl": getattr(self, "_madspild_fejl", False),
+                    "madspild_fundet": getattr(self, "_madspild_fundet", None),
                     "retter": retter,
                     "lavet": dt_util.now().isoformat(timespec="minutes"),
                 }
@@ -990,6 +991,7 @@ class Madplan:
         Kun når der handles i dag eller i morgen - varerne holder sjældent længere."""
         self._madspild_dage = ""
         self._madspild_fejl = False
+        self._madspild_fundet = None  # None: ikke hentet (slået fra, eller der handles ikke i dag/i morgen)
         if not self.madspild_aktiv or (dag - dt_util.now().date()).days > 1:
             return
         o = self.entry.options
@@ -1001,6 +1003,8 @@ class Madplan:
             self._madspild_fejl = getattr(e, "status", None) in (401, 403)
             return
         varer = [v for v in varer if not IKKE_MAD.search(v["navn"])]
+        self._madspild_fundet = len(varer)
+        _LOGGER.info("Madspild i %s: %s madvarer", self.butik_navn, len(varer))
         varer.sort(key=lambda v: -v["pct"])
         nu = dt_util.now().strftime("%H:%M")
         for v in varer[:MAKS_MADSPILD]:

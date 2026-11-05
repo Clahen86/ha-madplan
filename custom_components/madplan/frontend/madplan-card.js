@@ -734,7 +734,7 @@ class MadplanCard extends HTMLElement {
         <span class="mangler">${koeb.length + kurv.length} varer · ${kr(s.state)}</span></div>
       <div class="hjaelp">Tryk på en vare, når den er i kurven. Har I den allerede, så tryk på <ha-icon icon="mdi:home-outline"></ha-icon>, så trækkes den fra.${
         s.attributes.anslaaede_priser ? ` Priser med "ca." er anslået; tilbudspriser er ${esc(s.attributes.butik)}s egne.` : ""
-      }</div>
+      }</div>${this._madspildInfo(s.attributes)}
       <div class="kurvstatus"><span><ha-icon icon="mdi:cart-check"></ha-icon><b>${iKurv}</b> af ${tilKoeb + iKurv} i kurven</span>
         ${iKurv ? this._knap("toemkurv", "Tøm kurven", "mdi:cart-remove", "graa lille") : ""}</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
@@ -761,6 +761,18 @@ class MadplanCard extends HTMLElement {
         .map((b) => `<div class="gruppe"><ha-icon icon="mdi:storefront-outline"></ha-icon> Fra ${esc(b)}</div>${varer.filter((v) => butik(v) === b).map(linje).join("")}`)
         .join("")
     );
+  }
+
+  _madspildInfo(a) {
+    // Hvorfor der ingen madspild-varer er på listen, når reglen er slået til.
+    if (!a.kan_madspild || !(a.regler || {}).madspild || Object.keys(a.madspild || {}).length) return "";
+    const f = a.madspild_fundet;
+    const tekst = f == null
+      ? "Madspild bruges kun, når der handles i dag eller i morgen – lav en ny plan med handel i dag."
+      : f === 0
+        ? `Ingen nedsatte madvarer i ${esc(a.salling_butik || a.butik)} lige nu. Prøv igen om formiddagen, hvor der oftest er flest.`
+        : `Der var ${f} nedsatte varer, men ingen passede til ugens retter.`;
+    return `<div class="hjaelp"><ha-icon icon="mdi:clock-fast"></ha-icon> ${tekst}</div>`;
   }
 
   _vareLinje(v, liste) {
