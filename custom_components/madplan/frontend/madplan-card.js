@@ -763,6 +763,15 @@ class MadplanCard extends HTMLElement {
     );
   }
 
+  _mdBrug(md) {
+    // Bruges den i dag eller i morgen: "Brug i dag". Senere (kun kød og fisk): "Frys samme dag".
+    if (!md.brug) return "";
+    const dage = Math.round((new Date(`${md.brug}T12:00`) - new Date(new Date().toDateString() + " 12:00")) / 86400000);
+    if (dage > 1 && md.fryses) return `<span class="mdtag frys"><ha-icon icon="mdi:snowflake"></ha-icon>Frys samme dag – til ${esc(new Date(`${md.brug}T12:00`).toLocaleDateString("da-DK", { weekday: "long" }))}</span>`;
+    const naar = dage <= 0 ? "i dag" : dage === 1 ? "i morgen" : new Date(`${md.brug}T12:00`).toLocaleDateString("da-DK", { weekday: "long" });
+    return `<span class="mdtag"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon>Bruges ${esc(naar)}</span>`;
+  }
+
   _madspildInfo(a) {
     // Hvorfor der ingen madspild-varer er på listen, når reglen er slået til.
     if (!a.kan_madspild || !(a.regler || {}).madspild || Object.keys(a.madspild || {}).length) return "";
@@ -789,7 +798,7 @@ class MadplanCard extends HTMLElement {
     const mdTekst = md
       ? md.udsolgt
         ? `<span class="mdtag ud"><ha-icon icon="mdi:close-circle-outline"></ha-icon>Udsolgt – køb den almindelige</span>`
-        : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>${md.pct ? `−${esc(md.pct)} % · ` : ""}Nedsat i dag · ${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${md.fryses ? `<span class="mdtag frys"><ha-icon icon="mdi:snowflake"></ha-icon>Frys samme dag</span>` : ""}`
+        : `<span class="mdtag"><ha-icon icon="mdi:clock-fast"></ha-icon>${md.pct ? `−${esc(md.pct)} % · ` : ""}Nedsat i dag · ${esc(md.stk)} stk${md.tjekket ? ` kl. ${esc(md.tjekket)}` : ""}</span>${this._mdBrug(md)}`
       : "";
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
     const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ")

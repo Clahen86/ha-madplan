@@ -1645,6 +1645,9 @@ class Madplan:
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
                 f["butik"] = self._anden_butik(ing["vare"])
+                # Den første dag, varen bruges - madspild skal bruges med det samme eller fryses.
+                dato_i = (start + datetime.timedelta(days=i)).isoformat()
+                f["brug"] = min(f.get("brug") or dato_i, dato_i)
                 # Uden for REMA er normalprisen kun et cirkatal.
                 f["ukendt"] = ing["vare"].startswith("S:")
                 f["anslaaet"] = self._ca(ing["vare"])
@@ -1685,8 +1688,8 @@ class Madplan:
                     "kurv": key in i_kurv,
                     "butik": f.get("butik"),
                     # Madspild: ekstra nedsat i dag og kan blive udsolgt - reserven er den almindelige vare.
-                    "madspild": dict((self.tilbud.get(key[2:]) or {}).get("madspild") or {}) or None
-                    if key.startswith("T:madspild-") else None,
+                    "madspild": {**((self.tilbud.get(key[2:]) or {}).get("madspild") or {}), "brug": f.get("brug")}
+                    if key.startswith("T:madspild-") and (self.tilbud.get(key[2:]) or {}).get("madspild") else None,
                 }
             )
         varer.sort(key=lambda v: (v["basis"], bool(v.get("butik")), not v["tilbud"], v["navn"]))
