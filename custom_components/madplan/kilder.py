@@ -211,6 +211,8 @@ async def hent_salling_madspild(hass: HomeAssistant, noegle: str, butik_id: str)
         navn = (p.get("description") or "").strip()
         if not navn or not o.get("newPrice") or (o.get("stock") or 0) <= 0:
             continue
+        if navn.isupper():
+            navn = navn.lower()  # Salling skriver ofte madspild-navne med store bogstaver
         kategori = " ".join(str(v) for v in (p.get("categories") or {}).values())
         varer.append(
             {

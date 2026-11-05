@@ -340,6 +340,10 @@ class Madplan:
                 )
                 svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
                 nye = svar.get("retter", [])[:antal]
+                _LOGGER.debug("Madspild valgt af AI: %s", [
+                    (i.get("navn"), i.get("vare")) for r in nye for i in r.get("ingredienser", [])
+                    if str(i.get("vare", "")).startswith("T:madspild-")
+                ])
                 if len(nye) < antal:
                     raise HomeAssistantError(f"AI gav kun {len(nye)} retter")
                 if self.ekstra_butikker:
@@ -1005,6 +1009,7 @@ class Madplan:
         varer = [v for v in varer if not IKKE_MAD.search(v["navn"])]
         self._madspild_fundet = len(varer)
         _LOGGER.info("Madspild i %s: %s madvarer", self.butik_navn, len(varer))
+        _LOGGER.debug("Madspild-varer: %s", "; ".join(f"{v['navn']} ({v['pct']} %, {v['stk']} stk)" for v in varer))
         varer.sort(key=lambda v: -v["pct"])
         nu = dt_util.now().strftime("%H:%M")
         for v in varer[:MAKS_MADSPILD]:
@@ -1108,7 +1113,10 @@ class Madplan:
             (tid, t) for tid, t in self.tilbud.items()
             if not t.get("madspild") and not (aftensmad and soeg.IKKE_AFTENSMAD.search(t["navn"]))
         ]
-        madspild = [(tid, t) for tid, t in self.tilbud.items() if t.get("madspild") and not t["madspild"].get("udsolgt")]
+        madspild = [
+            (tid, t) for tid, t in self.tilbud.items()
+            if t.get("madspild") and not t["madspild"].get("udsolgt") and not soeg.IKKE_AFTENSMAD.search(t["navn"])
+        ]
         if not liste:
             tilbud = tilbud[:150]
         linjer = []
@@ -1123,9 +1131,10 @@ class Madplan:
         if madspild and getattr(self, "_madspild_dage", ""):
             linjer += [
                 "",
-                f"MADSPILD I {BUTIKKER[self.butik][0].upper()} – ekstra nedsat, kort dato, få stk. Brug gerne 1-2 af dem, "
-                f"men KUN i retterne {self._madspild_dage}. Varer mærket FRYS (kød/fisk) må også bruges senere i ugen "
-                "(de fryses samme dag). Brug ikke flere, end der er stk. (id|vare|pris kr|før kr|stk):",
+                f"MADSPILD I {BUTIKKER[self.butik][0].upper()} – ekstra nedsat, kort dato, få stk. Familien VIL gerne bruge dem: "
+                f"byg mindst 1 (gerne 2) af retterne {self._madspild_dage} op om en af disse varer, og skriv dens T:-id "
+                "som vare. Varer mærket FRYS (kød/fisk) må også bruges senere i ugen (de fryses samme dag). "
+                "Brug ikke flere, end der er stk. (id|vare|pris kr|før kr|stk):",
             ]
             linjer += [
                 f"T:{tid}|{t['navn']}|{t['pris']}|{t['madspild']['foer'] or ''}|{t['madspild']['stk']}"
