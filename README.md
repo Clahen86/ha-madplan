@@ -82,12 +82,15 @@ Tilføj flere butikker ved at tilføje integrationen igen, eller tryk på butiks
 
 Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Salling Group får Netto, føtex og Bilka rigtige priser fra den butik, du vælger.
 
-👉 **[Guide: hent en Salling-nøgle trin for trin](docs/guide-salling.md)**
+**Én nøgle til alle:** sæt nøglen ind i én af kæderne, så bruger Netto, føtex og Bilka den. Tilføjer du en ny af dem, vælger du kun din lokale butik.
+
+👉 **[Guide: hent en Salling-nøgle trin for trin](docs/guide-salling.md)** – også med *Food Waste API* til madspild.
 
 **Madspild:** slå *Madspild* til under **Regler**. Planen bruger så 1-2 ekstra nedsatte varer fra din Salling-butik i de første 2 dage (kød og fisk kan fryses og bruges senere). Varerne kan blive udsolgt, så:
 
 - Retten virker altid med den almindelige vare – madspild-varen er en bonus.
-- Indkøbslisten viser fx *−50 % · Nedsat i dag · 3 stk kl. 14:30* og tjekker hver halve time (kl. 7-22). Er den væk, står der *Udsolgt – køb den almindelige*.
+- Indkøbslisten viser fx *−50 % · Nedsat i dag · 3 stk kl. 14:30* og *Bruges i dag* (eller *Frys samme dag*, hvis kød/fisk først bruges senere).
+- Den tjekker hver halve time (kl. 7-21:30). Bliver en vare udsolgt, byttes den automatisk til den almindelige vare med rigtig pris, og linjen får mærket *Madspild udsolgt – almindelig pris*.
 - Madspild bruges kun, når der handles i dag eller i morgen. Det koster ingen ekstra AI-kald.
 
 ### Kort til dine egne dashboards
