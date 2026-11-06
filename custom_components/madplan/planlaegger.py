@@ -1054,9 +1054,17 @@ class Madplan:
     def _byttede(self) -> dict[str, str]:
         """Madspild-varer, der er byttet til den almindelige vare: {T:madspild-id: ean}. De kan komme tilbage."""
         ud = {}
+        tilbud = self.plan.get("tilbud") or {}
         for ret in self.plan.get("retter") or []:
             for ing in ret.get("ingredienser", []):
-                if (org := ing.get("madspild_original")) and (t := (self.plan.get("tilbud") or {}).get(org[2:])):
+                org = ing.get("madspild_original")
+                if not org and ing.get("madspild_udsolgt"):
+                    # Byttet før Madplan huskede den: find madspild-varen ud fra navnet.
+                    org = next((f"T:{k}" for k, t in tilbud.items() if t.get("madspild")
+                                and soeg.ligner(str(ing.get("navn", "")), t["navn"])), None)
+                    if org:
+                        ing["madspild_original"] = org
+                if org and (t := tilbud.get(org[2:])):
                     ud[org] = (t.get("madspild") or {}).get("ean")
         return ud
 
