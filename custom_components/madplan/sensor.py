@@ -85,7 +85,8 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "salling_butik": self.madplan.entry.options.get("salling_butik_navn") if self.madplan.salling_aktiv else None,
             "kan_madspild": self.madplan.salling_aktiv,
             "madspild_fundet": p.get("madspild_fundet"),
-            "madspild": {v["key"]: v["madspild"] for v in p.get("varer", []) if v.get("madspild")},
+            # Kopier: HA sammenligner med den forrige tilstand, og den må ikke dele objekt med planen.
+            "madspild": {v["key"]: dict(v["madspild"]) for v in p.get("varer", []) if v.get("madspild")},
             "madspild_udsolgt": [v["key"] for v in p.get("varer", []) if v.get("madspild_udsolgt")],
             "madspild_rest": [v["key"] for v in p.get("varer", []) if v.get("madspild_rest")],
             "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],

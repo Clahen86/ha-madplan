@@ -1025,19 +1025,27 @@ class Madplan:
         """Er madspild-varerne på listen stadig der? Tjekkes jævnligt, så man ved det, før man går ned."""
         varer = [v for v in self.plan.get("varer", []) if v.get("madspild") and not v.get("kurv") and not v.get("hjemme")]
         if not varer or not self.salling_aktiv or self.optaget:
+            _LOGGER.debug("%s: intet madspild-tjek (varer=%s, salling=%s, optaget=%s)",
+                          self.butik_navn, len(varer), self.salling_aktiv, self.optaget)
             return
+        _LOGGER.debug("%s: tjekker %s madspild-varer", self.butik_navn, len(varer))
         o = self.entry.options
+        t0 = time.monotonic()
         try:
-            nu = {v["ean"]: v for v in await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], o[CONF_SALLING_BUTIK])}
+            async with asyncio.timeout(60):
+                nu = {
+                    v["ean"]: v
+                    for v in await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], o[CONF_SALLING_BUTIK])
+                }
         except Exception as e:  # noqa: BLE001 - prøver igen næste gang
-            _LOGGER.debug("Madspild-tjek fejlede: %s", e)
+            _LOGGER.warning("%s: madspild-tjek fejlede efter %.0f s: %r", self.butik_navn, time.monotonic() - t0, e)
             return
+        _LOGGER.debug("%s: madspild hentet på %.1f s (%s varer)", self.butik_navn, time.monotonic() - t0, len(nu))
         tid = dt_util.now().strftime("%H:%M")
         udsolgt: set[str] = set()
         for v in varer:
-            m = v["madspild"]
-            fundet = nu.get(m["ean"])
-            m.update({"tjekket": tid, "udsolgt": fundet is None, "stk": fundet["stk"] if fundet else 0})
+            fundet = nu.get(v["madspild"]["ean"])
+            v["madspild"] = m = {**v["madspild"], "tjekket": tid, "udsolgt": fundet is None, "stk": fundet["stk"] if fundet else 0}
             if (t := (self.plan.get("tilbud") or {}).get(v["key"][2:])) and t.get("madspild"):
                 t["madspild"] = dict(m)
             if fundet is None:
@@ -1046,6 +1054,7 @@ class Madplan:
             await self._erstat_udsolgt(udsolgt)
         await self._gem()
         self.opdater()
+        _LOGGER.debug("%s: madspild-tjek færdigt kl. %s (%s udsolgt)", self.butik_navn, tid, len(udsolgt))
 
     async def _erstat_udsolgt(self, keys: set[str]) -> None:
         """Udsolgte madspild-varer byttes til den almindelige vare med dens rigtige pris. Ingen AI."""
