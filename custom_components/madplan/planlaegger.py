@@ -1105,16 +1105,19 @@ class Madplan:
             tilbud[k[2:]]["madspild"] = {**tilbud[k[2:]]["madspild"], "tjekket": tid, "udsolgt": False, "stk": fundet["stk"],
                                          "pct": round(fundet.get("pct") or tilbud[k[2:]]["madspild"].get("pct") or 0)}
             tilbud[k[2:]]["pris"] = fundet.get("pris") or tilbud[k[2:]]["pris"]
-        if udsolgt or tilbage:
-            await self._byt_madspild(udsolgt, tilbage)
+        if udsolgt or tilbage or nu:
+            await self._byt_madspild(udsolgt, tilbage, nu)
         await self._gem()
         self.opdater()
         _LOGGER.debug("%s: madspild-tjek færdigt kl. %s (%s udsolgt, %s tilbage)", self.butik_navn, tid, len(udsolgt), len(tilbage))
 
-    async def _byt_madspild(self, udsolgt: set[str], tilbage: set[str]) -> None:
+    async def _byt_madspild(self, udsolgt: set[str], tilbage: set[str], nu: dict[str, dict] | None = None) -> None:
         """Udsolgte madspild-varer byttes til den almindelige vare med dens rigtige pris - og kommer tilbage,
-        når de er der igen. Ingen AI."""
+        når de er der igen. Nye madspild-varer, der passer til ugens retter, sættes ind. Ingen AI."""
         async with self._laas:
+            nye = await self.hass.async_add_executor_job(self._match_madspild, nu or {}) if nu else 0
+            if not (udsolgt or tilbage or nye):
+                return
             for ret in self.plan.get("retter") or []:
                 for ing in ret.get("ingredienser", []):
                     if ing.get("vare") in udsolgt:
@@ -1134,7 +1137,65 @@ class Madplan:
             await self.hass.async_add_executor_job(self._find_varer, self.plan["retter"], start)
             self._beregn()
             self.plan["salling_priser"] = self._salling_priser
-            _LOGGER.info("Madspild: udsolgt %s, tilbage %s", ", ".join(sorted(udsolgt)) or "-", ", ".join(sorted(tilbage)) or "-")
+            _LOGGER.info("Madspild: udsolgt %s, tilbage %s, %s nye", ", ".join(sorted(udsolgt)) or "-",
+                         ", ".join(sorted(tilbage)) or "-", nye)
+
+    def _match_madspild(self, nu: dict[str, dict]) -> int:
+        """Butikkens madspild, der passer til ugens retter (fx hakket oksekød til tacos), sættes ind i stedet for
+        den almindelige vare - kun når den er billigere, i dag og i morgen (kød og fisk også senere, de fryses).
+        Kører uden for event loop (vareopslag)."""
+        tilbud = self.plan.setdefault("tilbud", {})
+        retter = self.plan.get("retter") or []
+        brugt = {str(i.get("vare"))[len("T:madspild-"):] for r in retter for i in r.get("ingredienser", [])
+                 if str(i.get("vare") or "").startswith("T:madspild-")}
+        brugt |= {str(i.get("madspild_original"))[len("T:madspild-"):] for r in retter for i in r.get("ingredienser", [])
+                  if i.get("madspild_original")}
+        katalog = {
+            ean: {"navn": v["navn"], "str": "", "billede": v.get("billede")}
+            for ean, v in nu.items()
+            if ean not in brugt and not IKKE_MAD.search(v["navn"]) and not soeg.IKKE_AFTENSMAD.search(v["navn"])
+        }
+        if not katalog:
+            return 0
+        laast = {v["key"] for v in self.plan.get("varer", []) if v.get("kurv") or v.get("hjemme")}
+        forbudt = allergener.opdel(list(self.regler.get("allergier") or []) + list(self.regler.get("undgaa") or []))
+        start = datetime.date.fromisoformat(self.plan["start"])
+        idag = dt_util.now().date()
+        tid = dt_util.now().strftime("%H:%M")
+        nye = 0
+        for i, ret in enumerate(retter):
+            dato = start + datetime.timedelta(days=i)
+            dage = (dato - idag).days
+            if ret.get("fjernet") or ret.get("rester_fra") is not None or dage < 0:
+                continue
+            for ing in ret.get("ingredienser", []):
+                v = str(ing.get("vare") or "")
+                if not katalog or v.startswith("T:madspild-") or ing.get("madspild_original") or v in laast or _basis(ing):
+                    continue
+                ean = soeg.find_vare(katalog, str(ing.get("navn") or ""), dato, None, True, pris=lambda e, _v: nu[e]["pris"])
+                if not ean:
+                    continue
+                md = nu[ean]
+                if dage > 1 and not md.get("fryses"):
+                    continue
+                if any(allergener.rammer(md["navn"], g) if g else _indeholder(md["navn"].lower(), o) for o, g in forbudt):
+                    continue  # bryder en allergi eller noget, familien ikke vil have
+                navn_l = str(ing.get("navn") or "").lower()
+                if any(m in navn_l and m not in md["navn"].lower() for m in ("glutenfri", "laktosefri", "økologisk")):
+                    continue  # retten skal bruge en fri eller økologisk variant
+                nuv = self._slaa_op(v, start)
+                if nuv and nuv[2] and nuv[2] <= md["pris"]:
+                    continue  # den almindelige er lige så billig
+                tilbud[f"madspild-{ean}"] = {
+                    "navn": md["navn"], "str": "", "pris": md["pris"], "billede": md.get("billede"), "butik": self.butik,
+                    "madspild": {"ean": ean, "foer": md.get("foer"), "pct": md.get("pct"), "stk": md.get("stk"),
+                                 "til": md.get("til"), "fryses": md.get("fryses"), "tjekket": tid, "udsolgt": False},
+                }
+                ing["vare"] = f"T:madspild-{ean}"
+                ing["madspild_fundet"] = True
+                del katalog[ean]
+                nye += 1
+        return nye
 
     async def _hent_salling(self) -> None:
         """Kædens katalog fra Salling (gemt en uge). Fejler det, bruges REMA's katalog som før."""
