@@ -821,7 +821,7 @@ class MadplanCard extends HTMLElement {
         ? `<div class="mdliste">${b.length ? b.map((x) => `<button class="mdvalg ${x.valgt ? "valgt" : ""}" data-h="mdskift" data-id="${esc(x.id)}" data-navn="${esc(x.navn)}">
               <span>${esc(x.navn)}${x.egen ? " <small>(din butik)</small>" : ""}</span><small>${typeof x.km === "number" ? `${x.km.toFixed(1).replace(".", ",")} km` : ""}</small></button>`).join("")
             : `<span class="hjaelp">Kunne ikke hente butikkerne.</span>`}
-            <span class="hjaelp">Varer, den butik ikke har, byttes til den almindelige vare og pris. Retterne er de samme.</span></div>`
+            <span class="hjaelp">Varer, den butik ikke har, byttes til den almindelige vare og pris – og kommer tilbage, hvis de dukker op igen. Retterne er de samme.</span></div>`
         : "";
     return `<div class="mdbutik"><ha-icon icon="mdi:storefront-outline"></ha-icon><span>Madspild fra <b>${esc(a.madspild_butik || "")}</b></span>
         <button class="mdskiftknap" data-h="mdbutikker">${b ? "Luk" : "Handler et andet sted?"}</button></div>${liste}`;

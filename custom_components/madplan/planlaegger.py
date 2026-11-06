@@ -1051,14 +1051,24 @@ class Madplan:
         await self._gem()
         self.opdater()
 
+    def _byttede(self) -> dict[str, str]:
+        """Madspild-varer, der er byttet til den almindelige vare: {T:madspild-id: ean}. De kan komme tilbage."""
+        ud = {}
+        for ret in self.plan.get("retter") or []:
+            for ing in ret.get("ingredienser", []):
+                if (org := ing.get("madspild_original")) and (t := (self.plan.get("tilbud") or {}).get(org[2:])):
+                    ud[org] = (t.get("madspild") or {}).get("ean")
+        return ud
+
     async def async_opdater_madspild(self) -> None:
-        """Er madspild-varerne på listen stadig der? Tjekkes jævnligt, så man ved det, før man går ned."""
+        """Er madspild-varerne på listen stadig der? Tjekkes jævnligt, så man ved det, før man går ned.
+        Byttede varer, der er kommet igen (eller findes i den butik, man nu handler i), kommer tilbage."""
         varer = [v for v in self.plan.get("varer", []) if v.get("madspild") and not v.get("kurv") and not v.get("hjemme")]
-        if not varer or not self.salling_aktiv or self.optaget:
-            _LOGGER.debug("%s: intet madspild-tjek (varer=%s, salling=%s, optaget=%s)",
-                          self.butik_navn, len(varer), self.salling_aktiv, self.optaget)
+        byttede = self._byttede()
+        if not (varer or byttede) or not self.salling_aktiv or self.optaget:
+            _LOGGER.debug("%s: intet madspild-tjek (varer=%s, byttede=%s, salling=%s, optaget=%s)",
+                          self.butik_navn, len(varer), len(byttede), self.salling_aktiv, self.optaget)
             return
-        _LOGGER.debug("%s: tjekker %s madspild-varer", self.butik_navn, len(varer))
         o = self.entry.options
         t0 = time.monotonic()
         try:
@@ -1072,36 +1082,51 @@ class Madplan:
             return
         _LOGGER.debug("%s: madspild hentet på %.1f s (%s varer)", self.butik_navn, time.monotonic() - t0, len(nu))
         tid = dt_util.now().strftime("%H:%M")
+        tilbud = self.plan.get("tilbud") or {}
         udsolgt: set[str] = set()
         for v in varer:
             fundet = nu.get(v["madspild"]["ean"])
             v["madspild"] = m = {**v["madspild"], "tjekket": tid, "udsolgt": fundet is None, "stk": fundet["stk"] if fundet else 0}
-            if (t := (self.plan.get("tilbud") or {}).get(v["key"][2:])) and t.get("madspild"):
+            if (t := tilbud.get(v["key"][2:])) and t.get("madspild"):
                 t["madspild"] = dict(m)
             if fundet is None:
                 udsolgt.add(v["key"])
-        if udsolgt:
-            await self._erstat_udsolgt(udsolgt)
+        tilbage = {k for k, ean in byttede.items() if ean in nu}
+        for k in tilbage:
+            fundet = nu[byttede[k]]
+            tilbud[k[2:]]["madspild"] = {**tilbud[k[2:]]["madspild"], "tjekket": tid, "udsolgt": False, "stk": fundet["stk"],
+                                         "pct": round(fundet.get("pct") or tilbud[k[2:]]["madspild"].get("pct") or 0)}
+            tilbud[k[2:]]["pris"] = fundet.get("pris") or tilbud[k[2:]]["pris"]
+        if udsolgt or tilbage:
+            await self._byt_madspild(udsolgt, tilbage)
         await self._gem()
         self.opdater()
-        _LOGGER.debug("%s: madspild-tjek færdigt kl. %s (%s udsolgt)", self.butik_navn, tid, len(udsolgt))
+        _LOGGER.debug("%s: madspild-tjek færdigt kl. %s (%s udsolgt, %s tilbage)", self.butik_navn, tid, len(udsolgt), len(tilbage))
 
-    async def _erstat_udsolgt(self, keys: set[str]) -> None:
-        """Udsolgte madspild-varer byttes til den almindelige vare med dens rigtige pris. Ingen AI."""
+    async def _byt_madspild(self, udsolgt: set[str], tilbage: set[str]) -> None:
+        """Udsolgte madspild-varer byttes til den almindelige vare med dens rigtige pris - og kommer tilbage,
+        når de er der igen. Ingen AI."""
         async with self._laas:
             for ret in self.plan.get("retter") or []:
                 for ing in ret.get("ingredienser", []):
-                    if ing.get("vare") in keys:
+                    if ing.get("vare") in udsolgt:
+                        ing["madspild_original"] = ing["vare"]
                         ing["vare"] = f"S:{ing.get('navn', '')}"
                         ing["madspild_udsolgt"] = True
-                if ret.get("hovedvare") in keys:
+                    elif ing.get("madspild_original") in tilbage:
+                        ing["vare"] = ing.pop("madspild_original")
+                        ing.pop("madspild_udsolgt", None)
+                if ret.get("hovedvare") in udsolgt:
+                    ret["hovedvare_original"] = ret["hovedvare"]
                     ret["hovedvare"] = None
+                elif ret.get("hovedvare_original") in tilbage:
+                    ret["hovedvare"] = ret.pop("hovedvare_original")
             start = datetime.date.fromisoformat(self.plan["start"])
             await self._hent_data(start, None)
             await self.hass.async_add_executor_job(self._find_varer, self.plan["retter"], start)
             self._beregn()
             self.plan["salling_priser"] = self._salling_priser
-            _LOGGER.info("Madspild udsolgt - byttet til almindelige varer: %s", ", ".join(sorted(keys)))
+            _LOGGER.info("Madspild: udsolgt %s, tilbage %s", ", ".join(sorted(udsolgt)) or "-", ", ".join(sorted(tilbage)) or "-")
 
     async def _hent_salling(self) -> None:
         """Kædens katalog fra Salling (gemt en uge). Fejler det, bruges REMA's katalog som før."""
