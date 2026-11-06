@@ -97,7 +97,8 @@ async def async_test(hass: HomeAssistant, email: str, kode: str) -> None:
 
 async def async_send(hass: HomeAssistant, email: str, kode: str, varer: list[dict[str, Any]]) -> int:
     """Læg varer på den primære liste i REMA-appen. varer: [{"product_id": int} eller {"name": str}, "amount": int].
-    Står varen allerede på listen, lægges antallet til. Giver antallet af varer tilbage."""
+    Står varen allerede på listen, bliver antallet mindst det, planen skal bruge (ikke dobbelt, hvis man sender igen).
+    Giver antallet af varer tilbage."""
     session = _session(hass)
     try:
         token, site = await _login(session, email, kode)
@@ -137,11 +138,13 @@ async def async_send(hass: HomeAssistant, email: str, kode: str, varer: list[dic
             mgd = max(1, int(v.get("amount") or 1))
             noegle = v.get("product_id") or str(v.get("name", "")).lower()
             if (gammel := findes.get(noegle)) and gammel.get("id"):
+                # Sendes listen igen, må antallet ikke blive dobbelt: mindst det, planen skal bruge.
                 try:
-                    ny = int(float(gammel.get("amount") or 0)) + mgd
+                    nu = int(float(gammel.get("amount") or 0))
                 except (TypeError, ValueError):
-                    ny = mgd
-                await kald("PATCH", f"/v2/shoppinglists/{lid}/items/{gammel['id']}", json={"amount": ny, "bought": False})
+                    nu = 0
+                if nu < mgd:
+                    await kald("PATCH", f"/v2/shoppinglists/{lid}/items/{gammel['id']}", json={"amount": mgd, "bought": False})
             else:
                 body: dict[str, Any] = {"amount": mgd, "store_id": STORE_ID}
                 if v.get("product_id"):

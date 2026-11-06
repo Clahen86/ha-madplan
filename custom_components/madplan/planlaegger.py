@@ -929,14 +929,9 @@ class Madplan:
 
     async def _send_til_rema(self, varer: list[dict]) -> str:
         """Til REMA 1000-appen: REMA-varer med varenummer (præcis vare), resten som tekst."""
-        ud = []
-        for v in varer:
-            vid = str(v.get("key") or v.get("vare") or "")
-            navn = v.get("navn") or ""
-            if vid.startswith("R:") and vid[2:].isdigit():
-                ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
-            elif navn:
-                ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
+        if not self.katalog:
+            await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
+        ud = await self.hass.async_add_executor_job(self._rema_varer, varer)
         o = self.entry.options
         try:
             n = await rema_app.async_send(self.hass, o[CONF_REMA_EMAIL], o[CONF_REMA_KODE], ud)
@@ -944,6 +939,26 @@ class Madplan:
             _LOGGER.warning("REMA-appen: %s", e)
             return " – men REMA-appen afviste login" if e.kode == "login" else " – men REMA-appen svarede ikke"
         return f" – {n} lagt i REMA-appen"
+
+    def _rema_varer(self, varer: list[dict]) -> list[dict]:
+        """REMA-appen viser kun varer med varenummer rigtigt (tekst bliver "uspecificeret"). Tilbud fra avisen
+        og andre varer slås derfor op i REMA's katalog. Kører uden for event loop (vareopslag)."""
+        dato = dt_util.now().date()
+        ud = []
+        for v in varer:
+            vid = str(v.get("key") or v.get("vare") or "")
+            navn = str(v.get("navn") or "")
+            if not (vid.startswith("R:") and vid[2:].isdigit()) and navn and self.katalog:
+                # Præcis samme navn først (REMA's egne varer i avisen), ellers den bedste søgning.
+                rent = re.sub(r"^REMA 1000\s+", "", navn, flags=re.I).strip().lower()
+                vid = next((f"R:{k}" for k, x in self.katalog.items()
+                            if re.sub(r"^REMA 1000\s+", "", x["navn"], flags=re.I).strip().lower() == rent), "") \
+                    or f"R:{soeg.find_vare(self.katalog, rent, dato, _maengde(v.get('str'))) or ''}"
+            if vid.startswith("R:") and vid[2:].isdigit():
+                ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
+            elif navn:
+                ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
+        return ud
 
     # ------------------------------------------------------------------ data
 
@@ -2010,6 +2025,15 @@ class Madplan:
             }
         )
         self.historik = h[-HISTORIK_UGER:]
+
+
+def _maengde(strr: Any) -> tuple[float, str] | None:
+    """'2 kg' -> (2000, 'g'), '400 g' -> (400, 'g'), '1 l' -> (1000, 'ml'): så vælges samme størrelse."""
+    m = re.match(r"\s*([\d.,]+)\s*(kg|g|l|ml|stk)\b", str(strr or "").lower())
+    if not m:
+        return None
+    tal = float(m[1].replace(",", "."))
+    return {"kg": (tal * 1000, "g"), "l": (tal * 1000, "ml")}.get(m[2], (tal, m[2]))
 
 
 def _godt_billede(url: Any) -> bool:
