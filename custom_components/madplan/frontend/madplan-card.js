@@ -368,6 +368,30 @@ class MadplanCard extends HTMLElement {
       case "toemkurv":
         this._kald("madplan", "toem_kurv", { entity_id: plan });
         break;
+      case "mdbutikker":
+        // "Handler i en anden butik i dag": kædens butikker nær hjemmet.
+        if (this._mdButikker) {
+          this._mdButikker = null;
+          this._tegn();
+          break;
+        }
+        this._mdButikker = "henter";
+        this._tegn();
+        this._hass.connection
+          .sendMessagePromise({ type: "call_service", domain: "madplan", service: "madspild_butikker", service_data: { entity_id: plan }, return_response: true })
+          .then((r) => (this._mdButikker = r?.response?.butikker || []))
+          .catch(() => (this._mdButikker = []))
+          .finally(() => this._tegn());
+        break;
+      case "mdskift":
+        this._mdButikker = "skifter";
+        this._tegn();
+        this._kald("madplan", "skift_madspild_butik", { entity_id: plan, butik_id: el.dataset.id, navn: el.dataset.navn })
+          .finally(() => {
+            this._mdButikker = null;
+            this._tegn();
+          });
+        break;
       case "slet":
         ev.stopPropagation();
         this._kald("todo", "remove_item", { entity_id: this._ekstraId, item: el.dataset.uid });
@@ -748,7 +772,7 @@ class MadplanCard extends HTMLElement {
         <span class="mangler">${koeb.length + kurv.length} varer · ${kr(s.state)}</span></div>
       <div class="hjaelp">Tryk på en vare, når den er i kurven. Har I den allerede, så tryk på <ha-icon icon="mdi:home-outline"></ha-icon>, så trækkes den fra.${
         s.attributes.anslaaede_priser ? ` Priser med "ca." er anslået; tilbudspriser er ${esc(s.attributes.butik)}s egne.` : ""
-      }</div>${this._madspildInfo(s.attributes)}
+      }</div>${this._madspildInfo(s.attributes)}${this._madspildButik(s.attributes)}
       <div class="kurvstatus"><span><ha-icon icon="mdi:cart-check"></ha-icon><b>${iKurv}</b> af ${tilKoeb + iKurv} i kurven</span>
         ${iKurv ? this._knap("toemkurv", "Tøm kurven", "mdi:cart-remove", "graa lille") : ""}</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
@@ -784,6 +808,23 @@ class MadplanCard extends HTMLElement {
     if (dage > 1 && md.fryses) return `<span class="mdtag frys"><ha-icon icon="mdi:snowflake"></ha-icon>Frys samme dag – til ${esc(new Date(`${md.brug}T12:00`).toLocaleDateString("da-DK", { weekday: "long" }))}</span>`;
     const naar = dage <= 0 ? "i dag" : dage === 1 ? "i morgen" : new Date(`${md.brug}T12:00`).toLocaleDateString("da-DK", { weekday: "long" });
     return `<span class="mdtag"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon>Bruges ${esc(naar)}</span>`;
+  }
+
+  _madspildButik(a) {
+    // Madspild gælder kun én butik. Handler man et andet sted i dag, tjekkes den butik i stedet.
+    const har = Object.keys(a.madspild || {}).length || (a.madspild_udsolgt || []).length || a.madspild_anden_butik;
+    if (!a.kan_madspild || !har) return "";
+    const b = this._mdButikker;
+    const liste = b === "henter" || b === "skifter"
+      ? `<div class="mdliste"><span class="hjaelp">${b === "henter" ? "Henter butikker …" : "Tjekker madspild i butikken …"}</span></div>`
+      : Array.isArray(b)
+        ? `<div class="mdliste">${b.length ? b.map((x) => `<button class="mdvalg ${x.valgt ? "valgt" : ""}" data-h="mdskift" data-id="${esc(x.id)}" data-navn="${esc(x.navn)}">
+              <span>${esc(x.navn)}${x.egen ? " <small>(din butik)</small>" : ""}</span><small>${typeof x.km === "number" ? `${x.km.toFixed(1).replace(".", ",")} km` : ""}</small></button>`).join("")
+            : `<span class="hjaelp">Kunne ikke hente butikkerne.</span>`}
+            <span class="hjaelp">Varer, den butik ikke har, byttes til den almindelige vare og pris. Retterne er de samme.</span></div>`
+        : "";
+    return `<div class="mdbutik"><ha-icon icon="mdi:storefront-outline"></ha-icon><span>Madspild fra <b>${esc(a.madspild_butik || "")}</b></span>
+        <button class="mdskiftknap" data-h="mdbutikker">${b ? "Luk" : "Handler et andet sted?"}</button></div>${liste}`;
   }
 
   _madspildInfo(a) {
@@ -1129,6 +1170,16 @@ const CSS = `
   .chip-behov ha-icon { --mdc-icon-size: 14px; opacity: .6; }
   .chip-behov.bekraeft { background: #ef6c00; color: #fff; border-color: #ef6c00; }
   .mdmeta { flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .mdbutik { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; padding: 10px 12px; border-radius: 12px;
+    background: rgba(245, 158, 11, 0.12); font-size: 14px; }
+  .mdbutik ha-icon { --mdc-icon-size: 20px; color: #b45309; }
+  .mdbutik > span { flex: 1; min-width: 140px; }
+  .mdskiftknap { border: 0; background: none; color: #b45309; font: inherit; font-weight: 700; cursor: pointer; padding: 6px 4px; }
+  .mdliste { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .mdvalg { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; min-height: 44px; padding: 8px 12px;
+    border-radius: 10px; border: 1px solid var(--divider-color, #ddd); background: var(--card-background-color, #fff); color: var(--primary-text-color); font: inherit; cursor: pointer; }
+  .mdvalg.valgt { border: 2px solid #f59e0b; font-weight: 700; }
+  .mdvalg small { color: var(--secondary-text-color); font-weight: 400; }
   .mdtag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px;
     background: rgba(245, 158, 11, 0.16); color: #b45309; }
   .mdtag ha-icon { --mdc-icon-size: 13px; }

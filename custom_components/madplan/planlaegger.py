@@ -1021,6 +1021,36 @@ class Madplan:
         dage = [i for i in range(fra, 7) if i not in frie][:MADSPILD_DAGE]
         self._madspild_dage = " og ".join(DAGE[i] for i in dage)
 
+    @property
+    def madspild_butik(self) -> dict[str, str]:
+        """Butikken, madspild tjekkes i: den valgte, eller en anden man handler i i dag."""
+        o = self.entry.options
+        return self.plan.get("madspild_butik") or {"id": o.get(CONF_SALLING_BUTIK), "navn": o.get("salling_butik_navn") or ""}
+
+    async def async_madspild_butikker(self) -> list[dict]:
+        """Kædens butikker nær hjemmet, til "Handler i en anden butik i dag"."""
+        brand, _, radius = SALLING[self.butik]
+        o = self.entry.options
+        butikker = await kilder.hent_salling_butikker(
+            self.hass, o[CONF_SALLING_NOEGLE], brand, self.hass.config.latitude, self.hass.config.longitude, radius
+        )
+        nu = self.madspild_butik["id"]
+        return [{**b, "valgt": b["id"] == nu, "egen": b["id"] == o.get(CONF_SALLING_BUTIK)} for b in butikker]
+
+    async def async_skift_madspild_butik(self, butik_id: str, navn: str) -> None:
+        """Handler i en anden butik i dag: madspild tjekkes dér. Varer, den butik ikke har, byttes til den
+        almindelige vare og pris - retterne er de samme, og der bruges ingen AI."""
+        if not self.salling_aktiv:
+            raise HomeAssistantError("Kræver en Salling-nøgle")
+        egen = butik_id == self.entry.options.get(CONF_SALLING_BUTIK)
+        if egen:
+            self.plan.pop("madspild_butik", None)
+        else:
+            self.plan["madspild_butik"] = {"id": butik_id, "navn": navn}
+        await self.async_opdater_madspild()
+        await self._gem()
+        self.opdater()
+
     async def async_opdater_madspild(self) -> None:
         """Er madspild-varerne på listen stadig der? Tjekkes jævnligt, så man ved det, før man går ned."""
         varer = [v for v in self.plan.get("varer", []) if v.get("madspild") and not v.get("kurv") and not v.get("hjemme")]
@@ -1035,7 +1065,7 @@ class Madplan:
             async with asyncio.timeout(60):
                 nu = {
                     v["ean"]: v
-                    for v in await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], o[CONF_SALLING_BUTIK])
+                    for v in await kilder.hent_salling_madspild(self.hass, o[CONF_SALLING_NOEGLE], self.madspild_butik["id"])
                 }
         except Exception as e:  # noqa: BLE001 - prøver igen næste gang
             _LOGGER.warning("%s: madspild-tjek fejlede efter %.0f s: %r", self.butik_navn, time.monotonic() - t0, e)

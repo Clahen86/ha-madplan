@@ -296,3 +296,25 @@ hent_min_ret:
       required: true
       selector:
         text:
+
+madspild_butikker:
+  fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
+skift_madspild_butik:
+  fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
+    butik_id:
+      required: true
+      selector:
+        text:
+    navn:
+      selector:
+        text:

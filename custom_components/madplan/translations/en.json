@@ -478,6 +478,34 @@
           "description": "The dish id."
         }
       }
+    },
+    "madspild_butikker": {
+      "name": "Food waste stores",
+      "description": "The chain's stores near home where food waste can be checked.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan sensor."
+        }
+      }
+    },
+    "skift_madspild_butik": {
+      "name": "Shopping in another store",
+      "description": "Checks food waste in another store of the chain today. Items it doesn't have are swapped for the regular item and price.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan sensor."
+        },
+        "butik_id": {
+          "name": "Store",
+          "description": "The Salling store id."
+        },
+        "navn": {
+          "name": "Name",
+          "description": "The store name."
+        }
+      }
     }
   }
 }

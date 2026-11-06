@@ -84,6 +84,8 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "anslaaede_priser": not self.madplan.er_rema and not self.madplan.salling_aktiv,
             "salling_butik": self.madplan.entry.options.get("salling_butik_navn") if self.madplan.salling_aktiv else None,
             "kan_madspild": self.madplan.salling_aktiv,
+            "madspild_butik": self.madplan.madspild_butik.get("navn") if self.madplan.salling_aktiv else None,
+            "madspild_anden_butik": bool(p.get("madspild_butik")),
             "madspild_fundet": p.get("madspild_fundet"),
             # Kopier: HA sammenligner med den forrige tilstand, og den må ikke dele objekt med planen.
             "madspild": {v["key"]: dict(v["madspild"]) for v in p.get("varer", []) if v.get("madspild")},

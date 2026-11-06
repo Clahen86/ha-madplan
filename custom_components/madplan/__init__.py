@@ -228,6 +228,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             raise ServiceValidationError("Retten findes ikke")
         return dict(m)
 
+    async def madspild_butikker(call: ServiceCall) -> ServiceResponse:
+        return {"butikker": await _madplaner(call)[0].async_madspild_butikker()}
+
+    async def skift_madspild_butik(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_skift_madspild_butik(call.data["butik_id"], call.data.get("navn", ""))
+
     async def ekstra_antal(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_ekstra_antal(call.data["uid"], call.data["antal"])
 
@@ -257,6 +263,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DOMAIN, "gem_min_ret", gem_min_ret, schema=MIN_RET_SKEMA, supports_response=SupportsResponse.OPTIONAL
     )
     hass.services.async_register(DOMAIN, "slet_min_ret", slet_min_ret, schema=MIN_RET_ID_SKEMA)
+    hass.services.async_register(
+        DOMAIN, "madspild_butikker", madspild_butikker, schema=SKEMA, supports_response=SupportsResponse.ONLY
+    )
+    hass.services.async_register(
+        DOMAIN, "skift_madspild_butik", skift_madspild_butik,
+        schema=SKEMA.extend({vol.Required("butik_id"): cv.string, vol.Optional("navn"): vol.All(cv.string, vol.Length(max=80))}),
+    )
     hass.services.async_register(
         DOMAIN, "hent_min_ret", hent_min_ret, schema=MIN_RET_ID_SKEMA, supports_response=SupportsResponse.ONLY
     )

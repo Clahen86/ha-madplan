@@ -478,6 +478,34 @@
           "description": "Rettens id."
         }
       }
+    },
+    "madspild_butikker": {
+      "name": "Butikker til madspild",
+      "description": "Kædens butikker nær hjemmet, som madspild kan tjekkes i.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Madplanens sensor."
+        }
+      }
+    },
+    "skift_madspild_butik": {
+      "name": "Handler i en anden butik",
+      "description": "Tjekker madspild i en anden butik i kæden i dag. Varer, den ikke har, byttes til den almindelige vare og pris.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Madplanens sensor."
+        },
+        "butik_id": {
+          "name": "Butik",
+          "description": "Salling-butikkens id."
+        },
+        "navn": {
+          "name": "Navn",
+          "description": "Butikkens navn."
+        }
+      }
     }
   }
 }
