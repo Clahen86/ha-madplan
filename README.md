@@ -100,7 +100,7 @@ Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Sall
 
 ### Indkøbslisten i REMA 1000-appen (valgfrit)
 
-Under **Konfigurer** på din REMA 1000-madplan kan du skrive din REMA-kontos e-mail og kodeord. Så lægger **Send til REMA-appen** ugens varer på din indkøbsliste i REMA 1000-appen – også ugens tilbud som præcis den vare (REMA's varenummer findes i kataloget). Sender du igen, bliver antallet ikke dobbelt.
+Under **Konfigurer** på din REMA 1000-madplan kan du skrive din REMA-kontos e-mail og kodeord. Så får indkøbslisten sin egen knap, **Send til REMA-appen** (adskilt fra *Send indkøbsliste*, der sender mail/besked), som lægger ugens varer på din indkøbsliste i REMA 1000-appen – også ugens tilbud som præcis den vare (REMA's varenummer findes i kataloget). Sender du igen, bliver antallet ikke dobbelt.
 
 > Uofficielt: REMA 1000 har ingen offentlig API til indkøbslister, så Madplan bruger de samme kald som rema1000.dk (samme fremgangsmåde som [ha-rema1000](https://github.com/madskelkjaer/ha-rema1000)). Det kan holde op med at virke, hvis REMA ændrer deres side – så fejler kun afsendelsen til appen. Kodeordet gemmes i Home Assistant og sendes kun til REMA 1000.
 

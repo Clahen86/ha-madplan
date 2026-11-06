@@ -276,7 +276,10 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "fjern_ret", { entity_id: plan, dag });
         break;
       case "send":
-        this._kald("madplan", "overfoer", { entity_id: plan });
+        this._kald("madplan", "overfoer", { entity_id: plan, til: "liste" });
+        break;
+      case "sendrema":
+        this._kald("madplan", "overfoer", { entity_id: plan, til: "rema" });
         break;
       case "plus":
       case "minus":
@@ -785,7 +788,8 @@ class MadplanCard extends HTMLElement {
           : ""
       }
       ${this._ekstraSektion(s)}
-      <div class="knapper">${this._knap("send", s.attributes.har_rema ? "Send til REMA-appen" : "Send indkøbsliste", "mdi:send", "fuld")}</div>
+      <div class="knapper">${s.attributes.har_rema ? this._knap("sendrema", "Send til REMA-appen", "mdi:cellphone-arrow-down", "fuld") : ""}
+        ${this._knap("send", "Send indkøbsliste", "mdi:send", s.attributes.har_rema ? "fuld graa" : "fuld")}</div>
     </div>`;
   }
 

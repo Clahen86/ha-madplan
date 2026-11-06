@@ -149,7 +149,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         await _madplaner(call)[0].async_fjern_ret(call.data["dag"])
 
     async def overfoer(call: ServiceCall) -> None:
-        await _madplaner(call)[0].async_overfoer()
+        await _madplaner(call)[0].async_overfoer(call.data.get("til", "liste"))
 
     async def tilfoej_behov(call: ServiceCall) -> None:
         m = _madplaner(call)[0]
@@ -243,7 +243,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=NY_PLAN_SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
-    hass.services.async_register(DOMAIN, "overfoer", overfoer, schema=SKEMA)
+    hass.services.async_register(
+        DOMAIN, "overfoer", overfoer, schema=SKEMA.extend({vol.Optional("til", default="liste"): vol.In(["liste", "rema"])})
+    )
     hass.services.async_register(DOMAIN, "tilfoej_behov", tilfoej_behov, schema=NYE_BEHOV_SKEMA)
     hass.services.async_register(DOMAIN, "gem_regler", gem_regler, schema=REGLER_SKEMA)
     hass.services.async_register(DOMAIN, "marker", marker, schema=MARKER_SKEMA)

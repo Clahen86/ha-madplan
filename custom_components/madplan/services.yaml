@@ -26,6 +26,12 @@ fjern_ret:
     dag: *dag
 overfoer:
   fields:
+    til:
+      selector:
+        select:
+          options:
+            - liste
+            - rema
     entity_id: *madplan
 tilfoej_behov:
   fields:

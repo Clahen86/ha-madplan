@@ -114,6 +114,10 @@
         "entity_id": {
           "name": "Meal plan",
           "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "til": {
+          "name": "To",
+          "description": "liste: the shopping list and/or a message. rema: the REMA 1000 app."
         }
       }
     },

@@ -897,11 +897,16 @@ class Madplan:
         self.plan["ekstra"] = [e for e in self.plan.get("ekstra", []) if e["behov"].lower() not in loest] + nye
         self._totaler()
 
-    async def async_overfoer(self) -> None:
-        """Lægger manglende varer på indkøbslisten og/eller sender dem som besked."""
+    async def async_overfoer(self, til: str = "liste") -> None:
+        """til="liste": indkøbslisten i HA og/eller som besked. til="rema": kun REMA 1000-appen."""
         mangler = [v for v in self.plan.get("varer", []) if not v.get("hjemme")]
         mangler += [e for e in self.plan.get("ekstra", []) if not e.get("hjemme")]
         opts = self.entry.options
+        if til == "rema":
+            if not (opts.get(CONF_REMA_EMAIL) and opts.get(CONF_REMA_KODE)):
+                raise HomeAssistantError("REMA-appen er ikke sat op under Konfigurer")
+            self._status(await self._send_til_rema(mangler))
+            return
         try:
             if liste := opts.get(CONF_INDKOBSLISTE):
                 for v in mangler:
@@ -915,14 +920,11 @@ class Madplan:
                         },
                         blocking=True,
                     )
-            til_rema = ""
-            if (o := self.entry.options).get(CONF_REMA_EMAIL) and o.get(CONF_REMA_KODE):
-                til_rema = await self._send_til_rema(mangler)
             if self._notify_tjenester():
                 await self._send_besked(
                     f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}", self._besked(mangler)
                 )
-            self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer){til_rema}")
+            self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer)")
         except HomeAssistantError as e:
             _LOGGER.error("Overførsel fejlede: %s", e)
             self._status(f"Fejl ved overførsel: {str(e)[:120]}")
@@ -937,28 +939,44 @@ class Madplan:
             n = await rema_app.async_send(self.hass, o[CONF_REMA_EMAIL], o[CONF_REMA_KODE], ud)
         except rema_app.RemaFejl as e:
             _LOGGER.warning("REMA-appen: %s", e)
-            return " – men REMA-appen afviste login" if e.kode == "login" else " – men REMA-appen svarede ikke"
-        return f" – {n} lagt i REMA-appen"
+            if e.kode == "login":
+                return "⚠️ REMA afviste e-mail eller kodeord – ret dem under Konfigurer"
+            return "⚠️ REMA-appen svarede ikke – prøv igen om lidt"
+        return f"✅ {n} varer lagt i REMA-appen"
 
     def _rema_varer(self, varer: list[dict]) -> list[dict]:
         """REMA-appen viser kun varer med varenummer rigtigt (tekst bliver "uspecificeret"). Tilbud fra avisen
         og andre varer slås derfor op i REMA's katalog. Kører uden for event loop (vareopslag)."""
         dato = dt_util.now().date()
+        # Det, retterne kalder varen ("Laksefileter"), er mere præcist end tilbuddets navn
+        # ("Laksefileter, rødspættefileter eller mørksejfilet").
+        brug: dict[str, str] = {}
+        for ret in self.plan.get("retter") or []:
+            for ing in ret.get("ingredienser", []):
+                if isinstance(ing, dict) and ing.get("vare") and ing.get("navn"):
+                    brug.setdefault(str(ing["vare"]), str(ing["navn"]))
         ud = []
         for v in varer:
             vid = str(v.get("key") or v.get("vare") or "")
             navn = str(v.get("navn") or "")
             if not (vid.startswith("R:") and vid[2:].isdigit()) and navn and self.katalog:
                 # Præcis samme navn først (REMA's egne varer i avisen), ellers den bedste søgning.
-                rent = re.sub(r"^REMA 1000\s+", "", navn, flags=re.I).strip().lower()
+                rent = re.sub(r"^REMA 1000\s+", "", brug.get(vid) or navn, flags=re.I).strip().lower()
                 vid = next((f"R:{k}" for k, x in self.katalog.items()
                             if re.sub(r"^REMA 1000\s+", "", x["navn"], flags=re.I).strip().lower() == rent), "") \
-                    or f"R:{soeg.find_vare(self.katalog, rent, dato, _maengde(v.get('str'))) or ''}"
+                    or f"R:{self._rema_soeg(rent, dato, _maengde(v.get('str'))) or ''}"
             if vid.startswith("R:") and vid[2:].isdigit():
                 ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
             elif navn:
                 ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
         return ud
+
+    def _rema_soeg(self, navn: str, dato: datetime.date, behov: tuple[float, str] | None) -> str | None:
+        """Bedste REMA-vare; økologisk kun når det er det, der står (ellers fx "Øko. kartofler" for "kartofler")."""
+        katalog = self.katalog
+        if "øko" not in navn:
+            katalog = {k: v for k, v in katalog.items() if "øko" not in v["navn"].lower()}
+        return soeg.find_vare(katalog, navn, dato, behov) or soeg.find_vare(self.katalog, navn, dato, behov)
 
     # ------------------------------------------------------------------ data
 

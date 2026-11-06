@@ -114,6 +114,10 @@
         "entity_id": {
           "name": "Madplan",
           "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "til": {
+          "name": "Til",
+          "description": "liste: indkøbslisten og/eller besked. rema: REMA 1000-appen."
         }
       }
     },
