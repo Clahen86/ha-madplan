@@ -964,12 +964,37 @@ class Madplan:
                 rent = re.sub(r"^REMA 1000\s+", "", brug.get(vid) or navn, flags=re.I).strip().lower()
                 vid = next((f"R:{k}" for k, x in self.katalog.items()
                             if re.sub(r"^REMA 1000\s+", "", x["navn"], flags=re.I).strip().lower() == rent), "") \
-                    or f"R:{self._rema_soeg(rent, dato, _maengde(v.get('str'))) or ''}"
+                    or f"R:{self._rema_kampagne(rent, v, dato) or self._rema_soeg(rent, dato, _maengde(v.get('str'))) or ''}"
             if vid.startswith("R:") and vid[2:].isdigit():
                 ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
             elif navn:
                 ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
         return ud
+
+    def _rema_kampagne(self, navn: str, v: dict, dato: datetime.date) -> str | None:
+        """Et tilbud fra avisen er en af REMA's varer med netop tilbudsprisen i dag ("Dansk kylling 29 kr" er
+        kyllingetern 250 g, chunks 350 g eller lår 800 g). Vælg blandt dem den, hvis størrelse passer bedst."""
+        if not v.get("tilbud") or not v.get("antal") or not v.get("pris"):
+            return None
+        pris = v["pris"] / v["antal"]
+        d = dato.isoformat()
+        kandidater = {
+            k: x for k, x in self.katalog.items()
+            if any(p.get("kampagne") and p.get("pris") and abs(p["pris"] - pris) < 0.6 and p["fra"] <= d <= p["til"]
+                   for p in x.get("priser", []))
+            and soeg.ligner(navn, x["navn"])  # samme pris i dag + fælles ord er sikkert nok
+        }
+        if not kandidater:
+            return None
+        maal = _maengde(v.get("str"))
+        if not maal:
+            return soeg.find_vare(kandidater, navn, dato, None)
+
+        def afstand(k: str) -> float:
+            m = _maengde(kandidater[k]["str"].split(" / ")[0])
+            return abs(m[0] - maal[0]) if m and m[1] == maal[1] else float("inf")
+
+        return min(kandidater, key=afstand)
 
     def _rema_soeg(self, navn: str, dato: datetime.date, behov: tuple[float, str] | None) -> str | None:
         """Bedste REMA-vare; økologisk kun når det er det, der står (ellers fx "Øko. kartofler" for "kartofler")."""
@@ -2047,11 +2072,11 @@ class Madplan:
 
 def _maengde(strr: Any) -> tuple[float, str] | None:
     """'2 kg' -> (2000, 'g'), '400 g' -> (400, 'g'), '1 l' -> (1000, 'ml'): så vælges samme størrelse."""
-    m = re.match(r"\s*([\d.,]+)\s*(kg|g|l|ml|stk)\b", str(strr or "").lower())
+    m = re.match(r"\s*([\d.,]+)\s*(kg|gr|g|ltr|l|ml|stk)\b", str(strr or "").lower())
     if not m:
         return None
     tal = float(m[1].replace(",", "."))
-    return {"kg": (tal * 1000, "g"), "l": (tal * 1000, "ml")}.get(m[2], (tal, m[2]))
+    return {"kg": (tal * 1000, "g"), "gr": (tal, "g"), "l": (tal * 1000, "ml"), "ltr": (tal * 1000, "ml")}.get(m[2], (tal, m[2]))
 
 
 def _godt_billede(url: Any) -> bool:
