@@ -966,10 +966,19 @@ class Madplan:
                             if re.sub(r"^REMA 1000\s+", "", x["navn"], flags=re.I).strip().lower() == rent), "") \
                     or f"R:{self._rema_kampagne(rent, v, dato) or self._rema_soeg(rent, dato, _maengde(v.get('str'))) or ''}"
             if vid.startswith("R:") and vid[2:].isdigit():
-                ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
+                ud.append({"product_id": int(vid[2:]), "amount": self._rema_antal(v, self.katalog.get(vid[2:]))})
             elif navn:
                 ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
         return ud
+
+    @staticmethod
+    def _rema_antal(v: dict, vare: dict | None) -> int:
+        """Antal af appens vare, når den har en anden størrelse end tilbuddet (2 × ½ hvidkål = 1 × hel)."""
+        antal = int(v.get("antal") or 1)
+        tilbud, rema = _maengde(v.get("str")), _maengde(str((vare or {}).get("str", "")).split(" / ")[0])
+        if not tilbud or not rema or tilbud[1] != rema[1] or not rema[0] or abs(tilbud[0] - rema[0]) < 1:
+            return antal
+        return max(1, math.ceil(antal * tilbud[0] / rema[0] - 0.15))
 
     def _rema_kampagne(self, navn: str, v: dict, dato: datetime.date) -> str | None:
         """Et tilbud fra avisen er en af REMA's varer med netop tilbudsprisen i dag ("Dansk kylling 29 kr" er
