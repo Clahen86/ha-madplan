@@ -37,12 +37,16 @@
           "ai_entity": "AI agent (ai_task)",
           "indkobsliste": "Shopping list (optional)",
           "notify_service": "Notify service for e-mail (optional)",
-          "salling_noegle": "Salling Group API key (optional)"
+          "salling_noegle": "Salling Group API key (optional)",
+          "rema_email": "REMA account: e-mail",
+          "rema_kode": "REMA account: password"
         },
         "data_description": {
           "indkobsliste": "Missing items are added to this list when you send the shopping list.",
           "notify_service": "One or more, e.g. notify.madplan_mail and notify.mobile_app_… for both phones in the household.",
-          "salling_noegle": "Netto, føtex and Bilka only: real prices from your own store instead of estimates. Free key from developer.sallinggroup.dev – see the README."
+          "salling_noegle": "Netto, føtex and Bilka only: real prices from your own store instead of estimates. Free key from developer.sallinggroup.dev – see the README.",
+          "rema_email": "Optional: send the shopping list to the REMA 1000 app. Unofficial – may stop working if REMA changes their site.",
+          "rema_kode": "The password for rema1000.dk and the REMA app. Stored in Home Assistant and only sent to REMA 1000."
         }
       },
       "butik": {
@@ -55,7 +59,9 @@
     },
     "error": {
       "salling_fejl": "The key did not work. Check that it is correct and that the app has access to the Stores, Products EAN and Recommendations APIs.",
-      "ingen_butikker": "No stores were found near your home location."
+      "ingen_butikker": "No stores were found near your home location.",
+      "rema_login": "REMA rejected the e-mail or password.",
+      "rema_forbindelse": "REMA's login didn't answer as expected – try again later."
     }
   },
   "services": {

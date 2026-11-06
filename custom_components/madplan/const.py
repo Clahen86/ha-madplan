@@ -10,6 +10,9 @@ CONF_NOTIFY = "notify_service"
 CONF_BUTIK = "butik"
 # Salling Group (valgfrit, brugerens egen gratis nøgle): rigtige priser i Netto, føtex og Bilka.
 CONF_SALLING_NOEGLE = "salling_noegle"
+# REMA 1000-appen (valgfrit, uofficielt): indkøbslisten sendes til appen med brugerens egen REMA-konto.
+CONF_REMA_EMAIL = "rema_email"
+CONF_REMA_KODE = "rema_kode"
 CONF_SALLING_BUTIK = "salling_butik"
 CONF_SALLING_BUTIK_NAVN = "salling_butik_navn"
 SALLING = {"netto": ("netto", "nettoplus", 10), "foetex": ("foetex", "foetexplus", 15), "bilka": ("bilka", "bilkatogo", 60)}

@@ -10,13 +10,15 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from . import kilder
+from . import kilder, rema_app
 from .const import (
     BUTIKKER,
     CONF_AI_ENTITY,
     CONF_BUTIK,
     CONF_INDKOBSLISTE,
     CONF_NOTIFY,
+    CONF_REMA_EMAIL,
+    CONF_REMA_KODE,
     CONF_SALLING_BUTIK,
     CONF_SALLING_BUTIK_NAVN,
     CONF_SALLING_NOEGLE,
@@ -149,7 +151,30 @@ class MadplanOptionsFlow(OptionsFlow):
             felter[vol.Optional(CONF_SALLING_NOEGLE)] = selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
             )
+        if butik == "rema1000":
+            felter[vol.Optional(CONF_REMA_EMAIL)] = selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
+            )
+            felter[vol.Optional(CONF_REMA_KODE)] = selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
         fejl: dict[str, str] = {}
+        if user_input is not None and butik == "rema1000":
+            email = (user_input.get(CONF_REMA_EMAIL) or "").strip()
+            kode = user_input.get(CONF_REMA_KODE) or ""
+            if email and not kode:
+                fejl["base"] = "rema_login"
+            elif email and (email, kode) != (self.config_entry.options.get(CONF_REMA_EMAIL), self.config_entry.options.get(CONF_REMA_KODE)):
+                try:
+                    await rema_app.async_test(self.hass, email, kode)
+                except rema_app.RemaFejl as e:
+                    fejl["base"] = "rema_login" if e.kode == "login" else "rema_forbindelse"
+            if not email:
+                user_input.pop(CONF_REMA_KODE, None)
+            if fejl:
+                return self.async_show_form(
+                    step_id="init", data_schema=self.add_suggested_values_to_schema(vol.Schema(felter), user_input), errors=fejl
+                )
         if user_input is not None:
             noegle = (user_input.pop(CONF_SALLING_NOEGLE, None) or "").strip()
             if not noegle or butik not in SALLING:

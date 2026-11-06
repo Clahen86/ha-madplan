@@ -21,13 +21,15 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import allergener, kilder, soeg
+from . import allergener, kilder, rema_app, soeg
 from .const import (
     BUTIKKER,
     CONF_AI_ENTITY,
     CONF_BUTIK,
     CONF_INDKOBSLISTE,
     CONF_NOTIFY,
+    CONF_REMA_EMAIL,
+    CONF_REMA_KODE,
     CONF_SALLING_BUTIK,
     CONF_SALLING_NOEGLE,
     DAGE,
@@ -913,14 +915,35 @@ class Madplan:
                         },
                         blocking=True,
                     )
+            til_rema = ""
+            if (o := self.entry.options).get(CONF_REMA_EMAIL) and o.get(CONF_REMA_KODE):
+                til_rema = await self._send_til_rema(mangler)
             if self._notify_tjenester():
                 await self._send_besked(
                     f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}", self._besked(mangler)
                 )
-            self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer)")
+            self._status(f"✅ Indkøbslisten er sendt ({len(mangler)} varer){til_rema}")
         except HomeAssistantError as e:
             _LOGGER.error("Overførsel fejlede: %s", e)
             self._status(f"Fejl ved overførsel: {str(e)[:120]}")
+
+    async def _send_til_rema(self, varer: list[dict]) -> str:
+        """Til REMA 1000-appen: REMA-varer med varenummer (præcis vare), resten som tekst."""
+        ud = []
+        for v in varer:
+            vid = str(v.get("key") or v.get("vare") or "")
+            navn = v.get("navn") or ""
+            if vid.startswith("R:") and vid[2:].isdigit():
+                ud.append({"product_id": int(vid[2:]), "amount": v.get("antal", 1)})
+            elif navn:
+                ud.append({"name": navn[:60], "amount": v.get("antal", 1)})
+        o = self.entry.options
+        try:
+            n = await rema_app.async_send(self.hass, o[CONF_REMA_EMAIL], o[CONF_REMA_KODE], ud)
+        except rema_app.RemaFejl as e:
+            _LOGGER.warning("REMA-appen: %s", e)
+            return " – men REMA-appen afviste login" if e.kode == "login" else " – men REMA-appen svarede ikke"
+        return f" – {n} lagt i REMA-appen"
 
     # ------------------------------------------------------------------ data
 

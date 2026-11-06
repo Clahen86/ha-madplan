@@ -37,12 +37,16 @@
           "ai_entity": "AI-agent (ai_task)",
           "indkobsliste": "Indkøbsliste (valgfri)",
           "notify_service": "Notify-service til mail (valgfri)",
-          "salling_noegle": "Salling Group-nøgle (valgfri)"
+          "salling_noegle": "Salling Group-nøgle (valgfri)",
+          "rema_email": "REMA-konto: e-mail",
+          "rema_kode": "REMA-konto: kodeord"
         },
         "data_description": {
           "indkobsliste": "Manglende varer lægges på denne liste, når du sender indkøbslisten.",
           "notify_service": "Én eller flere, fx notify.madplan_mail og notify.mobile_app_… til begge telefoner i husstanden.",
-          "salling_noegle": "Kun Netto, føtex og Bilka: rigtige priser fra din egen butik i stedet for ca.-priser. Gratis nøgle fra developer.sallinggroup.dev – se README."
+          "salling_noegle": "Kun Netto, føtex og Bilka: rigtige priser fra din egen butik i stedet for ca.-priser. Gratis nøgle fra developer.sallinggroup.dev – se README.",
+          "rema_email": "Valgfrit: send indkøbslisten til REMA 1000-appen. Uofficielt – kan holde op med at virke, hvis REMA ændrer deres side.",
+          "rema_kode": "Kodeordet til rema1000.dk og REMA-appen. Gemmes i Home Assistant og sendes kun til REMA 1000."
         }
       },
       "butik": {
@@ -55,7 +59,9 @@
     },
     "error": {
       "salling_fejl": "Nøglen virkede ikke. Tjek at den er rigtig, og at din app har adgang til Stores, Products EAN og Recommendations API.",
-      "ingen_butikker": "Der blev ikke fundet butikker i nærheden af hjemmets placering."
+      "ingen_butikker": "Der blev ikke fundet butikker i nærheden af hjemmets placering.",
+      "rema_login": "REMA afviste e-mail eller kodeord.",
+      "rema_forbindelse": "REMA's login svarede ikke som ventet – prøv igen senere."
     }
   },
   "services": {

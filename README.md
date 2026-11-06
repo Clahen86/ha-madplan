@@ -98,6 +98,12 @@ Uden nøgle virker alt som normalt med ca.-priser. Med en gratis nøgle fra Sall
 - **Handler du i en anden butik i dag?** Tryk *Handler et andet sted?* på indkøbslisten og vælg butikken. Madspild tjekkes så dér, og varer, den ikke har, byttes til den almindelige vare og pris. Skifter du tilbage, eller kommer en vare på lager igen, kommer madspild-varen tilbage af sig selv.
 - Madspild bruges kun, når der handles i dag eller i morgen. Det koster ingen ekstra AI-kald.
 
+### Indkøbslisten i REMA 1000-appen (valgfrit)
+
+Under **Konfigurer** på din REMA 1000-madplan kan du skrive din REMA-kontos e-mail og kodeord. Så lægger **Send til REMA-appen** ugens varer på din indkøbsliste i REMA 1000-appen – REMA-varer som præcis den vare (varenummer), resten som tekst. Står en vare der allerede, lægges antallet til.
+
+> Uofficielt: REMA 1000 har ingen offentlig API til indkøbslister, så Madplan bruger de samme kald som rema1000.dk (samme fremgangsmåde som [ha-rema1000](https://github.com/madskelkjaer/ha-rema1000)). Det kan holde op med at virke, hvis REMA ændrer deres side – så fejler kun afsendelsen til appen. Kodeordet gemmes i Home Assistant og sendes kun til REMA 1000.
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:

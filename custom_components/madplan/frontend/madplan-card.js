@@ -785,7 +785,7 @@ class MadplanCard extends HTMLElement {
           : ""
       }
       ${this._ekstraSektion(s)}
-      <div class="knapper">${this._knap("send", "Send indkøbsliste", "mdi:send", "fuld")}</div>
+      <div class="knapper">${this._knap("send", s.attributes.har_rema ? "Send til REMA-appen" : "Send indkøbsliste", "mdi:send", "fuld")}</div>
     </div>`;
   }
 
