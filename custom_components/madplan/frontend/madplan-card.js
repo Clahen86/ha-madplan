@@ -801,10 +801,11 @@ class MadplanCard extends HTMLElement {
     const varer = hjemme.filter((v) => auto.has(v.uid))
       .sort((a, b) => Number(tjek.has(b.uid)) - Number(tjek.has(a.uid)));
     if (!varer.length) return "";
-    const navn = (v) => esc(String(v.summary || "").replace(/\s*\(.*\)\s*$/, ""));
+    // Kun navnet: uden tilbudsmærke, antal og størrelse ("🏷️ 2 × Løg (750 g)" -> "Løg").
+    const navn = (v) => esc(String(v.summary || "").replace(/\s*\(.*\)\s*$/, "").replace(/^[^\p{L}\d]+/u, "").replace(/^\d+\s*×\s*/, ""));
     return `<div class="regnermed"><div class="rm-top"><ha-icon icon="mdi:fridge-outline"></ha-icon>
       <span>Vi regner med, I har det her. <b>Tryk på det, I mangler</b>, så kommer det på listen.</span></div>
-      <div class="rm-chips">${varer.map((v) => `<button class="rm-chip til ${tjek.has(v.uid) ? "tjek" : ""}" data-h="husknap" data-liste="varer" data-uid="${esc(v.uid)}">${tjek.has(v.uid) ? `<ha-icon icon="mdi:alert-circle-outline"></ha-icon>` : ""}${navn(v)}${tjek.has(v.uid) ? `<small>Tjek</small>` : ""}</button>`).join("")}</div></div>`;
+      <div class="rm-chips">${varer.map((v) => `<button class="rm-chip til ${tjek.has(v.uid) ? "rm-tjek" : ""}" data-h="husknap" data-liste="varer" data-uid="${esc(v.uid)}">${tjek.has(v.uid) ? `<ha-icon icon="mdi:alert-circle-outline"></ha-icon>` : ""}${navn(v)}${tjek.has(v.uid) ? `<small>Tjek</small>` : ""}</button>`).join("")}</div></div>`;
   }
 
   /** Hovedbutikkens varer først, så "Fra Netto" osv. for varer fra andre kæder. */
@@ -1237,8 +1238,8 @@ const CSS = `
   .rm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .rm-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--divider-color); border-radius: 16px;
     padding: 6px 11px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 13px; cursor: pointer; }
-  .rm-chip.tjek { border-color: var(--warning-color, #f59e0b); }
-  .rm-chip.tjek ha-icon { --mdc-icon-size: 16px; color: var(--warning-color, #f59e0b); }
+  .rm-chip.rm-tjek { border-color: var(--warning-color, #f59e0b); }
+  .rm-chip.rm-tjek ha-icon { --mdc-icon-size: 16px; color: var(--warning-color, #f59e0b); }
   .rm-chip small { font-size: 11px; font-weight: 700; color: var(--warning-color, #f59e0b); }
   .vis-hjemme { display: flex; align-items: center; gap: 4px; border: none; background: none; padding: 12px 0 4px;
     cursor: pointer; color: var(--secondary-text-color); font-weight: 500; }
