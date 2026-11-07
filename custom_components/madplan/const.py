@@ -34,6 +34,7 @@ STANDARD_REGLER = {
     "husstand": "boernefamilie",  # eller "voksne"
     "koekkener": [],  # yndlingskøkkener, fx ["italiensk", "asiatisk"]
     "faste_dage": [],  # [{"dag": 5, "ret": "pizza"}], dag som indeks i DAGE
+    "antal_dage": 7,  # planen dækker så mange dage fra indkøbsdagen (1-7)
     "fri_dage": [],  # dage uden madlavning (fx spiser ude onsdag), indeks i DAGE
     "krav": "",
     "niveau": "hverdag",  # hverdag / hygge / gourmet

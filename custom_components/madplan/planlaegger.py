@@ -321,7 +321,8 @@ class Madplan:
                 fra = max(0, min(6, (dag - start).days))
                 # Dage uden madlavning (fx spiser ude onsdag) planlægges ikke - det sparer også AI'en.
                 fri = {int(d) for d in self.regler.get("fri_dage") or []}
-                dage = [i for i in range(fra, 7) if i not in fri]
+                til = self._til(fra)
+                dage = [i for i in range(fra, til) if i not in fri]
                 if not dage:
                     raise HomeAssistantError("Alle dage er slået fra - vælg mindst én dag")
                 antal = len(dage)
@@ -348,6 +349,7 @@ class Madplan:
                 ])
                 if len(nye) < antal:
                     raise HomeAssistantError(f"AI gav kun {len(nye)} retter")
+                nye = await self._tjek_opskrifter(nye)
                 if self.ekstra_butikker:
                     self._saml_butikker(nye)
                 await self.hass.async_add_executor_job(self._find_varer, nye, start)
@@ -359,6 +361,9 @@ class Madplan:
                 retter = [
                     {"navn": "Før planen", "fjernet": True, "forbi": True}
                     if i < fra
+                    else {"navn": "Ikke med i planen", "fjernet": True, "uden": True,
+                          "kort": f"Planen dækker {til - fra} dage.", "trin": [], "ingredienser": []}
+                    if i >= til
                     else {"navn": "Spiser ude", "fjernet": True, "fri": True, "kort": "Slået fra i planen.",
                           "trin": [], "ingredienser": []}
                     if i in fri
@@ -441,6 +446,7 @@ class Madplan:
                 ret = await self._spoerg("Madplan byt ret", lambda liste: instr + self._vare_tekst(liste))
                 if "retter" in ret:
                     ret = ret["retter"][0]
+                ret = (await self._tjek_opskrifter([ret]))[0]
                 if gammel_ret.get("personer"):
                     ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
                 await self.hass.async_add_executor_job(self._find_varer, [ret], start)
@@ -506,6 +512,7 @@ class Madplan:
                 ret = svar.get("ret") or (svar.get("retter") or [None])[0] or svar
                 if not ret.get("navn"):
                     raise HomeAssistantError("AI'en gav ingen ret")
+                ret = (await self._tjek_opskrifter([ret]))[0]
                 await self.hass.async_add_executor_job(self._find_varer, [ret], idag)
                 self.en_ret = [self._beregn_en_ret(ret, n, idag, har, oenske)] + self.en_ret[:4]
                 await self._gem()
@@ -1108,7 +1115,7 @@ class Madplan:
                              "fryses": v["fryses"], "tjekket": nu, "udsolgt": False},
             }
         frie = {int(d) for d in self.regler.get("fri_dage") or []}
-        dage = [i for i in range(fra, 7) if i not in frie][:MADSPILD_DAGE]
+        dage = [i for i in range(fra, self._til(fra)) if i not in frie][:MADSPILD_DAGE]
         self._madspild_dage = " og ".join(DAGE[i] for i in dage)
 
     @property
@@ -1752,6 +1759,56 @@ class Madplan:
         self._faelles["mine"] = [m for m in self.mine_retter if m["id"] != ret_id]
         await self._faelles["mine_store"].async_save(self._faelles["mine"])
 
+    def _til(self, fra: int) -> int:
+        """Dagen efter planens sidste dag: planen dækker 'antal_dage' fra indkøbsdagen (højst til ugens slutning)."""
+        n = int(self.regler.get("antal_dage") or 7)
+        return min(7, fra + max(1, min(7, n)))
+
+    async def _tjek_opskrifter(self, retter: list[dict]) -> list[dict]:
+        """Trin, der nævner noget, som ikke er på ingredienslisten (svits løg, tilsæt krydderier), rettes.
+
+        Retterne med fejl sendes tilbage til AI'en i ét samlet kald. Går det ikke (fx dagskvoten), sættes de
+        manglende råvarer på listen, så de i det mindste kommer med på indkøbslisten."""
+        fejl = [i for i, r in enumerate(retter) if not self.min_ret(r) and opskrift_mangler(r)]
+        if not fejl:
+            return retter
+        problemer = "\n".join(
+            f"{n + 1}. {retter[i].get('navn')}: " + ", ".join(
+                (f"'{m}' nævnes i trinene, men står ikke på ingredienslisten" if m != "krydderier"
+                 else "trinene siger bare 'krydderier' - nævn hvert krydderi")
+                for m in opskrift_mangler(retter[i]))
+            for n, i in enumerate(fejl)
+        )
+        instr = (
+            "Disse retter hænger ikke sammen - trinene nævner ting, der ikke er på ingredienslisten:\n"
+            + problemer + "\n\nRet dem: sæt alt, trinene nævner, på ingredienslisten med mængde, og skriv de "
+            "konkrete krydderier, retten skal have, i både trin og ingredienser. Behold resten af retten. "
+            + self._regler()
+            + f'Svar KUN med JSON: {{"retter": [{len(fejl)} x ' + self._ret_skema() + "]} i samme rækkefølge.\n"
+            + "RETTERNE:\n" + json.dumps([retter[i] for i in fejl], ensure_ascii=False) + "\n\n"
+        )
+        try:
+            svar = await self._spoerg("Madplan ret opskrifter", lambda liste: instr + self._vare_tekst(liste))
+            rettede = svar.get("retter") or []
+        except Exception as e:  # noqa: BLE001 - planen bruges stadig
+            _LOGGER.warning("Kunne ikke rette opskrifter: %s", e)
+            rettede = []
+        ud = list(retter)
+        for n, i in enumerate(fejl):
+            ny = rettede[n] if n < len(rettede) and isinstance(rettede[n], dict) else None
+            if ny and ny.get("ingredienser") and len(opskrift_mangler(ny)) < len(opskrift_mangler(retter[i])):
+                for k in ("personer", "min_ret"):
+                    if k in retter[i]:
+                        ny[k] = retter[i][k]
+                ud[i] = ny
+            else:
+                for m in opskrift_mangler(retter[i]):
+                    if m != "krydderier":
+                        ud[i].setdefault("ingredienser", []).append(
+                            {"navn": m, "pr_person": 0, "enhed": "", "vare": f"S:{m.capitalize()}", "pakke": 0,
+                             "basis": soeg.er_basis(m)})
+        return ud
+
     def min_ret(self, ret: dict) -> dict | None:
         """Familiens egen ret, som dagens ret er lavet efter - eller None."""
         if ret.get("rester_fra") is not None or ret.get("fjernet"):
@@ -1849,6 +1906,9 @@ class Madplan:
             "en almindelig pakningsstørrelse). "
             "Sæt 'basis': true for basisvarer de fleste har hjemme (salt, peber, olie, smør, mel, "
             "sukker, tørrede krydderier, bouillon). 'hovedvare' er id'et på rettens vigtigste vare.\n"
+            "Alt, trinene nævner (også løg, hvidløg, ingefær, olie, smør og hvert krydderi), skal stå i "
+            "'ingredienser' med mængde. Skriv aldrig bare 'krydderier' - nævn hvert krydderi ved navn, og giv "
+            "retten de krydderier, den rigtigt skal have (fx spidskommen, gurkemeje og garam masala i en dahl).\n"
             f"Opskriftens trin skal være korte og konkrete på dansk: højst {8 if niveau == 'gourmet' else 6} trin. "
             "'kort' højst 12 ord og "
             "'sundhed' højst 8 ord. Svar med kompakt JSON uden linjeskift.\n"
@@ -2174,3 +2234,28 @@ def _parse_json(tekst: Any) -> dict:
         return tekst
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", str(tekst).strip())
     return json.loads(t[t.find("{") : t.rfind("}") + 1])
+
+
+# Råvarer og krydderier, en opskrift tit nævner i trinene. Findes de ikke i ingredienslisten, mangler de.
+RAAVARER = (
+    "løg", "rødløg", "skalotteløg", "forårsløg", "porre", "hvidløg", "ingefær", "chili", "spidskommen", "gurkemeje",
+    "karry", "garam masala", "paprika", "kanel", "oregano", "timian", "rosmarin", "basilikum", "persille",
+    "koriander", "dild", "citron", "lime", "tomatpuré", "hakkede tomater", "kokosmælk", "fløde", "mælk", "smør",
+    "olie", "æg", "parmesan", "soja", "honning", "sukker", "mel", "bouillon", "ris", "pasta", "kartofler",
+    "gulerødder", "selleri", "squash", "peberfrugt",
+)
+_VAGT = re.compile(r"\bkrydderi(?:er|erne)?\b", re.I)
+
+
+def opskrift_mangler(ret: dict) -> list[str]:
+    """Det, trinene nævner, som ikke står på ingredienslisten - og "krydderier" uden navn."""
+    trin = " ".join(str(t) for t in ret.get("trin") or []).lower()
+    if not trin:
+        return []
+    navne = " ".join(str(i.get("navn", "")) for i in ret.get("ingredienser") or []).lower()
+    # Hele ord med danske endelser: "løget", "olien", "æggene" - men ikke "mellemtiden" for mel.
+    mangler = [v for v in RAAVARER if re.search(rf"\b{re.escape(v)}(?:en|et|ene|er|erne|ne|s|e|get|gene)?\b", trin)
+               and v not in navne]
+    if _VAGT.search(trin) and not _VAGT.search(navne):
+        mangler.append("krydderier")
+    return mangler
