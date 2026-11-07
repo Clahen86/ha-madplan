@@ -22,7 +22,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
-- **Vælg dage**: hvor mange dage planen skal dække (1–7), og slå dage fra (fx når I spiser ude onsdag).
+- **Vælg dage**: slå dage fra (fx når I spiser ude onsdag), så planen kun laves for resten.
 - **Opskrifter der hænger sammen**: nævner trinene noget, der ikke står på ingredienslisten (fx løg eller bare "krydderier"), retter AI'en opskriften i ét ekstra kald.
 - **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
 - **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.

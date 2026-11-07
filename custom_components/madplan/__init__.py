@@ -49,7 +49,6 @@ REGLER_SKEMA = vol.Schema(
         vol.Optional("max_tid_weekend"): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
         vol.Optional("husstand"): vol.In(["boernefamilie", "voksne"]),
         vol.Optional("koekkener"): _LISTE,
-        vol.Optional("antal_dage"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7)),
         vol.Optional("fri_dage"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=0, max=6))]),
         vol.Optional("faste_dage"): vol.All(
             cv.ensure_list,

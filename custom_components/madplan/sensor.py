@@ -181,7 +181,6 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "rester_fra": DAGE[r["rester_fra"]] if isinstance(r.get("rester_fra"), int) else None,
             "fjernet": bool(r.get("fjernet")),
             "forbi": bool(r.get("forbi")),
-            "uden": bool(r.get("uden")),  # efter planens sidste dag (antal dage)
             "dato": r.get("_dato"),
             "dato_kort": _kort_dato(r.get("_dato")),
             "kort": r.get("kort", ""),

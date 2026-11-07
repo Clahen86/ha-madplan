@@ -321,8 +321,7 @@ class Madplan:
                 fra = max(0, min(6, (dag - start).days))
                 # Dage uden madlavning (fx spiser ude onsdag) planlægges ikke - det sparer også AI'en.
                 fri = {int(d) for d in self.regler.get("fri_dage") or []}
-                til = self._til(fra)
-                dage = [i for i in range(fra, til) if i not in fri]
+                dage = [i for i in range(fra, 7) if i not in fri]
                 if not dage:
                     raise HomeAssistantError("Alle dage er slået fra - vælg mindst én dag")
                 antal = len(dage)
@@ -361,9 +360,6 @@ class Madplan:
                 retter = [
                     {"navn": "Før planen", "fjernet": True, "forbi": True}
                     if i < fra
-                    else {"navn": "Ikke med i planen", "fjernet": True, "uden": True,
-                          "kort": f"Planen dækker {til - fra} dage.", "trin": [], "ingredienser": []}
-                    if i >= til
                     else {"navn": "Spiser ude", "fjernet": True, "fri": True, "kort": "Slået fra i planen.",
                           "trin": [], "ingredienser": []}
                     if i in fri
@@ -1115,7 +1111,7 @@ class Madplan:
                              "fryses": v["fryses"], "tjekket": nu, "udsolgt": False},
             }
         frie = {int(d) for d in self.regler.get("fri_dage") or []}
-        dage = [i for i in range(fra, self._til(fra)) if i not in frie][:MADSPILD_DAGE]
+        dage = [i for i in range(fra, 7) if i not in frie][:MADSPILD_DAGE]
         self._madspild_dage = " og ".join(DAGE[i] for i in dage)
 
     @property
@@ -1758,11 +1754,6 @@ class Madplan:
     async def async_slet_min_ret(self, ret_id: str) -> None:
         self._faelles["mine"] = [m for m in self.mine_retter if m["id"] != ret_id]
         await self._faelles["mine_store"].async_save(self._faelles["mine"])
-
-    def _til(self, fra: int) -> int:
-        """Dagen efter planens sidste dag: planen dækker 'antal_dage' fra indkøbsdagen (højst til ugens slutning)."""
-        n = int(self.regler.get("antal_dage") or 7)
-        return min(7, fra + max(1, min(7, n)))
 
     async def _tjek_opskrifter(self, retter: list[dict]) -> list[dict]:
         """Trin, der nævner noget, som ikke er på ingredienslisten (svits løg, tilsæt krydderier), rettes.

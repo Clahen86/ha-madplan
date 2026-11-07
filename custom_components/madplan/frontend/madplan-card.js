@@ -215,11 +215,6 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "ekstra_butikker", { entity_id: plan, butikker: [...valgt] });
         break;
       }
-      case "antaldage": {
-        const n = Math.max(1, Math.min(7, Number((a.regler || {}).antal_dage || 7) + Number(el.dataset.d)));
-        this._gemRegler({ antal_dage: n });
-        break;
-      }
       case "fridag": {
         const fri = new Set((a.regler || {}).fri_dage || []);
         const i = Number(el.dataset.i);
@@ -581,10 +576,7 @@ class MadplanCard extends HTMLElement {
   /** Hvilke dage næste plan skal lave aftensmad til (fx ikke onsdag, hvor I spiser ude). Huskes. */
   _dageValg(a) {
     const fri = new Set((a.regler || {}).fri_dage || []);
-    const n = Number((a.regler || {}).antal_dage || 7);
-    return `<div class="dagevalg"><span>Antal dage</span><div class="stepper"><button data-h="antaldage" data-d="-1" aria-label="Færre dage">−</button>
-      <span>${n}</span><button data-h="antaldage" data-d="1" aria-label="Flere dage">+</button></div></div>
-      <div class="dagevalg"><span>Planen laves for</span><div>${KORT.map(
+    return `<div class="dagevalg"><span>Planen laves for</span><div>${KORT.map(
       (k, i) => `<button class="${fri.has(i) ? "" : "til"}" data-h="fridag" data-i="${i}" aria-pressed="${!fri.has(i)}" title="${DAGE[i]}">${k.slice(0, 2)}</button>`,
     ).join("")}</div></div>`;
   }
@@ -723,7 +715,7 @@ class MadplanCard extends HTMLElement {
     if (a.fjernet) {
       return `<div class="detalje tom-dag">
         <ha-icon icon="mdi:silverware-variant"></ha-icon>
-        <div><b>${DAGE[i]}: ${a.forbi ? "før planen" : a.uden ? "uden for planen" : "ingen aftensmad"}</b><br><small>${
+        <div><b>${DAGE[i]}: ${a.forbi ? "før planen" : "ingen aftensmad"}</b><br><small>${
           a.forbi ? "Planen blev lavet senere på ugen. Tryk &quot;Byt ret&quot;, hvis I vil have en ret alligevel." : "Tryk &quot;Byt ret&quot; for at få en ret igen."
         }</small></div>
         <div class="knapper">${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", dag)}</div>
@@ -1157,10 +1149,6 @@ const CSS = `
   .dagpers > ha-icon { color: color-mix(in srgb, var(--brand) 70%, var(--primary-text-color)); }
   .dagpers .dptekst { flex: 1; font-weight: 600; }
   .dagpers.gaester { background: color-mix(in srgb, var(--brand) 14%, transparent); }
-  .dagevalg .stepper { display: inline-flex; align-items: center; gap: 4px; }
-  .dagevalg .stepper button { width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; font-size: 18px;
-    background: var(--secondary-background-color); color: var(--primary-text-color); }
-  .dagevalg .stepper span { min-width: 24px; text-align: center; font-weight: 800; }
   .dagpers .stepper { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 20px; background: var(--card-background-color); }
   .dagpers .stepper button { width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; font-size: 18px;
     background: var(--secondary-background-color); color: var(--primary-text-color); }
@@ -1341,7 +1329,7 @@ class MadplanPanel extends MadplanCard {
         return `<button class="dagrad ${a.fjernet ? "fjernet" : ""} ${a.dato && a.dato < idag ? "forbi" : ""}" data-h="aabn" data-dag="${i + 1}">
           <span class="datoblok"><small>${KORT[i]}</small><b>${esc(dato)}</b></span>
           <span class="rtekst"><span class="rnavn">${a.forbi ? "Før planen" : a.fjernet ? esc(d.state || "Ingen aftensmad") : esc(d.state)}</span>
-            ${a.forbi ? `<span class="rinfo">Planen blev lavet senere</span>` : a.uden ? `<span class="rinfo">Uden for planen</span>` : a.fjernet ? `<span class="rinfo">Spiser ude</span>` : a.rester_fra ? `<span class="rinfo">Rester fra ${esc(a.rester_fra.toLowerCase())} · intet at købe</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}${a.dobbelt ? ` · <b class="gaest">2 dage</b>` : ""}</span>`}</span>
+            ${a.forbi ? `<span class="rinfo">Planen blev lavet senere</span>` : a.fjernet ? `<span class="rinfo">Spiser ude</span>` : a.rester_fra ? `<span class="rinfo">Rester fra ${esc(a.rester_fra.toLowerCase())} · intet at købe</span>` : `<span class="rinfo">${esc(a.tid ?? "?")} min · ${kr(a.pris)}${a.gaester ? ` · <b class="gaest"><ha-icon icon="mdi:account-group"></ha-icon>${esc(a.personer)}</b>` : ""}${a.dobbelt ? ` · <b class="gaest">2 dage</b>` : ""}</span>`}</span>
           ${this._billede(a, "rbillede")}
         </button>`;
       })
