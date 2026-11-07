@@ -772,7 +772,8 @@ class MadplanCard extends HTMLElement {
     const hjemme = varer.filter((v) => this._tilstand(v) === "hjemme");
     return `<div class="indkob">
       <div class="sektion"><ha-icon icon="mdi:cart-outline"></ha-icon><span>Indkøb</span>
-        <span class="mangler">${koeb.length + kurv.length} varer · ${kr(s.state)}</span></div>
+        <span class="mangler">${koeb.length + kurv.length} varer${hjemme.length ? ` · ${hjemme.length} har I` : ""} · ${kr(s.state)}</span></div>
+      ${this._regnerMed(s, hjemme)}
       <div class="hjaelp">Tryk på en vare, når den er i kurven. Har I den allerede, så tryk på <ha-icon icon="mdi:home-outline"></ha-icon>, så trækkes den fra.${
         s.attributes.anslaaede_priser ? ` Priser med "ca." er anslået; tilbudspriser er ${esc(s.attributes.butik)}s egne.` : ""
       }</div>${this._madspildInfo(s.attributes)}${this._madspildButik(s.attributes)}
@@ -791,6 +792,19 @@ class MadplanCard extends HTMLElement {
       <div class="knapper">${s.attributes.har_rema ? this._knap("sendrema", "Send til REMA-appen", "mdi:cellphone-arrow-down", "fuld") : ""}
         ${this._knap("send", "Send indkøbsliste", "mdi:send", s.attributes.har_rema ? "fuld graa" : "fuld")}</div>
     </div>`;
+  }
+
+  /** Det, planen selv regner med, I har hjemme - synligt øverst, så man opdager det, man mangler. */
+  _regnerMed(s, hjemme) {
+    const auto = new Set(s.attributes.auto_hjemme || []);
+    const tjek = new Set(s.attributes.tjek || []);
+    const varer = hjemme.filter((v) => auto.has(v.uid))
+      .sort((a, b) => Number(tjek.has(b.uid)) - Number(tjek.has(a.uid)));
+    if (!varer.length) return "";
+    const navn = (v) => esc(String(v.summary || "").replace(/\s*\(.*\)\s*$/, ""));
+    return `<div class="regnermed"><div class="rm-top"><ha-icon icon="mdi:fridge-outline"></ha-icon>
+      <span>Vi regner med, I har det her. <b>Tryk på det, I mangler</b>, så kommer det på listen.</span></div>
+      <div class="rm-chips">${varer.map((v) => `<button class="rm-chip til ${tjek.has(v.uid) ? "tjek" : ""}" data-h="husknap" data-liste="varer" data-uid="${esc(v.uid)}">${tjek.has(v.uid) ? `<ha-icon icon="mdi:alert-circle-outline"></ha-icon>` : ""}${navn(v)}${tjek.has(v.uid) ? `<small>Tjek</small>` : ""}</button>`).join("")}</div></div>`;
   }
 
   /** Hovedbutikkens varer først, så "Fra Netto" osv. for varer fra andre kæder. */
@@ -1217,6 +1231,15 @@ const CSS = `
   .mp span:first-of-type { flex: 1; }
   .slet { border: none; background: none; cursor: pointer; color: var(--secondary-text-color); padding: 4px; display: grid; }
   .slet ha-icon { --mdc-icon-size: 16px; }
+  .regnermed { margin: 10px 0; padding: 12px; border-radius: 14px; background: var(--secondary-background-color); }
+  .rm-top { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; line-height: 1.4; }
+  .rm-top ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); flex: none; }
+  .rm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .rm-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--divider-color); border-radius: 16px;
+    padding: 6px 11px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 13px; cursor: pointer; }
+  .rm-chip.tjek { border-color: var(--warning-color, #f59e0b); }
+  .rm-chip.tjek ha-icon { --mdc-icon-size: 16px; color: var(--warning-color, #f59e0b); }
+  .rm-chip small { font-size: 11px; font-weight: 700; color: var(--warning-color, #f59e0b); }
   .vis-hjemme { display: flex; align-items: center; gap: 4px; border: none; background: none; padding: 12px 0 4px;
     cursor: pointer; color: var(--secondary-text-color); font-weight: 500; }
 

@@ -304,6 +304,14 @@ def er_basis(navn: str) -> bool:
     return bool(_BASIS.search(navn or ""))
 
 
+# Det, næsten alle altid har. Andre basisvarer (krydderier, kokosmælk …) får et "Tjek", hvis kun én ret bruger dem.
+_ALMINDELIG = re.compile(r"\b(?:salt|peber|\w*olie|smør|margarine|\w*mel|sukker|vand|\w*bouillon\w*)\b", re.I)
+
+
+def er_almindelig(navn: str) -> bool:
+    return bool(_ALMINDELIG.search(navn or ""))
+
+
 # Beskrivende ord, der ikke siger, hvilken vare det er ("hakket oksekød" og "hakkede tomater" er forskellige).
 _BESKRIVENDE = {
     "hakket", "hakkede", "hk", "frisk", "friske", "dansk", "danske", "økologisk", "økologiske", "øko", "rema",

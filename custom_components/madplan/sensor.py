@@ -126,6 +126,9 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             # Afkrydset i to-do-listerne er enten "i kurven" eller "har hjemme"; kortet skal kende forskel.
             "kurv": [v["key"] for v in p.get("varer", []) if v.get("kurv")]
             + [e["uid"] for e in p.get("ekstra", []) if e.get("kurv")],
+            # Det, planen selv regner med, I har hjemme - og det af det, I bør tjekke (fx et krydderi til én ret).
+            "auto_hjemme": [v["key"] for v in p.get("varer", []) if v.get("auto_hjemme") and v.get("hjemme")],
+            "tjek": [v["key"] for v in p.get("varer", []) if v.get("tjek")],
             "advarsler": self.madplan.advarsler(),
             "ekstra_total": p.get("ekstra_total", 0),
             "ekstra_ca": p.get("ekstra_ca", 0),

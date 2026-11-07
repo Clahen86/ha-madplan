@@ -158,6 +158,8 @@ class Madplan:
         data = data or {}
         self.plan = data.get("plan", {})
         self.historik = data.get("historik", [])
+        # Basisvarer, familien har flyttet til indkøb: dem regnes der ikke med, at de har, næste gang.
+        self.mangler_ofte: set[str] = set(data.get("mangler_ofte", []))
         # En ny butik arver antal personer fra de andre butikker.
         andre = [e.runtime_data.personer for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
@@ -196,6 +198,7 @@ class Madplan:
                 "en_ret": self.en_ret,
                 "ekstra_butikker": self.ekstra_butikker,
                 "auto_plan": self.auto_plan,
+                "mangler_ofte": sorted(self.mangler_ofte),
             }
         )
 
@@ -758,17 +761,25 @@ class Madplan:
         """Afkrydsning i HA's egen to-do-liste: lagt i kurven (eller fortrudt)."""
         await self.async_marker("varer", key, "kurv", hjemme)
 
+    def _mangler(self, navn: str) -> bool:
+        return any(soeg.samme_vare(navn, m) for m in self.mangler_ofte)
+
     async def async_marker(self, liste: str, uid: str, felt: str, vaerdi: bool) -> None:
         """'kurv' = lagt i kurven mens man handler (tæller stadig med i prisen).
         'hjemme' = har det allerede (trækkes fra). En vare er højst det ene af dem."""
         noegle = "key" if liste == "varer" else "uid"
         for v in self.plan.get(liste, []):
             if v[noegle] == uid:
+                foer = bool(v.get("hjemme"))
+                v["auto_hjemme"] = False
                 v[felt] = vaerdi
                 if vaerdi:
                     v["hjemme" if felt == "kurv" else "kurv"] = False
                 elif felt == "kurv":
                     v["hjemme"] = False
+                if liste == "varer" and v.get("basis") and foer != bool(v.get("hjemme")):
+                    # Køkkenskabet læres: en basisvare, I manglede, regnes ikke med næste gang - og omvendt.
+                    (self.mangler_ofte.discard if v.get("hjemme") else self.mangler_ofte.add)(v["navn"])
         self._totaler()
         await self._gem()
         self.opdater()
@@ -1965,6 +1976,7 @@ class Madplan:
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
                 f["butik"] = self._anden_butik(ing["vare"])
+                f.setdefault("retter", set()).add(i)
                 # Den første dag, varen bruges - madspild skal bruges med det samme eller fryses.
                 dato_i = (start + datetime.timedelta(days=i)).isoformat()
                 f["brug"] = min(f.get("brug") or dato_i, dato_i)
@@ -1984,6 +1996,7 @@ class Madplan:
             ret["_dato"] = (start + datetime.timedelta(days=i)).isoformat()
         # Basisvarer starter som "har hjemme"; ellers huskes brugerens valg.
         gamle = {} if ny else {v["key"]: v.get("hjemme", False) for v in self.plan.get("varer", [])}
+        gamle_auto = {} if ny else {v["key"]: v.get("auto_hjemme", False) for v in self.plan.get("varer", [])}
         i_kurv = set() if ny else {v["key"] for v in self.plan.get("varer", []) if v.get("kurv")}
         varer = []
         for key, f in forbrug.items():
@@ -2005,7 +2018,11 @@ class Madplan:
                     "ukendt": f.get("ukendt", False),
                     "basis": f["basis"],
                     "for_mange": f.get("for_mange", False),
-                    "hjemme": gamle.get(key, f["basis"]),
+                    "hjemme": gamle.get(key, f["basis"] and not self._mangler(f["navn"])),
+                    # Sat som "har hjemme" af planen selv (ikke af jer) - vises øverst, så man kan rette det.
+                    "auto_hjemme": gamle_auto[key] if key in gamle else (f["basis"] and not self._mangler(f["navn"])),
+                    # Et krydderi eller lign., der kun bruges i én ret, har man ikke altid: "Tjek".
+                    "tjek": f["basis"] and not soeg.er_almindelig(f["navn"]) and len(f.get("retter") or ()) <= 1,
                     "kurv": key in i_kurv,
                     "butik": f.get("butik"),
                     "madspild_udsolgt": f.get("madspild_udsolgt", False),
