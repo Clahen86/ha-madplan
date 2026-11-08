@@ -711,6 +711,19 @@ class MadplanCard extends HTMLElement {
       .join("")}</div>`;
   }
 
+  /** "Sådan gør du": the short steps with a button for the detailed recipe - or the detailed recipe itself. */
+  _trin(a, dag) {
+    const u = a.udfoerlig, st = a.udfoerlig_status || "";
+    return u
+      ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
+         <ol class="trin">${(u.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
+         ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}`
+      : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
+         ${st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
+           : `<button class="udf-knap" data-h="udfoerlig" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
+              ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
+  }
+
   _dag(d, i) {
     if (!d) return "";
     const a = d.attributes;
@@ -725,15 +738,7 @@ class MadplanCard extends HTMLElement {
       </div>`;
     }
     const ing = `<ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
-    const u = a.udfoerlig, st = a.udfoerlig_status || "";
-    const trin = u
-      ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
-         <ol class="trin">${(u.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
-         ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}`
-      : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
-         ${st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
-           : `<button class="udf-knap" data-h="udfoerlig" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
-              ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
+    const trin = this._trin(a, dag);
     // I panelet er der plads til både ingredienser og fremgangsmåde; i kortet bruges faner.
     const liste = this._fuld
       ? `${this._dagPersoner(a, dag)}<div class="overskrift">Ingredienser · ${esc(a.personer ?? this._personer())} personer</div>${ing}
@@ -1415,7 +1420,7 @@ class MadplanPanel extends MadplanCard {
           : ""
       }
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
-        <ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
+        ${this._trin(a, i + 1)}</div>
       <div class="knapper">
         ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", i + 1)}
         ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", i + 1)}

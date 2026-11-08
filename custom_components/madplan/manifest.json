@@ -20,5 +20,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Clahen86/ha-madplan/issues",
   "requirements": [],
-  "version": "1.10.0"
+  "version": "1.10.1"
 }
