@@ -145,6 +145,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         m = _madplaner(call)[0]
         m.entry.async_create_background_task(hass, m.async_byt_ret(call.data["dag"]), "madplan_byt_ret")
 
+    async def udfoerlig(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        m.entry.async_create_background_task(hass, m.async_udfoerlig(call.data["dag"]), "madplan_udfoerlig")
+
     async def fjern_ret(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_fjern_ret(call.data["dag"])
 
@@ -243,6 +247,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=NY_PLAN_SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
+    hass.services.async_register(DOMAIN, "udfoerlig_opskrift", udfoerlig, schema=DAG_SKEMA)
     hass.services.async_register(
         DOMAIN, "overfoer", overfoer, schema=SKEMA.extend({vol.Optional("til", default="liste"): vol.In(["liste", "rema"])})
     )

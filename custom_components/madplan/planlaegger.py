@@ -413,6 +413,40 @@ class Madplan:
             _LOGGER.info("Madplan: %s bryder en allergi - byttes", DAGE[dag - 1])
             await self.async_byt_ret(dag)
 
+    async def async_udfoerlig(self, dag: int) -> None:
+        """Den udførlige opskrift for én ret: trin med temperaturer, tider, størrelser og mængder - kun når man beder
+        om den, og gemt, så det kun koster ét AI-kald pr. ret."""
+        retter = self.plan.get("retter") or []
+        if not 1 <= dag <= len(retter) or retter[dag - 1].get("fjernet"):
+            return
+        ret = retter[dag - 1]
+        if ret.get("udfoerlig") or ret.get("udfoerlig_status") == "laver":
+            return
+        ret["udfoerlig_status"] = "laver"
+        self.opdater()
+        try:
+            n = ret.get("personer") or self.personer
+            instr = (
+                f"Skriv en udførlig opskrift på dansk på retten \"{ret.get('navn')}\" til {n} personer, så en, der ikke "
+                "laver mad så tit, kan følge den. Brug PRÆCIS disse ingredienser og mængder:\n"
+                + "\n".join(ret.get("_linjer") or []) + "\n\n"
+                "Hvert trin skal være konkret: hvad der skæres og hvor stort, mængder i trinet, ovn- eller "
+                "pandetemperatur, tider, og hvordan man ser, at det er færdigt. Højst 12 trin. Tilføj op til 3 korte "
+                "tips (fx forberedelse, rester, eller hvad børn kan lide). "
+                'Svar KUN med JSON: {"trin": [str], "tips": [str]}'
+            )
+            svar = await self._spoerg_ai("Madplan udførlig opskrift", instr)
+            trin = [str(t).strip() for t in svar.get("trin") or [] if str(t).strip()][:12]
+            if not trin:
+                raise HomeAssistantError("AI'en gav ingen trin")
+            ret["udfoerlig"] = {"trin": trin, "tips": [str(t).strip() for t in svar.get("tips") or [] if str(t).strip()][:3]}
+            ret.pop("udfoerlig_status", None)
+        except Exception as e:  # noqa: BLE001 - vises på kortet
+            _LOGGER.warning("Udførlig opskrift fejlede: %s", e)
+            ret["udfoerlig_status"] = f"fejl: {str(e)[:80]}"
+        await self._gem()
+        self.opdater()
+
     async def async_byt_ret(self, dag: int) -> None:
         if self.optaget or not self.plan.get("retter") or not 1 <= dag <= 7:
             return
@@ -552,7 +586,7 @@ class Madplan:
                 mgd, pakke = 0.0, 0.0
             enhed = ing.get("enhed", "")
             vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
-            linjer.append(f"{vis} {ing.get('navn', '')}".strip())
+            linjer.append(f"{vis} {ing.get('navn', '')}".strip() if vis else f"{ing.get('navn', '')} (efter smag)")
             # Det, familien har, afgøres af deres egen liste - ikke af AI'ens 'har', som kan tage fejl.
             navn_ing = str(ing.get("navn", ""))
             ing["har"] = any(soeg.samme_vare(navn_ing, h) for h in har)
@@ -1908,6 +1942,8 @@ class Madplan:
             "en almindelig pakningsstørrelse). "
             "Sæt 'basis': true for basisvarer de fleste har hjemme (salt, peber, olie, smør, mel, "
             "sukker, tørrede krydderier, bouillon). 'hovedvare' er id'et på rettens vigtigste vare.\n"
+            "Hver ingrediens skal have en mængde: 'pr_person' er altid større end 0 – også krydderier, olie, salt og "
+            "peber (fx 1 g spidskommen eller 5 ml olie pr. person). "
             "Alt, trinene nævner (også løg, hvidløg, ingefær, olie, smør og hvert krydderi), skal stå i "
             "'ingredienser' med mængde. Skriv aldrig bare 'krydderier' - nævn hvert krydderi ved navn, og giv "
             "retten de krydderier, den rigtigt skal have (fx spidskommen, gurkemeje og garam masala i en dahl).\n"
@@ -1966,7 +2002,7 @@ class Madplan:
                     mgd, pakke = 0.0, 0.0
                 enhed = ing.get("enhed", "")
                 vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
-                linjer.append(f"{vis} {ing.get('navn', '')}".strip())
+                linjer.append(f"{vis} {ing.get('navn', '')}".strip() if vis else f"{ing.get('navn', '')} (efter smag)")
                 info = self._slaa_op(ing.get("vare"), start)
                 if not info:
                     continue

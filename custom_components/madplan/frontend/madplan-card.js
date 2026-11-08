@@ -272,6 +272,9 @@ class MadplanCard extends HTMLElement {
       case "byt":
         this._kald("madplan", "byt_ret", { entity_id: plan, dag });
         break;
+      case "udfoerlig":
+        this._kald("madplan", "udfoerlig_opskrift", { entity_id: plan, dag });
+        break;
       case "fjern":
         this._kald("madplan", "fjern_ret", { entity_id: plan, dag });
         break;
@@ -722,7 +725,15 @@ class MadplanCard extends HTMLElement {
       </div>`;
     }
     const ing = `<ul class="ing">${(a.ingredienser || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
-    const trin = `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>`;
+    const u = a.udfoerlig, st = a.udfoerlig_status || "";
+    const trin = u
+      ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
+         <ol class="trin">${(u.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
+         ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}`
+      : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
+         ${st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
+           : `<button class="udf-knap" data-h="udfoerlig" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
+              ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
     // I panelet er der plads til både ingredienser og fremgangsmåde; i kortet bruges faner.
     const liste = this._fuld
       ? `${this._dagPersoner(a, dag)}<div class="overskrift">Ingredienser · ${esc(a.personer ?? this._personer())} personer</div>${ing}
@@ -1115,6 +1126,15 @@ const CSS = `
   .faner button.aktiv { background: var(--card-background-color); color: var(--primary-text-color); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
   .ing { list-style: none; padding: 0; margin: 8px 0 0; columns: 2 200px; column-gap: 20px; }
   .ing li { padding: 6px 0; border-bottom: 1px dashed var(--divider-color); break-inside: avoid; }
+  .udf-knap { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px; border-radius: 18px;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; cursor: pointer; }
+  .udf-knap.venter { cursor: default; color: var(--secondary-text-color); }
+  .udf-knap.venter ha-icon { animation: udfspin 1s linear infinite; }
+  @keyframes udfspin { to { transform: rotate(360deg); } }
+  .udf-mark { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--brand); }
+  .udf-tips { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--secondary-background-color); font-size: 14px; }
+  .udf-tips ul { margin: 6px 0 0; padding-left: 18px; }
+  .udf-fejl { margin-top: 6px; font-size: 13px; color: var(--error-color, #c62828); }
   .trin { list-style: none; padding: 0; margin: 8px 0 0; counter-reset: t; }
   .trin li { display: flex; gap: 10px; padding: 6px 0; counter-increment: t; }
   .trin li::before { content: counter(t); flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--brand);

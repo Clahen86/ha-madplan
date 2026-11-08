@@ -197,6 +197,9 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "billede": r.get("_billede"),
             "ingredienser": r.get("_linjer", []),
             "trin": r.get("trin", []),
+            # Den udførlige opskrift, når man har bedt om den (eller om den er ved at blive lavet).
+            "udfoerlig": r.get("udfoerlig"),
+            "udfoerlig_status": r.get("udfoerlig_status"),
             # Familiens egen ret: navnet i "Mine retter", link og noter.
             "min_ret": mit["navn"] if mit else None,
             "link": mit.get("link") if mit else None,

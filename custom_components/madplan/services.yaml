@@ -324,3 +324,8 @@ skift_madspild_butik:
     navn:
       selector:
         text:
+
+udfoerlig_opskrift:
+  fields:
+    entity_id: *madplan
+    dag: *dag

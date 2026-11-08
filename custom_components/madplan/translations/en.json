@@ -516,6 +516,20 @@
           "description": "The store name."
         }
       }
+    },
+    "udfoerlig_opskrift": {
+      "name": "Detailed recipe",
+      "description": "Makes a detailed recipe for a day in the plan.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan"
+        },
+        "dag": {
+          "name": "Day",
+          "description": "Day 1-7"
+        }
+      }
     }
   }
 }

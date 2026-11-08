@@ -516,6 +516,20 @@
           "description": "Butikkens navn."
         }
       }
+    },
+    "udfoerlig_opskrift": {
+      "name": "Udførlig opskrift",
+      "description": "Laver en udførlig opskrift til en dag i planen.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Madplanen"
+        },
+        "dag": {
+          "name": "Dag",
+          "description": "Dag 1-7"
+        }
+      }
     }
   }
 }
