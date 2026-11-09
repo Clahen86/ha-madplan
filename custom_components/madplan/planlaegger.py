@@ -16,6 +16,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.components.todo import TodoListEntityFeature
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
@@ -617,9 +618,7 @@ class Madplan:
         if not ret or not liste:
             raise HomeAssistantError("Vælg en indkøbsliste under integrationens indstillinger")
         for v in ret["koeb"]:
-            await self.hass.services.async_call(
-                "todo", "add_item", {"entity_id": liste, "item": v["tekst"], "description": v["pris"]}, blocking=True
-            )
+            await self._paa_listen(liste, v["tekst"], v["pris"])
         self._en_status(f"✅ {len(ret['koeb'])} varer lagt på indkøbslisten")
 
     async def async_en_ret_mail(self, ret_id: str) -> None:
@@ -661,6 +660,15 @@ class Madplan:
             + "\n\nSådan gør du:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(trin, start=1))
         )
         await self._send_besked(f"Indkøb til {navn}", besked)
+
+    async def _paa_listen(self, liste: str, tekst: str, pris: str) -> None:
+        """Én vare på indkøbslisten. Prisen som beskrivelse, når listen kan have en (Indkøbsliste, Bring m.fl. kan
+        ikke) - ellers efter varen, så den ikke går tabt."""
+        st = self.hass.states.get(liste)
+        kan = int((st.attributes.get("supported_features") if st else 0) or 0) & TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
+        data = {"entity_id": liste, "item": tekst, "description": pris} if kan or not pris else {
+            "entity_id": liste, "item": f"{tekst} ({pris})"}
+        await self.hass.services.async_call("todo", "add_item", data, blocking=True)
 
     def _notify_tjenester(self) -> list[str]:
         """De valgte notify-tjenester - én eller flere (fx mail og begge telefoner)."""
@@ -958,16 +966,7 @@ class Madplan:
         try:
             if liste := opts.get(CONF_INDKOBSLISTE):
                 for v in mangler:
-                    await self.hass.services.async_call(
-                        "todo",
-                        "add_item",
-                        {
-                            "entity_id": liste,
-                            "item": vare_tekst(v) + (f" – {v['butik']}" if v.get("butik") else ""),
-                            "description": pris_tekst(v),
-                        },
-                        blocking=True,
-                    )
+                    await self._paa_listen(liste, vare_tekst(v) + (f" – {v['butik']}" if v.get("butik") else ""), pris_tekst(v))
             if self._notify_tjenester():
                 await self._send_besked(
                     f"Indkøbsliste uge {self.plan.get('uge', '')} – {self.butik_navn}", self._besked(mangler)
