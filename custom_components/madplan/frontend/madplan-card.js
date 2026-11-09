@@ -1668,7 +1668,7 @@ class MadplanPanel extends MadplanCard {
               ${p.id === nu ? "" : `<div class="pbutik">${vaelg(`pb_${p.id}`)}<button class="rchip" data-h="profilbutik" data-id="${esc(p.id)}">+ Butik</button></div>`}`}</div>`;
           })
           .join("")}
-        <form class="behov-form" data-form="nyprofil">
+        <form class="behov-form pform" data-form="nyprofil">
           <input name="p_navn" autocomplete="off" enterkeyhint="done" placeholder="Ny profil, fx Datter" value="${esc(this._inputs.p_navn || "")}">
           ${vaelg("p_butik")}
           <button type="submit" class="plusknap" aria-label="Opret profil"><ha-icon icon="mdi:plus"></ha-icon></button></form>
@@ -2148,6 +2148,7 @@ const PANEL_CSS = `
   .profil { padding: 4px 0 8px; } .profil + .profil { border-top: 1px solid var(--divider-color); }
   .pnu { font-size: 12px; font-weight: 600; color: var(--primary-color); white-space: nowrap; }
   .pbutik { display: flex; gap: 8px; align-items: center; } .pbutik select { flex: 1; min-width: 0; }
+  .pform { flex-wrap: wrap; } .pform input { flex: 1 1 100%; } .pform select { flex: 1; min-width: 0; }
   .phjaelp { display: block; color: var(--secondary-text-color); font-size: 12px; margin-top: 6px; line-height: 1.4; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;

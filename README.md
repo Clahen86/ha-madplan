@@ -112,6 +112,8 @@ Under **Regler → Profiler** (kun for administratorer) kan du oprette en profil
 
 Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail, indkøbsliste eller REMA-login – dem sætter man under **Konfigurer** på profilens butik. Med **Vis** kan en administrator se og rette en anden profils madplan.
 
+<img src="docs/profiler.png" alt="Profiler under Regler" width="360">
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:
