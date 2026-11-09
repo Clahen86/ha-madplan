@@ -171,6 +171,10 @@
       "name": "Save the family's rules",
       "description": "Rules for the meal plan, shared by all stores. Used from the next plan.",
       "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
         "budget": {
           "name": "Budget",
           "description": "DKK per week for the whole family. Empty = no budget."
@@ -431,6 +435,10 @@
       "name": "Save my dish",
       "description": "Creates one of the family's own recipes, or updates one (by id or same name).",
       "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
         "id": {
           "name": "Id",
           "description": "The dish id. Leave out for a new dish."
@@ -473,6 +481,10 @@
       "name": "Delete my dish",
       "description": "Deletes one of the family's own recipes.",
       "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
         "id": {
           "name": "Id",
           "description": "The dish id."
@@ -483,6 +495,10 @@
       "name": "Get my dish",
       "description": "Returns the full recipe.",
       "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
         "id": {
           "name": "Id",
           "description": "The dish id."
@@ -528,6 +544,46 @@
         "dag": {
           "name": "Day",
           "description": "Day 1-7"
+        }
+      }
+    },
+    "gem_profil": {
+      "name": "Save profile",
+      "description": "Creates a profile (own rules, dishes and plans) or changes its name and users. Admins only.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The profile id; empty = new profile, hoved = the main profile."
+        },
+        "navn": {
+          "name": "Name",
+          "description": "E.g. Daughter."
+        },
+        "brugere": {
+          "name": "Users",
+          "description": "HA user ids that see this profile."
+        },
+        "butik": {
+          "name": "Store",
+          "description": "The profile's store (e.g. rema1000). Added if missing."
+        }
+      }
+    },
+    "slet_profil": {
+      "name": "Delete profile",
+      "description": "Deletes the profile with its stores, plans, rules and dishes. Admins only.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan whose profile this applies to. Left out: the main profile."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The profile id."
         }
       }
     }

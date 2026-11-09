@@ -8,6 +8,8 @@ CONF_AI_ENTITY = "ai_entity"
 CONF_INDKOBSLISTE = "indkobsliste"
 CONF_NOTIFY = "notify_service"
 CONF_BUTIK = "butik"
+# Profil (fx en datter, der bor ude): egne regler, egne retter og egne planer. "" = hovedprofilen.
+CONF_PROFIL = "profil"
 # Salling Group (valgfrit, brugerens egen gratis nøgle): rigtige priser i Netto, føtex og Bilka.
 CONF_SALLING_NOEGLE = "salling_noegle"
 # REMA 1000-appen (valgfrit, uofficielt): indkøbslisten sendes til appen med brugerens egen REMA-konto.

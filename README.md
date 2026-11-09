@@ -106,6 +106,12 @@ Under **Konfigurer** på din REMA 1000-madplan kan du skrive din REMA-kontos e-m
 
 > Uofficielt: REMA 1000 har ingen offentlig API til indkøbslister, så Madplan bruger de samme kald som rema1000.dk (samme fremgangsmåde som [ha-rema1000](https://github.com/madskelkjaer/ha-rema1000)). Det kan holde op med at virke, hvis REMA ændrer deres side – så fejler kun afsendelsen til appen. Kodeordet gemmes i Home Assistant og sendes kun til REMA 1000.
 
+### Profiler (fx en datter, der bor ude)
+
+Under **Regler → Profiler** (kun for administratorer) kan du oprette en profil mere: skriv navnet, vælg butikken og tryk **+**. Profilen får sine egne regler, egne retter og egne planer. Sæt flueben ved de HA-brugere, der hører til den – så ser de automatisk deres egen madplan, og alle andre ser jeres som før. Flere brugere kan dele én profil (fx to voksne, der er logget ind hver for sig).
+
+Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail, indkøbsliste eller REMA-login – dem sætter man under **Konfigurer** på profilens butik. Med **Vis** kan en administrator se og rette en anden profils madplan.
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:
@@ -149,6 +155,7 @@ For hver butik:
 | `madplan.slet_min_ret` | Slet en egen opskrift. |
 | `madplan.hent_min_ret` | Hent hele opskriften (svar). |
 | `madplan.overfoer` | Send indkøbslisten. |
+| `madplan.gem_profil` / `madplan.slet_profil` | Opret eller ret en profil (navn, brugere, butik) eller slet den. Kun administratorer. |
 
 Eksempel – 8 personer til aftensmad fredag:
 

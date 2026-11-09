@@ -44,7 +44,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
     _attr_icon = "mdi:silverware-fork-knife"
     _attr_native_unit_of_measurement = "kr"
     # Regler med egne opskrifter kan blive store - de skal ikke i historikken.
-    _unrecorded_attributes = frozenset({"regler", "en_ret", "mine_retter"})
+    _unrecorded_attributes = frozenset({"regler", "en_ret", "mine_retter", "profiler"})
 
     def __init__(self, madplan) -> None:
         super().__init__(madplan, "total")
@@ -97,6 +97,13 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "ekstra_entitet": find("todo", "ekstra"),
             "behov": self.madplan.behov,
             "regler": self.madplan.regler,
+            # Profiler: kortet viser kun den profil, den indloggede bruger hører til ("" = hovedprofilen).
+            "profil": self.madplan.profil,
+            "butik_noegle": self.madplan.butik,
+            "profil_navn": self.madplan.profil_navn,
+            "profiler": [{"id": "hoved", "navn": self.madplan.profiler["hoved"], "brugere": []}]
+            + [{"id": k, "navn": v.get("navn") or k, "brugere": list(v.get("brugere") or [])}
+               for k, v in self.madplan.profiler["profiler"].items()],
             "ekstra_butikker": self.madplan.ekstra_butikker,
             "auto_plan": self.madplan.auto_plan,
             # Kun overblikket - selve opskriften hentes med madplan.hent_min_ret, når den åbnes.
@@ -113,7 +120,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
                 for m in (
                     e.runtime_data
                     for e in self.hass.config_entries.async_entries(DOMAIN)
-                    if isinstance(getattr(e, "runtime_data", None), Madplan)
+                    if isinstance(getattr(e, "runtime_data", None), Madplan) and e.runtime_data.profil == self.madplan.profil
                 )
             ],
             "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],

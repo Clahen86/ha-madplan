@@ -97,9 +97,33 @@ class MadplanCard extends HTMLElement {
   _planer() {
     if (this._cfg.entities) return this._cfg.entities.filter((e) => this._hass.states[e]);
     if (this._cfg.entity) return [this._cfg.entity];
-    return Object.keys(this._hass.states)
+    const alle = Object.keys(this._hass.states)
       .filter((e) => e.startsWith("sensor.") && Array.isArray(this._hass.states[e].attributes.dag_entiteter))
       .sort();
+    // Kun den profil, den indloggede bruger hører til ("" = hovedprofilen). En administrator kan se en anden.
+    const profil = this._profil(alle);
+    const mine = alle.filter((e) => (this._hass.states[e].attributes.profil || "") === profil);
+    return mine.length ? mine : alle.filter((e) => !this._hass.states[e].attributes.profil);
+  }
+
+  /** Profilen, kortet viser: den, brugeren er sat på - eller den, en administrator har valgt at se. */
+  _profil(alle) {
+    const profiler = (alle.length && this._hass.states[alle[0]].attributes.profiler) || [];
+    const ids = profiler.map((p) => (p.id === "hoved" ? "" : p.id));
+    if (this._hass.user?.is_admin) {
+      let vis = this._profilVis;
+      if (vis === undefined) {
+        try {
+          vis = localStorage.getItem("madplan_profil");
+        } catch (e) {
+          vis = null;
+        }
+      }
+      if (vis !== null && vis !== undefined && ids.includes(vis)) return vis;
+    }
+    const uid = this._hass.user?.id;
+    const p = profiler.find((x) => x.id !== "hoved" && (x.brugere || []).includes(uid));
+    return p ? p.id : "";
   }
 
   _listeNoegle(a) {
@@ -204,6 +228,41 @@ class MadplanCard extends HTMLElement {
         this._kald("madplan", "rester", { entity_id: plan, dag, til: !da.dobbelt }).catch(() => {});
         break;
       }
+      case "profilvis": {
+        // Kun for administratoren: se (og ret) en anden profils madplan på denne enhed.
+        this._profilVis = el.dataset.id === "hoved" ? "" : el.dataset.id;
+        try {
+          localStorage.setItem("madplan_profil", this._profilVis);
+        } catch (e) {
+          /* privat vindue */
+        }
+        this._valgt = null;
+        this._sidst = null;
+        this.hass = this._hass;
+        break;
+      }
+      case "profilbruger": {
+        const p = (a.profiler || []).find((x) => x.id === el.dataset.id);
+        if (!p) break;
+        const b = new Set(p.brugere || []);
+        b.has(el.dataset.u) ? b.delete(el.dataset.u) : b.add(el.dataset.u);
+        this._kald("madplan", "gem_profil", { entity_id: plan, id: p.id, navn: p.navn, brugere: [...b] });
+        break;
+      }
+      case "profilbutik": {
+        const p = (a.profiler || []).find((x) => x.id === el.dataset.id);
+        const butik = this.shadowRoot.querySelector(`select[name="pb_${el.dataset.id}"]`)?.value;
+        if (p && butik) this._kald("madplan", "gem_profil", { entity_id: plan, id: p.id, navn: p.navn, brugere: p.brugere || [], butik });
+        break;
+      }
+      case "profilslet": {
+        const p = (a.profiler || []).find((x) => x.id === el.dataset.id);
+        if (p && confirm(`Slet profilen "${p.navn}" med dens planer, regler og retter?`)) {
+          if (this._profilVis === p.id) this._profilVis = "";
+          this._kald("madplan", "slet_profil", { entity_id: plan, id: p.id });
+        }
+        break;
+      }
       case "autoplan":
         this._kald("madplan", "auto_plan", { entity_id: el.dataset.id, til: el.dataset.til !== "1" });
         break;
@@ -259,7 +318,7 @@ class MadplanCard extends HTMLElement {
       case "mslet": {
         const m = (a.mine_retter || [])[dag - 1];
         if (!m) break;
-        this._kald("madplan", "slet_min_ret", { id: m.id });
+        this._kald("madplan", "slet_min_ret", { entity_id: this._valgt, id: m.id });
         this._mineAaben = null;
         break;
       }
@@ -478,6 +537,11 @@ class MadplanCard extends HTMLElement {
           this._hentMinRet(id);
         });
       this._inputs.m_navn = "";
+    } else if (form.dataset.form === "nyprofil") {
+      const navn = (this._inputs.p_navn || "").trim();
+      const butik = form.querySelector("select")?.value;
+      if (navn) this._kald("madplan", "gem_profil", { entity_id: this._valgt, navn, brugere: [], butik });
+      this._inputs.p_navn = "";
     } else if (form.dataset.form === "rfast") {
       const dag = Number(form.querySelector("select").value);
       const ret = (this._inputs.r_fast || "").trim();
@@ -513,13 +577,13 @@ class MadplanCard extends HTMLElement {
   }
 
   _gemRegler(aendring) {
-    this._kald("madplan", "gem_regler", aendring);
+    this._kald("madplan", "gem_regler", { entity_id: this._valgt, ...aendring });
   }
 
   /** Gemmer en egen opskrift og giver dens id tilbage. */
   _minRet(data) {
     return this._hass.connection
-      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "gem_min_ret", service_data: data, return_response: true })
+      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "gem_min_ret", service_data: { entity_id: this._valgt, ...data }, return_response: true })
       .then((r) => r?.response?.id)
       .catch(() => null);
   }
@@ -528,7 +592,7 @@ class MadplanCard extends HTMLElement {
   _hentMinRet(id) {
     this._mineData = this._mineData || {};
     this._hass.connection
-      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "hent_min_ret", service_data: { id }, return_response: true })
+      .sendMessagePromise({ type: "call_service", domain: "madplan", service: "hent_min_ret", service_data: { entity_id: this._valgt, id }, return_response: true })
       .then((r) => {
         if (r?.response) this._mineData[id] = r.response;
         this._tegn();
@@ -1560,7 +1624,56 @@ class MadplanPanel extends MadplanCard {
         <textarea name="r_krav" rows="3" placeholder="Fx frilandsæg og økologisk mælk. Børnene kan ikke lide stærk mad.">${esc(this._inputs.r_krav ?? r.krav ?? "")}</textarea>
       </section>
       ${this._butikkerKort(a)}
+      ${this._profilKort(a)}
       ${this._udseendeKort(a)}`;
+  }
+
+  /** Profiler (kun administratorer): fx en datter, der bor ude, med egne regler, retter og planer. */
+  _profilKort(a) {
+    if (!this._hass.user?.is_admin) return "";
+    if (this._brugere === undefined) {
+      this._brugere = [];
+      this._hass
+        .callWS({ type: "config/auth/list" })
+        .then((l) => {
+          this._brugere = l.filter((u) => !u.system_generated && u.is_active).map((u) => ({ id: u.id, navn: u.name }));
+          this._tegn();
+        })
+        .catch(() => {});
+    }
+    const profiler = a.profiler || [{ id: "hoved", navn: "Hjem", brugere: [] }];
+    const nu = a.profil || "hoved";
+    const navn = (id) => this._brugere.find((u) => u.id === id)?.navn || "?";
+    const andre = new Set(profiler.flatMap((p) => p.brugere || []));
+    const kaeder = [[a.butik_noegle, a.butik], ...(a.kaeder || [])].filter(([k]) => k);
+    const vaelg = (navnAttr) => `<select name="${navnAttr}">${kaeder.map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join("")}</select>`;
+    return `<section class="rkort">
+        <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:account-group-outline"></ha-icon></span>
+          <span><b>Profiler</b><small>Hver profil har egne regler, retter og planer. Man ser den profil, ens bruger hører til.</small></span></div>
+        ${profiler
+          .map((p) => {
+            const hoved = p.id === "hoved";
+            const hvem = hoved
+              ? "Alle andre brugere"
+              : (p.brugere || []).length ? (p.brugere || []).map(navn).join(", ") : "Ingen brugere endnu";
+            return `<div class="profil"><div class="rlinje"><span class="rnavn2"><b>${esc(p.navn)}</b><small>${esc(hvem)}</small></span>
+                ${p.id === nu ? `<span class="pnu">Vises nu</span>` : `<button class="rchip" data-h="profilvis" data-id="${esc(p.id)}">Vis</button>`}
+                ${hoved ? "" : `<button class="ikonknap" data-h="profilslet" data-id="${esc(p.id)}" aria-label="Slet profil"><ha-icon icon="mdi:delete-outline"></ha-icon></button>`}</div>
+              ${hoved ? "" : `<div class="chips">${this._brugere
+                .map((u) => {
+                  const her = (p.brugere || []).includes(u.id);
+                  return `<button class="rchip ${her ? "valgt" : "fra"}" data-h="profilbruger" data-id="${esc(p.id)}" data-u="${esc(u.id)}" ${!her && andre.has(u.id) ? 'title="Flyttes fra sin anden profil"' : ""}>${esc(u.navn)}${her ? '<ha-icon icon="mdi:check"></ha-icon>' : ""}</button>`;
+                })
+                .join("")}</div>
+              ${p.id === nu ? "" : `<div class="pbutik">${vaelg(`pb_${p.id}`)}<button class="rchip" data-h="profilbutik" data-id="${esc(p.id)}">+ Butik</button></div>`}`}</div>`;
+          })
+          .join("")}
+        <form class="behov-form" data-form="nyprofil">
+          <input name="p_navn" autocomplete="off" enterkeyhint="done" placeholder="Ny profil, fx Datter" value="${esc(this._inputs.p_navn || "")}">
+          ${vaelg("p_butik")}
+          <button type="submit" class="plusknap" aria-label="Opret profil"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+        <small class="phjaelp">Den nye profil får sin egen plan i den valgte butik med samme AI som jeres – men ikke jeres mail, indkøbsliste eller REMA-login (sæt dem under Indstillinger → Madplan → Konfigurer).</small>
+      </section>`;
   }
 
   /** Andre kæder, man også handler i - kun for den valgte butik. */
@@ -2032,6 +2145,10 @@ const PANEL_CSS = `
   .rlinje.bred .handler { flex-basis: 100%; display: flex; }
   .rlinje.bred .handler button { flex: 1; }
   .rnavn2 { flex: 1; }
+  .profil { padding: 4px 0 8px; } .profil + .profil { border-top: 1px solid var(--divider-color); }
+  .pnu { font-size: 12px; font-weight: 600; color: var(--primary-color); white-space: nowrap; }
+  .pbutik { display: flex; gap: 8px; align-items: center; } .pbutik select { flex: 1; min-width: 0; }
+  .phjaelp { display: block; color: var(--secondary-text-color); font-size: 12px; margin-top: 6px; line-height: 1.4; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;
     font: inherit; font-size: 14px; font-weight: 600; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--primary-text-color); }

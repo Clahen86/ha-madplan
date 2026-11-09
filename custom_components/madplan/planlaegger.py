@@ -29,6 +29,7 @@ from .const import (
     CONF_BUTIK,
     CONF_INDKOBSLISTE,
     CONF_NOTIFY,
+    CONF_PROFIL,
     CONF_REMA_EMAIL,
     CONF_REMA_KODE,
     CONF_SALLING_BUTIK,
@@ -118,13 +119,24 @@ class Madplan:
             {
                 "katalog_laas": asyncio.Lock(),
                 "ai_laas": asyncio.Lock(),
-                "regler_store": Store(hass, 1, f"{DOMAIN}.regler"),
-                "regler": None,
-                "mine_store": Store(hass, 1, f"{DOMAIN}.mine_retter"),
-                "mine": None,
+                "profiler": {},
+                "profil_store": Store(hass, 1, f"{DOMAIN}.profiler"),
+                "profil_reg": None,
             },
         )
         self._faelles = faelles
+        # Regler og Mine retter hører til profilen; alle butikker i samme profil deler dem.
+        self.profil: str = entry.data.get(CONF_PROFIL, "")
+        endelse = f"_{self.profil}" if self.profil else ""
+        self._p = faelles["profiler"].setdefault(
+            self.profil,
+            {
+                "regler_store": Store(hass, 1, f"{DOMAIN}.regler{endelse}"),
+                "regler": None,
+                "mine_store": Store(hass, 1, f"{DOMAIN}.mine_retter{endelse}"),
+                "mine": None,
+            },
+        )
         self._katalog_laas = faelles["katalog_laas"]
         self._ai_laas = faelles["ai_laas"]
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
@@ -162,7 +174,8 @@ class Madplan:
         # Basisvarer, familien har flyttet til indkøb: dem regnes der ikke med, at de har, næste gang.
         self.mangler_ofte: set[str] = set(data.get("mangler_ofte", []))
         # En ny butik arver antal personer fra de andre butikker.
-        andre = [e.runtime_data.personer for e in self.hass.config_entries.async_loaded_entries(DOMAIN)]
+        andre = [e.runtime_data.personer for e in self.hass.config_entries.async_loaded_entries(DOMAIN)
+                 if e.runtime_data.profil == self.profil]
         self.personer = data.get("personer", max(andre, default=STANDARD_PERSONER))
         self.butik_info = data.get("butik_info") or self.butik_info
         self.behov = data.get("behov", [])
@@ -172,18 +185,20 @@ class Madplan:
         # Automatisk plan lørdag/søndag. Slået fra = "sovende" butik, der kun laver plan, når man trykker.
         self.auto_plan: bool = data.get("auto_plan", True)
         self.en_ret_status = ""
-        if self._faelles["regler"] is None:
-            gemt = await self._faelles["regler_store"].async_load() or {}
-            self._faelles["regler"] = {**STANDARD_REGLER, **gemt}
-        if self._faelles["mine"] is None:
-            self._faelles["mine"] = await self._faelles["mine_store"].async_load() or []
-            r = self._faelles["regler"]
+        if self._faelles["profil_reg"] is None:
+            self._faelles["profil_reg"] = await self._faelles["profil_store"].async_load() or {"hoved": "Hjem", "profiler": {}}
+        if self._p["regler"] is None:
+            gemt = await self._p["regler_store"].async_load() or {}
+            self._p["regler"] = {**STANDARD_REGLER, **gemt}
+        if self._p["mine"] is None:
+            self._p["mine"] = await self._p["mine_store"].async_load() or []
+            r = self._p["regler"]
             # Fra 1.3: yndlingsretter (kun navne), fra 1.4.0: "mine_retter" i reglerne - nu eget lager.
             gamle = [{"navn": f} for f in r.pop("favoritter", None) or []] + list(r.pop("mine_retter", None) or [])
             for g in gamle:
                 await self.async_gem_min_ret(g)
             if gamle:
-                await self._faelles["regler_store"].async_save(r)
+                await self._p["regler_store"].async_save(r)
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -204,8 +219,23 @@ class Madplan:
         )
 
     @property
+    def profiler(self) -> dict[str, Any]:
+        """{"hoved": navn, "profiler": {id: {"navn", "brugere": [HA-bruger-id]}}} - fælles for hele Madplan."""
+        return self._faelles["profil_reg"] or {"hoved": "Hjem", "profiler": {}}
+
+    @property
+    def profil_navn(self) -> str:
+        if not self.profil:
+            return self.profiler["hoved"]
+        return (self.profiler["profiler"].get(self.profil) or {}).get("navn") or self.profil
+
+    async def async_gem_profiler(self, reg: dict[str, Any]) -> None:
+        self._faelles["profil_reg"] = reg
+        await self._faelles["profil_store"].async_save(reg)
+
+    @property
     def regler(self) -> dict[str, Any]:
-        return self._faelles["regler"] or dict(STANDARD_REGLER)
+        return self._p["regler"] or dict(STANDARD_REGLER)
 
     async def async_gem_regler(self, nye: dict[str, Any]) -> None:
         """Gemmer familiens regler (fælles for alle butikker). De bruges fra næste plan."""
@@ -213,8 +243,8 @@ class Madplan:
         # Yndlingsretter (fx fra en gammel automatisering) lægges i "Mine retter".
         for f in nye.get("favoritter") or []:
             await self.async_gem_min_ret({"navn": f})
-        self._faelles["regler"] = regler
-        await self._faelles["regler_store"].async_save(regler)
+        self._p["regler"] = regler
+        await self._p["regler_store"].async_save(regler)
 
     def advarsler(self) -> list[str]:
         """Hvor planen bryder familiens regler. Tjekkes i koden, så det ikke koster AI-kald."""
@@ -1774,11 +1804,11 @@ class Madplan:
     @property
     def mine_retter(self) -> list[dict]:
         """Familiens egne opskrifter - fælles for alle butikker."""
-        return self._faelles["mine"] or []
+        return self._p["mine"] or []
 
     async def async_gem_min_ret(self, data: dict[str, Any]) -> str:
         """Ny opskrift, eller ret felterne i en eksisterende (id). Samme navn = samme ret."""
-        mine = self._faelles["mine"] = list(self.mine_retter)
+        mine = self._p["mine"] = list(self.mine_retter)
         felter = {k: v for k, v in data.items() if k in NY_MIN_RET}
         navn = str(felter.get("navn", "")).strip().lower()
         m = next((m for m in mine if m["id"] == data.get("id") or (navn and m["navn"].strip().lower() == navn)), None)
@@ -1792,12 +1822,12 @@ class Madplan:
         elif m["id"] != data.get("id"):
             felter.pop("navn", None)  # fundet på navnet - behold stavemåden
         m.update(felter)
-        await self._faelles["mine_store"].async_save(mine)
+        await self._p["mine_store"].async_save(mine)
         return m["id"]
 
     async def async_slet_min_ret(self, ret_id: str) -> None:
-        self._faelles["mine"] = [m for m in self.mine_retter if m["id"] != ret_id]
-        await self._faelles["mine_store"].async_save(self._faelles["mine"])
+        self._p["mine"] = [m for m in self.mine_retter if m["id"] != ret_id]
+        await self._p["mine_store"].async_save(self._p["mine"])
 
     async def _tjek_opskrifter(self, retter: list[dict]) -> list[dict]:
         """Trin, der nævner noget, som ikke er på ingredienslisten (svits løg, tilsæt krydderier), rettes.

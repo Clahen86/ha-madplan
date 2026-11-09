@@ -65,6 +65,11 @@ ekstra_antal:
           max: 50
 gem_regler:
   fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
     budget:
       example: 700
       selector:
@@ -253,6 +258,11 @@ auto_plan:
         boolean:
 gem_min_ret:
   fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
     id:
       selector:
         text:
@@ -292,12 +302,22 @@ gem_min_ret:
           multiline: true
 slet_min_ret:
   fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
     id:
       required: true
       selector:
         text:
 hent_min_ret:
   fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
     id:
       required: true
       selector:
@@ -329,3 +349,38 @@ udfoerlig_opskrift:
   fields:
     entity_id: *madplan
     dag: *dag
+
+gem_profil:
+  fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
+    id:
+      selector:
+        text:
+    navn:
+      required: true
+      example: Datter
+      selector:
+        text:
+    brugere:
+      selector:
+        text:
+          multiple: true
+    butik:
+      selector:
+        text:
+
+slet_profil:
+  fields:
+    entity_id:
+      selector:
+        entity:
+          integration: madplan
+          domain: sensor
+    id:
+      required: true
+      selector:
+        text:

@@ -13,13 +13,14 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
-from .const import BUTIKKER, DOMAIN
+from .const import BUTIKKER, CONF_PROFIL, DOMAIN
 from .planlaegger import Madplan
 
 PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR, Platform.TODO]
@@ -37,6 +38,7 @@ NYE_BEHOV_SKEMA = SKEMA.extend({vol.Required("tekst"): vol.All(cv.ensure_list, [
 _LISTE = vol.All(cv.ensure_list, [vol.All(cv.string, vol.Length(min=1, max=60))], vol.Length(max=30))
 REGLER_SKEMA = vol.Schema(
     {
+        vol.Optional("entity_id"): cv.entity_id,
         vol.Optional("budget"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=0, max=10000))),
         vol.Optional("oeko"): cv.boolean,
         vol.Optional("madspild"): cv.boolean,
@@ -92,6 +94,7 @@ EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
 # Familiens egen opskrift. Uden id oprettes en ny (eller den med samme navn rettes).
 MIN_RET_SKEMA = vol.Schema(
     {
+        vol.Optional("entity_id"): cv.entity_id,
         vol.Optional("id"): cv.string,
         vol.Optional("navn"): vol.All(cv.string, vol.Length(min=1, max=60)),
         vol.Optional("aktiv"): cv.boolean,
@@ -104,13 +107,24 @@ MIN_RET_SKEMA = vol.Schema(
         vol.Optional("fremgangsmaade"): vol.All(cv.string, vol.Length(max=4000)),
     }
 )
-MIN_RET_ID_SKEMA = vol.Schema({vol.Required("id"): cv.string})
+MIN_RET_ID_SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id, vol.Required("id"): cv.string})
 DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 EKSTRA_BUTIKKER_SKEMA = SKEMA.extend(
     {vol.Required("butikker"): vol.All(cv.ensure_list, [vol.In(list(BUTIKKER))], vol.Length(max=2))}
 )
 RESTER_SKEMA = DAG_SKEMA.extend({vol.Optional("til", default=True): cv.boolean})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
+
+PROFIL_SKEMA = vol.Schema(
+    {
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("id"): cv.string,  # tom = ny profil; "" kan ikke sendes, så hovedprofilen hedder "hoved"
+        vol.Required("navn"): vol.All(cv.string, vol.Length(min=1, max=40)),
+        vol.Optional("brugere", default=[]): vol.All(cv.ensure_list, [cv.string], vol.Length(max=50)),
+        vol.Optional("butik"): vol.In(list(BUTIKKER)),
+    }
+)
+SLET_PROFIL_SKEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_id, vol.Required("id"): cv.string})
 
 type MadplanConfigEntry = ConfigEntry[Madplan]
 
@@ -200,34 +214,107 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def toem_kurv(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_toem_kurv()
 
+    def _alle(call: ServiceCall) -> list[Madplan]:
+        """Regler og Mine retter er fælles for butikkerne i samme profil: den med entity_id først, så resten.
+        Uden entity_id er det hovedprofilen (som før profilerne)."""
+        if not (indlaest := [e.runtime_data for e in hass.config_entries.async_loaded_entries(DOMAIN)]):
+            raise ServiceValidationError("Madplan er ikke sat op")
+        if call.data.get("entity_id"):
+            valgt = _madplaner(call)[0]
+        else:
+            valgt = next((m for m in indlaest if not m.profil), indlaest[0])
+        return [valgt] + [m for m in indlaest if m.profil == valgt.profil and m is not valgt]
+
     async def gem_regler(call: ServiceCall) -> None:
-        # Reglerne er fælles; alle butikkers sensorer viser dem og deres advarsler.
-        madplaner = _madplaner(call, alle=True)
-        await madplaner[0].async_gem_regler(dict(call.data))
+        madplaner = _alle(call)
+        await madplaner[0].async_gem_regler({k: v for k, v in call.data.items() if k != "entity_id"})
         for m in madplaner:
             m.opdater()
 
-    def _alle() -> list[Madplan]:
-        """Mine retter er fælles for alle butikker."""
-        if not (indlaest := [e.runtime_data for e in hass.config_entries.async_loaded_entries(DOMAIN)]):
-            raise ServiceValidationError("Madplan er ikke sat op")
-        return indlaest
-
     async def gem_min_ret(call: ServiceCall) -> ServiceResponse:
-        madplaner = _alle()
-        ret_id = await madplaner[0].async_gem_min_ret(dict(call.data))
+        madplaner = _alle(call)
+        ret_id = await madplaner[0].async_gem_min_ret({k: v for k, v in call.data.items() if k != "entity_id"})
         for m in madplaner:
             m.opdater()
         return {"id": ret_id}
 
     async def slet_min_ret(call: ServiceCall) -> None:
-        madplaner = _alle()
+        madplaner = _alle(call)
         await madplaner[0].async_slet_min_ret(call.data["id"])
         for m in madplaner:
             m.opdater()
 
+    async def _admin(call: ServiceCall) -> None:
+        """Profiler styres kun af en administrator - ellers kunne en profil flytte sig selv over i en anden."""
+        bruger = await hass.auth.async_get_user(call.context.user_id) if call.context.user_id else None
+        if bruger is not None and not bruger.is_admin:
+            raise Unauthorized(context=call.context)
+
+    def _opdater_alle() -> None:
+        for e in hass.config_entries.async_loaded_entries(DOMAIN):
+            e.runtime_data.opdater()
+
+    async def gem_profil(call: ServiceCall) -> ServiceResponse:
+        """Ny profil (med sin første butik) eller ret navn og brugere. Hovedprofilen har id "hoved"."""
+        await _admin(call)
+        alle = _alle(call)
+        m = alle[0]
+        reg = {"hoved": m.profiler["hoved"], "profiler": {k: dict(v) for k, v in m.profiler["profiler"].items()}}
+        pid = call.data.get("id") or ""
+        navn = call.data["navn"].strip()
+        brugere = list(dict.fromkeys(call.data["brugere"]))
+        # En bruger hører kun til én profil.
+        for k, v in reg["profiler"].items():
+            if k != pid:
+                v["brugere"] = [b for b in v.get("brugere", []) if b not in brugere]
+        if pid == "hoved":
+            reg["hoved"] = navn
+        elif pid:
+            if pid not in reg["profiler"]:
+                raise ServiceValidationError("Profilen findes ikke")
+            reg["profiler"][pid].update(navn=navn, brugere=brugere)
+        else:
+            base = slugify(navn) or "profil"
+            pid, i = base, 2
+            while pid in reg["profiler"] or pid == "hoved":
+                pid, i = f"{base}_{i}", i + 1
+            reg["profiler"][pid] = {"navn": navn, "brugere": brugere}
+        await m.async_gem_profiler(reg)
+        if call.data.get("butik") and pid != "hoved" and not any(
+            e.data.get(CONF_PROFIL) == pid and e.data.get("butik") == call.data["butik"]
+            for e in hass.config_entries.async_entries(DOMAIN)
+        ):
+            # Samme AI og nøgler som de andre butikker - men ikke jeres mail, liste eller REMA-login.
+            kilde = next(
+                (e for e in hass.config_entries.async_entries(DOMAIN) if e.data.get("butik") == call.data["butik"]),
+                m.entry,
+            )
+            options = {k: v for k, v in kilde.options.items() if k not in ("notify_service", "indkobsliste", "rema_email", "rema_kode")}
+            await hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": "profil"}, data={"butik": call.data["butik"], CONF_PROFIL: pid, "options": options}
+            )
+        _opdater_alle()
+        return {"id": pid}
+
+    async def slet_profil(call: ServiceCall) -> None:
+        """Profilen, dens butikker, planer, regler og retter. Hovedprofilen kan ikke slettes."""
+        await _admin(call)
+        pid = call.data["id"]
+        if pid in ("", "hoved"):
+            raise ServiceValidationError("Hovedprofilen kan ikke slettes")
+        m = _alle(call)[0]
+        reg = {"hoved": m.profiler["hoved"], "profiler": {k: v for k, v in m.profiler["profiler"].items() if k != pid}}
+        await m.async_gem_profiler(reg)
+        for e in list(hass.config_entries.async_entries(DOMAIN)):
+            if e.data.get(CONF_PROFIL) == pid:
+                await hass.config_entries.async_remove(e.entry_id)
+        hass.data.get(DOMAIN, {}).get("profiler", {}).pop(pid, None)
+        for navn in (f"{DOMAIN}.regler_{pid}", f"{DOMAIN}.mine_retter_{pid}"):
+            await Store(hass, 1, navn).async_remove()
+        _opdater_alle()
+
     async def hent_min_ret(call: ServiceCall) -> ServiceResponse:
-        m = next((m for m in _alle()[0].mine_retter if m["id"] == call.data["id"]), None)
+        m = next((m for m in _alle(call)[0].mine_retter if m["id"] == call.data["id"]), None)
         if m is None:
             raise ServiceValidationError("Retten findes ikke")
         return dict(m)
@@ -277,6 +364,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DOMAIN, "skift_madspild_butik", skift_madspild_butik,
         schema=SKEMA.extend({vol.Required("butik_id"): cv.string, vol.Optional("navn"): vol.All(cv.string, vol.Length(max=80))}),
     )
+    hass.services.async_register(DOMAIN, "gem_profil", gem_profil, schema=PROFIL_SKEMA, supports_response=SupportsResponse.OPTIONAL)
+    hass.services.async_register(DOMAIN, "slet_profil", slet_profil, schema=SLET_PROFIL_SKEMA)
     hass.services.async_register(
         DOMAIN, "hent_min_ret", hent_min_ret, schema=MIN_RET_ID_SKEMA, supports_response=SupportsResponse.ONLY
     )

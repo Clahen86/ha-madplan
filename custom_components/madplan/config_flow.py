@@ -17,6 +17,7 @@ from .const import (
     CONF_BUTIK,
     CONF_INDKOBSLISTE,
     CONF_NOTIFY,
+    CONF_PROFIL,
     CONF_REMA_EMAIL,
     CONF_REMA_KODE,
     CONF_SALLING_BUTIK,
@@ -80,7 +81,8 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        brugt = {e.data.get(CONF_BUTIK) for e in self._async_current_entries()}
+        # Her tilføjes butikker til hovedprofilen; en anden profils butikker tilføjes fra kortet (Regler → Profiler).
+        brugt = {e.data.get(CONF_BUTIK) for e in self._async_current_entries() if not e.data.get(CONF_PROFIL)}
         ledige = [b for b in BUTIKKER if b not in brugt]
         if not ledige:
             return self.async_abort(reason="alle_butikker")
@@ -117,6 +119,17 @@ class MadplanConfigFlow(ConfigFlow, domain=DOMAIN):
         if forrige:
             skema = self.add_suggested_values_to_schema(skema, _forslag(forrige.options))
         return self.async_show_form(step_id="user", data_schema=skema)
+
+    async def async_step_profil(self, data: dict[str, Any]) -> ConfigFlowResult:
+        """En butik til en anden profil - oprettet fra kortet (madplan.gem_profil) med de andre butikkers AI og nøgler."""
+        butik, profil = data[CONF_BUTIK], data[CONF_PROFIL]
+        await self.async_set_unique_id(f"{butik}@{profil}")
+        self._abort_if_unique_id_configured()
+        reg = (self.hass.data.get(DOMAIN) or {}).get("profil_reg") or {}
+        navn = ((reg.get("profiler") or {}).get(profil) or {}).get("navn") or profil
+        return self.async_create_entry(
+            title=f"Madplan {BUTIKKER[butik][0]} · {navn}", data={CONF_BUTIK: butik, CONF_PROFIL: profil}, options=data.get("options") or {}
+        )
 
     def _opret(self, options: dict[str, Any]) -> ConfigFlowResult:
         return self.async_create_entry(
