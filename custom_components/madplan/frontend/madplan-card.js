@@ -952,6 +952,12 @@ class MadplanCard extends HTMLElement {
     const md = liste === "varer" ? (pa.madspild || {})[v.uid] : null;
     const byttet = liste === "varer" && (pa.madspild_udsolgt || []).includes(v.uid);
     const rest = liste === "varer" && (pa.madspild_rest || []).includes(v.uid);
+    // Brugt flere dage, og hvad der er tilovers af pakken - fx "Man · Ons" og "Rest ca. 600 g".
+    const bu = liste === "varer" ? (pa.brug || {})[v.uid] : null;
+    const brugTekst = bu
+      ? `${(bu.dage || []).length > 1 ? `<span class="mdtag graa"><ha-icon icon="mdi:calendar-multiple"></ha-icon>${esc(bu.dage.join(" · "))}</span>` : ""}${
+          bu.rest ? `<span class="mdtag graa"><ha-icon icon="mdi:fridge-outline"></ha-icon>Rest ca. ${esc(bu.rest)}</span>` : ""}`
+      : "";
     const mdTekst = rest
       ? `<span class="mdtag graa"><ha-icon icon="mdi:cart-plus"></ha-icon>Resten – almindelig pris</span>`
       : byttet
@@ -970,7 +976,7 @@ class MadplanCard extends HTMLElement {
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
       <span class="vtekst"><span class="vnavn">${esc(navn)}</span>
         ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud && !md ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}
-        ${mdTekst ? `<span class="vmeta mdmeta">${mdTekst}</span>` : ""}</span>
+        ${mdTekst || brugTekst ? `<span class="vmeta mdmeta">${mdTekst}${brugTekst}</span>` : ""}</span>
       <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
         ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}</span>
       ${

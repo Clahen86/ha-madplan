@@ -91,6 +91,13 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "madspild": {v["key"]: dict(v["madspild"]) for v in p.get("varer", []) if v.get("madspild")},
             "madspild_udsolgt": [v["key"] for v in p.get("varer", []) if v.get("madspild_udsolgt")],
             "madspild_rest": [v["key"] for v in p.get("varer", []) if v.get("madspild_rest")],
+            # Varer brugt flere dage, og hvad der er tilovers af pakken (kortet viser det ved varen).
+            "brug": {
+                v["key"]: {"dage": [DAGE[i][:3] for i in v.get("dage") or []],
+                           "rest": f"{v['rest']['maengde']:g} {v['rest']['enhed']}".strip() if v.get("rest") else None}
+                for v in p.get("varer", [])
+                if not v.get("basis") and (len(v.get("dage") or []) > 1 or v.get("rest"))
+            },
             "dag_entiteter": [find("sensor", f"dag_{i + 1}") for i in range(7)],
             "personer_entitet": find("number", "personer"),
             "varer_entitet": find("todo", "varer"),

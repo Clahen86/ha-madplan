@@ -443,6 +443,11 @@ class Madplan:
         for dag in self._allergi_dage()[:MAKS_ALLERGI_BYT]:
             _LOGGER.info("Madplan: %s bryder en allergi - byttes", DAGE[dag - 1])
             await self.async_byt_ret(dag)
+        # En stor rest (fx 600 g kylling af en pakke på 750 g): én senere ret laves om, så den bruger resten.
+        if (rest := self._stoerste_rest()) is not None:
+            vare, dag = rest
+            _LOGGER.info("Madplan: rest af %s bruges %s", vare["navn"], DAGE[dag - 1])
+            await self.async_byt_ret(dag, brug_rest=vare)
 
     async def async_udfoerlig(self, dag: int) -> None:
         """Den udførlige opskrift for én ret: trin med temperaturer, tider, størrelser og mængder - kun når man beder
@@ -478,7 +483,29 @@ class Madplan:
         await self._gem()
         self.opdater()
 
-    async def async_byt_ret(self, dag: int) -> None:
+    def _stoerste_rest(self) -> tuple[dict, int] | None:
+        """Den rest, der er mest værd (mindst en halv pakke og 10 kr), og den dag, der skal bruge den: en senere
+        dag højst 3 dage efter sidste brug, som ikke allerede bruger varen og ikke er en fast dag, egen ret eller
+        rester."""
+        retter = self.plan.get("retter") or []
+        faste = {int(f["dag"]) for f in self.regler.get("faste_dage") or []}
+        bedst = None
+        for v in self.plan.get("varer", []):
+            r = v.get("rest")
+            if not r or v.get("basis") or v.get("madspild") or r["andel"] < 0.5 or r["vaerdi"] < 10:
+                continue
+            sidst = max(v.get("dage") or [0])
+            for i in range(sidst + 1, min(7, sidst + 4)):
+                ret = retter[i] if i < len(retter) else None
+                if (not ret or ret.get("fjernet") or ret.get("rester_fra") is not None or ret.get("dobbelt")
+                        or i in faste or self.min_ret(ret) or i in (v.get("dage") or [])):
+                    continue
+                if bedst is None or r["vaerdi"] > bedst[0]["rest"]["vaerdi"]:
+                    bedst = (v, i + 1)
+                break
+        return bedst
+
+    async def async_byt_ret(self, dag: int, brug_rest: dict | None = None) -> None:
         if self.optaget or not self.plan.get("retter") or not 1 <= dag <= 7:
             return
         async with self._laas:
@@ -492,15 +519,24 @@ class Madplan:
                     r.get("navn", "") for i, r in enumerate(self.plan["retter"]) if i != dag - 1 and not r.get("fjernet")
                 ]
                 fravalgt = self.plan.setdefault("fravalgt", [])
-                if not gammel_ret.get("fjernet"):
-                    fravalgt.append(gammel)
+                if not gammel_ret.get("fjernet") and not brug_rest:
+                    fravalgt.append(gammel)  # en ret byttet for at bruge en rest er ikke fravalgt
+                r = (brug_rest or {}).get("rest") or {}
+                rest_tekst = (
+                    f"Retten SKAL bruge resten fra en anden dag: ca. {r.get('maengde')} {r.get('enhed', '')} "
+                    f"{brug_rest['navn']}. Brug præcis vare-id '{brug_rest['key']}' til den, og højst så meget, så der "
+                    "ikke skal købes mere. Resten må gerne give samme protein som en anden dag.\n"
+                    if brug_rest
+                    else ""
+                )
                 instr = (
                     self._regler()
                     + f"Ugens andre retter er: {', '.join(andre)}. "
                     + (f"Familien vil IKKE have: {', '.join(fravalgt)}.\n" if fravalgt else "\n")
-                    + self._samme_slags(dag - 1)
+                    + ("" if brug_rest else self._samme_slags(dag - 1))
+                    + rest_tekst
                     + f"Lav én ny ret til {DAGE[dag - 1].lower()}, som er anderledes end ugens andre retter "
-                    + "(andet protein eller køkken), og undgå retter fra de seneste uger: "
+                    + ("(andet køkken)" if brug_rest else "(andet protein eller køkken)") + ", og undgå retter fra de seneste uger: "
                     + ", ".join(self._seneste_retter(self.plan["start"]))
                     + ".\n"
                     + "Svar KUN med JSON: "
@@ -1955,6 +1991,13 @@ class Madplan:
             + f" samme protein højst to gange. Varier også køkkenet ({koekkener}).\n"
             + "Genbrug gerne den samme vare i flere retter (fx resten af en pakke hakket kød, fløde, ost eller "
             "grøntsager), så der bliver mindst muligt tilovers, og indkøbslisten bliver kort.\n"
+            + (
+                f"I er kun {self.personer} {'person' if self.personer == 1 else 'personer'}, og pakkerne er ofte "
+                "større end én ret bruger: planlæg, så en åbnet pakke kød, fisk, fløde eller ost bliver brugt op i "
+                "2-3 retter i løbet af ugen (fx kylling mandag og onsdag), i stedet for at købe en ny pakke.\n"
+                if self.personer <= 3
+                else ""
+            )
             + self._flere_butikker()
             + self._familiens_regler()
             + (
@@ -2054,6 +2097,8 @@ class Madplan:
                 if not _basis(ing) and (pakke > 0 or ing.get("pakke_ukendt")):
                     andel = 1.0 if ing.get("pakke_ukendt") else mgd / pakke
                     f["andel"] += andel
+                    if pakke > 0 and not ing.get("pakke_ukendt"):
+                        f["pakke"], f["enhed"] = pakke, enhed  # til resten: købt minus brugt
                     pris += andel * enhedspris
             ret["_billede"] = self._billede(ret, start)
             ret["_pris"] = round(pris)
@@ -2091,6 +2136,9 @@ class Madplan:
                     "kurv": key in i_kurv,
                     "butik": f.get("butik"),
                     "madspild_udsolgt": f.get("madspild_udsolgt", False),
+                    # De dage varen bruges, og hvad der er tilovers af pakkerne (fx 750 g kylling, 150 g brugt).
+                    "dage": sorted(f.get("retter") or ()),
+                    "rest": _rest(antal, f),
                     # Madspild: ekstra nedsat i dag og kan blive udsolgt - reserven er den almindelige vare.
                     "madspild": {**((self.tilbud.get(key[2:]) or {}).get("madspild") or {}), "brug": f.get("brug")}
                     if key.startswith("T:madspild-") and (self.tilbud.get(key[2:]) or {}).get("madspild") else None,
@@ -2294,6 +2342,19 @@ def _soege_noegle(vare: Any) -> str:
     """'S:Hakkede Tomater ' -> 'S:hakkede tomater', så samme søgeord kun slås op én gang."""
     v = str(vare or "").strip()
     return "S:" + v[2:].strip().lower() if v[:2].upper() == "S:" else v
+
+
+def _rest(antal: int, f: dict) -> dict | None:
+    """Det, der er tilovers af pakkerne: fx {andel: 0.8, maengde: 600, enhed: "g", vaerdi: 32}."""
+    pakke = f.get("pakke")
+    if not pakke or f.get("basis"):
+        return None
+    andel = round(antal - f.get("andel", 0.0), 2)
+    if andel < 0.15:
+        return None
+    mgd = andel * pakke
+    return {"andel": andel, "maengde": int(round(mgd, -1)) if mgd >= 50 else round(mgd, 1), "enhed": f.get("enhed", ""),
+            "vaerdi": round(andel * f.get("pris", 0.0), 2)}
 
 
 def pris_tekst(v: dict, decimaler: int = 2) -> str:
