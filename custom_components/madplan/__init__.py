@@ -146,6 +146,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def hjaelp_status(call: ServiceCall) -> ServiceResponse:
         return await hjaelp.async_status()
 
+    async def senere(call: ServiceCall) -> ServiceResponse:
+        return await hjaelp.async_senere()
+
     async def skjul_svar(call: ServiceCall) -> ServiceResponse:
         return await hjaelp.async_skjul(call.data["noegle"])
 
@@ -162,6 +165,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                            vol.Optional("billeder", default=[]): vol.All(cv.ensure_list, vol.Length(max=3), [dict])}),
     )
     hass.services.async_register(DOMAIN, "hjaelp_status", hjaelp_status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "opdatering_senere", senere, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
     hass.services.async_register(
         DOMAIN, "skriv_tilbage", skriv_tilbage, supports_response=SupportsResponse.ONLY,
         schema=vol.Schema({vol.Required("id"): cv.string, vol.Required("tekst"): vol.All(cv.string, vol.Length(min=1, max=4000))}),

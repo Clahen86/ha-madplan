@@ -400,6 +400,9 @@ faa_hjaelp:
 hjaelp_status:
   name: Hjælp-status
   description: Seneste tjek, om der deles anonymt, seneste hjælp og svar fra udvikleren.
+opdatering_senere:
+  name: Opdatering senere
+  description: Skjul kortet om en ny version i 7 dage.
 skjul_svar:
   name: Luk svar
   description: Fjerner et svar fra udvikleren fra panelet. Det kommer igen ved en ny kommentar.

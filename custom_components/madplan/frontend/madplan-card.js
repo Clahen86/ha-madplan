@@ -211,6 +211,9 @@ class MadplanCard extends HTMLElement {
         this._tilTop = true;
         if (this._side === "hjaelp" && !this._hjStatus) this._hjHent();
         break;
+      case "opdsenere":
+        this._hjKald("opdatering_senere").then((r) => { if (r) this._hjStatus = { ...(this._hjStatus || {}), ...r }; this._tegn(); }).catch(() => {});
+        break;
       case "hjtjek":
         this._hjTjek = "tjekker";
         this._tegn();
@@ -1545,6 +1548,19 @@ class MadplanPanel extends MadplanCard {
       .then((r) => r?.response);
   }
 
+  // Kortet om en ny version: små rettelser efter 7 dage, nye funktioner efter 2 dage, med det samme når ens egen fejl er rettet.
+  _opdKort() {
+    if (!this._hjStatus && !this._opdHentet && this._hass?.user?.is_admin) { this._opdHentet = true; this._hjHent(); }
+    const u = this._hjStatus?.opdatering;
+    if (!u || !u.due || !this._hass?.user?.is_admin) return "";
+    const [ejer, repo] = String(u.repo || "Clahen86/ha-madplan").split("/");
+    const url = `https://my.home-assistant.io/redirect/hacs_repository/?owner=${encodeURIComponent(ejer)}&repository=${encodeURIComponent(repo)}&category=integration`;
+    return `<section class="kort opdkort"><div class="opdi">${u.fixed?.length ? "✅" : "⬆️"}</div><div class="opdt"><b>Ny version ${esc(u.version)}</b>${u.important ? ` <span class="opdv">Vigtig rettelse</span>` : ""}
+      ${u.fixed?.length ? `<div class="opdr">Fejlen, du havde, er rettet: ${u.fixed.map((f) => esc(f.error)).join(" · ")}</div>` : ""}
+      ${u.note ? `<div class="opdn">${esc(u.note)}</div>` : ""}<div class="opdn">Du har ${esc(u.current)}</div></div>
+      <div class="opdb"><a href="${url}" target="_blank" rel="noopener">Opdater</a>${u.fixed?.length ? "" : `<button data-h="opdsenere">Senere</button>`}</div></section>`;
+  }
+
   _hjHent() {
     this._hjKald("hjaelp_status").then((r) => { this._hjStatus = r || {}; if (r?.tjek?.resultat && !this._hjTjek) this._hjTjek = r.tjek.resultat; this._tegn(); }).catch(() => {});
   }
@@ -2017,7 +2033,7 @@ class MadplanPanel extends MadplanCard {
               : ""
           }
         </header>
-        <main class="indhold"><div class="ramme">${krop}</div></main>
+        <main class="indhold"><div class="ramme">${this._side === "uge" ? this._opdKort() : ""}${krop}</div></main>
       </div>`;
     const m = this.shadowRoot.querySelector("ha-menu-button");
     if (m) {
@@ -2059,6 +2075,13 @@ class MadplanPanel extends MadplanCard {
 }
 
 const PANEL_CSS = `
+  .opdkort { display:flex; gap:12px; align-items:flex-start; }
+  .opdi { font-size:22px; line-height:1; } .opdt { flex:1; min-width:0; } .opdt b { font-size:15px; }
+  .opdn { font-size:13px; color:var(--secondary-text-color); margin-top:2px; } .opdr { font-size:13px; color:var(--success-color, #2e7d32); margin-top:4px; }
+  .opdv { font-size:11px; font-weight:700; color:#fff; background:#e5484d; border-radius:99px; padding:2px 8px; }
+  .opdb { display:flex; flex-direction:column; gap:6px; } .opdb a { text-decoration:none; text-align:center; font-size:13px; font-weight:700; color:var(--brand-tekst, #fff); background:var(--brand, var(--primary-color)); border-radius:99px; padding:7px 14px; }
+  .opdb button { font:inherit; font-size:12px; border:0; background:none; color:var(--secondary-text-color); cursor:pointer; }
+
   .hhjaelp { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px 0 9px; margin-right: 6px; border-radius: 17px;
     border: 1px solid color-mix(in srgb, var(--brand-tekst, #fff) 45%, transparent); background: color-mix(in srgb, var(--brand-tekst, #fff) 16%, transparent);
     color: var(--brand-tekst, #fff); font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; flex: none; }

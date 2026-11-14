@@ -196,10 +196,13 @@ class Hjaelp:
             await self.async_hent_svar()
 
     async def async_hent_svar(self, besked: bool = True) -> dict[str, Any]:
-        d = await self._post("/replies", {"install": self.d.get("install")})
+        d = await self._post("/replies", {"install": self.d.get("install"), "version": self.version()})
         if not d or "reports" not in d:
             return self.d.get("svar") or {}
         self.d["svar"] = {"reports": d["reports"][:5], "notes": (d.get("notes") or [])[:5], "t": time.time()}
+        if isinstance(d.get("latest"), dict) and d["latest"].get("version"):
+            self.d["nyeste"] = d["latest"]
+        self._opdatering_beskeder()
         nyeste = max((str(m.get("t") or "") for r in self.d["svar"]["reports"] + self.d["svar"]["notes"] for m in r.get("msgs") or []
                       if m.get("from") == "dev"), default="")
         set_ = self.d.get("svar_set") if isinstance(self.d.get("svar_set"), str) else ""
@@ -291,8 +294,72 @@ class Hjaelp:
             return {"ok": True, "id": svar.get("id")}
         return {"ok": False, "error": (svar or {}).get("error", "unreachable")}
 
+    # ---------- opdateringer (samme regler som de andre apps) ----------
+    @staticmethod
+    def _ver(v: Any) -> tuple[int, ...]:
+        import re
+
+        return tuple(int(x) for x in re.findall(r"\d+", str(v or ""))[:3]) or (0,)
+
+    def _rettet(self) -> list[dict[str, str]]:
+        """Fejl, denne installation havde, som udvikleren har rettet i en nyere version ("Fixed in x.y.z")."""
+        import re
+
+        nu, ud = self._ver(self.version()), []
+        for n in (self.d.get("svar") or {}).get("notes") or []:
+            for m in n.get("msgs") or []:
+                hit = re.search(r"fixed in v?(\d+\.\d+(?:\.\d+)?)", str(m.get("text") or ""), re.I)
+                if hit and self._ver(hit.group(1)) > nu:
+                    ud.append({"error": str(n.get("error") or "")[:120], "version": hit.group(1), "key": str(n.get("hash") or n.get("error"))[:60]})
+                    break
+        return ud
+
+    def opdatering(self) -> dict[str, Any] | None:
+        """Kortet: små rettelser efter 7 dage, nye funktioner efter 2 dage, med det samme når ens egen fejl er rettet."""
+        lt, nu = self.d.get("nyeste") or {}, self.version()
+        lv, rettet = str(lt.get("version") or ""), self._rettet()
+        if not lv or self._ver(lv) <= self._ver(nu):
+            return None
+        t, siden = time.time(), self.d.setdefault("bagud", {})
+        if lv not in siden:
+            try:
+                siden[lv] = datetime.datetime.fromisoformat(str(lt.get("date"))).timestamp() if lt.get("date") else t
+            except ValueError:
+                siden[lv] = t
+        stor = self._ver(lv)[:2] > self._ver(nu)[:2]
+        senere = self.d.get("senere") or {}
+        skjult = t < float(senere.get("until") or 0) and not (stor and self._ver(lv)[:2] > self._ver(senere.get("version"))[:2])
+        tid = bool(rettet) or (t - float(siden[lv]) >= (2 if stor else 7) * DOEGN and not skjult)
+        return {"version": lv, "current": nu, "note": str(lt.get("note") or ""), "important": bool(lt.get("important")),
+                "repo": str(lt.get("repo") or ""), "big": stor, "fixed": rettet, "due": tid}
+
+    def _opdatering_beskeder(self) -> None:
+        """En besked i Home Assistant (aldrig på telefonen): egen fejl rettet, eller 30 dage bagud med noget vigtigt."""
+        u = self.opdatering()
+        if not u:
+            return
+        from homeassistant.components import persistent_notification
+
+        sagt = self.d.setdefault("sagt", {})
+        for f in u["fixed"]:
+            if sagt.get("rettet:" + f["key"]) != f["version"]:
+                sagt["rettet:" + f["key"]] = f["version"]
+                persistent_notification.async_create(self.hass, f"✅ Fejlen, du havde i Madplan, er rettet i version {f['version']}. Opdater i HACS.",
+                                                     title="Madplan", notification_id="madplan_rettet")
+        if u["important"] and time.time() - float((self.d.get("bagud") or {}).get(u["version"]) or time.time()) >= 30 * DOEGN and sagt.get("vigtig") != u["version"]:
+            sagt["vigtig"] = u["version"]
+            persistent_notification.async_create(self.hass, f"⬆️ Madplan {u['version']} har en vigtig rettelse. Opdater i HACS.",
+                                                 title="Madplan", notification_id="madplan_opdatering")
+
+    async def async_senere(self) -> dict[str, Any]:
+        u = self.opdatering()
+        self.d["senere"] = {"until": time.time() + 7 * DOEGN, "version": (u or {}).get("version") or self.version()}
+        await self.store.async_save(self.d)
+        return self.status()
+
     def status(self) -> dict[str, Any]:
-        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp"), "svar": self.synlige()}
+        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp"), "svar": self.synlige(),
+                "opdatering": self.opdatering()}
 
     async def async_status(self) -> dict[str, Any]:
         """Til kortet: svarene hentes friske, når de er mere end 5 minutter gamle."""
