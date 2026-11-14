@@ -7,6 +7,10 @@
 - Lær sammen (slået til, kan slås fra): én gang i døgnet en lille anonym linje (version, kæder, hvilke funktioner der
   bruges), antal tilbud pr. kæde når de hentes, varer søgningen ikke kunne finde, og fejl i appen.
 
+- Svar: når udvikleren skriver en kommentar på hjælpebeskeden, henter Madplan den hver time i 60 dage (med sit eget
+  install-id, så ingen andre kan læse den), viser den under Hjælp og giver en besked i Home Assistant. Brugeren kan
+  skrive tilbage derfra.
+
 Sendes aldrig: allergier, husstand, kostmål, regler, opskrifter, indkøbslister, navne, adresse eller nøgler.
 """
 
@@ -31,6 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 URL = "https://ep-reports.clahen86.workers.dev"
 HOVED = {"x-ep-client": "madplan"}
 DOEGN = 24 * 3600
+SVAR_DAGE = 60
 
 
 class Hjaelp:
@@ -126,7 +131,36 @@ class Hjaelp:
                          "mail": any(bool(p.entry.options.get(CONF_NOTIFY)) for p in planer)},
         }
 
+    # ---------- svar fra udvikleren ----------
+    def vil_have_svar(self) -> bool:
+        return time.time() - float((self.d.get("seneste_hjaelp") or {}).get("t") or 0) < SVAR_DAGE * DOEGN
+
+    async def async_hent_svar(self, besked: bool = True) -> dict[str, Any]:
+        d = await self._post("/replies", {"install": self.d.get("install")})
+        if not d or "reports" not in d:
+            return self.d.get("svar") or {}
+        self.d["svar"] = {"reports": d["reports"][:5], "t": time.time()}
+        dev = sum(1 for r in self.d["svar"]["reports"] for m in r.get("msgs") or [] if m.get("from") == "dev")
+        set_ = int(self.d.get("svar_set") or 0)
+        self.d["svar_set"] = dev
+        await self.store.async_save(self.d)
+        if besked and dev > set_:
+            from homeassistant.components import persistent_notification
+
+            persistent_notification.async_create(self.hass, "💬 Udvikleren har svaret på din besked. Åbn Madplan → 🛟 Hjælp for at læse og svare.",
+                                                 title="Madplan", notification_id="madplan_svar")
+        return self.d["svar"]
+
+    async def async_skriv_tilbage(self, rapport: str, tekst: str) -> dict[str, Any]:
+        svar = await self._post("/reply", {"install": self.d.get("install"), "id": str(rapport)[:40], "text": str(tekst)[:4000]})
+        if svar and svar.get("ok"):
+            await self.async_hent_svar(besked=False)
+            return {"ok": True, **self.status()}
+        return {"ok": False, "error": (svar or {}).get("error", "unreachable"), **self.status()}
+
     async def async_dagens_runde(self, _now: Any = None) -> None:
+        if self.vil_have_svar() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) >= 3000:
+            await self.async_hent_svar()
         if not self.del_anonymt:
             return
         if time.time() - float(self.d.get("sendt") or 0) >= DOEGN:
@@ -188,16 +222,24 @@ class Hjaelp:
         billeder = [{"name": str(b.get("name") or "billede")[:60], "data": b["data"]} for b in (billeder or [])[:3]
                     if isinstance(b, dict) and isinstance(b.get("data"), str) and len(b["data"]) <= 2_000_000]
         svar = await self._post("/", {"note": str(besked or "")[:4000], "images": billeder, "diagnostics": diag, "lang": "da",
+                                      "install": self.d.get("install"),  # så svaret kan finde tilbage hertil
                                       "test": {"results": [{"part": "madplan", "step": t["del"], "result": "ok" if t["ok"] else "failed", "why": t["tekst"]} for t in tjek]}},
                                 timeout=60)
         if svar and svar.get("ok"):
             self.d["seneste_hjaelp"] = {"id": svar.get("id"), "t": time.time()}
+            self.d["svar"] = {}
             await self.store.async_save(self.d)
             return {"ok": True, "id": svar.get("id")}
         return {"ok": False, "error": (svar or {}).get("error", "unreachable")}
 
     def status(self) -> dict[str, Any]:
-        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp")}
+        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp"), "svar": self.d.get("svar") or {}}
+
+    async def async_status(self) -> dict[str, Any]:
+        """Til kortet: svarene hentes friske, når de er mere end 5 minutter gamle."""
+        if self.vil_have_svar() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) > 300:
+            await self.async_hent_svar(besked=False)
+        return self.status()
 
 
 class FejlHaandtering(logging.Handler):

@@ -399,7 +399,22 @@ faa_hjaelp:
           multiline: true
 hjaelp_status:
   name: Hjælp-status
-  description: Seneste tjek, om der deles anonymt, og seneste hjælp.
+  description: Seneste tjek, om der deles anonymt, seneste hjælp og svar fra udvikleren.
+skriv_tilbage:
+  name: Skriv tilbage
+  description: Svarer udvikleren på en hjælpebesked.
+  fields:
+    id:
+      name: Nummer
+      required: true
+      selector:
+        text:
+    tekst:
+      name: Tekst
+      required: true
+      selector:
+        text:
+          multiline: true
 del_anonymt:
   name: Del anonymt
   description: Slå "Del anonymt, hvad der virker" til eller fra.

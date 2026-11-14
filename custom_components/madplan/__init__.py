@@ -144,7 +144,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         return await hjaelp.async_faa_hjaelp(call.data.get("besked", ""), call.data.get("billeder") or [])
 
     async def hjaelp_status(call: ServiceCall) -> ServiceResponse:
-        return hjaelp.status()
+        return await hjaelp.async_status()
+
+    async def skriv_tilbage(call: ServiceCall) -> ServiceResponse:
+        return await hjaelp.async_skriv_tilbage(call.data["id"], call.data["tekst"])
 
     async def del_anonymt(call: ServiceCall) -> None:
         await hjaelp.async_saet_del(call.data["til"])
@@ -156,6 +159,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                            vol.Optional("billeder", default=[]): vol.All(cv.ensure_list, vol.Length(max=3), [dict])}),
     )
     hass.services.async_register(DOMAIN, "hjaelp_status", hjaelp_status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(
+        DOMAIN, "skriv_tilbage", skriv_tilbage, supports_response=SupportsResponse.ONLY,
+        schema=vol.Schema({vol.Required("id"): cv.string, vol.Required("tekst"): vol.All(cv.string, vol.Length(min=1, max=4000))}),
+    )
     hass.services.async_register(DOMAIN, "del_anonymt", del_anonymt, schema=vol.Schema({vol.Required("til"): cv.boolean}))
 
     def _madplaner(call: ServiceCall, alle: bool = False) -> list[Madplan]:

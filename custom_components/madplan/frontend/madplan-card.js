@@ -220,7 +220,7 @@ class MadplanCard extends HTMLElement {
         this._hjSvar = "sender";
         this._tegn();
         this._hjKald("faa_hjaelp", { besked: this._hjBesked || "", billeder: (this._hjBilleder || []).map((b) => ({ name: b.name, data: b.url.split(",")[1] })) })
-          .then((r) => { this._hjSvar = r?.ok ? { id: r.id } : "fejl"; if (r?.ok) { this._hjBesked = ""; this._hjBilleder = []; } })
+          .then((r) => { this._hjSvar = r?.ok ? { id: r.id } : "fejl"; if (r?.ok) { this._hjBesked = ""; this._hjBilleder = []; this._hjHent(); } })
           .catch(() => (this._hjSvar = "fejl")).finally(() => this._tegn());
         break;
       case "hjfjern":
@@ -233,6 +233,16 @@ class MadplanCard extends HTMLElement {
       case "hjny":
         this._hjSvar = null;
         break;
+      case "hjtilbage": {
+        const tekst = (this._hjTilbage || "").trim();
+        if (!tekst) break;
+        this._hjTilbageStatus = "sender";
+        this._tegn();
+        this._hjKald("skriv_tilbage", { id: el.dataset.id, tekst })
+          .then((r) => { this._hjTilbageStatus = r?.ok ? "sendt" : "fejl"; if (r?.ok) { this._hjTilbage = ""; this._hjStatus = r; } })
+          .catch(() => (this._hjTilbageStatus = "fejl")).finally(() => this._tegn());
+        break;
+      }
       case "forrige":
       case "naeste":
         this._dagValgt = (this._dagValgt + (h === "naeste" ? 1 : 6)) % 7;
@@ -1565,7 +1575,15 @@ class MadplanPanel extends MadplanCard {
         ${bil.length < 3 ? `<label class="knap hjvedhaeft"><ha-icon icon="mdi:camera-outline"></ha-icon>Vedhæft billeder<input type="file" accept="image/*" multiple data-hjfil hidden></label>` : `<p class="hjgraa">Højst 3 billeder</p>`}
         ${svar === "fejl" ? `<p class="hjfejl">Kunne ikke sende lige nu. Prøv igen om lidt.</p>` : ""}
         <button class="knap stor" data-h="hjsend" ${svar === "sender" ? "disabled" : ""}><ha-icon icon="mdi:send"></ha-icon>${svar === "sender" ? "Sender …" : "Send"}</button>`;
-    return `<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
+    const sidst = this._hjStatus?.seneste_hjaelp?.id;
+    const traade = (this._hjStatus?.svar?.reports || []).filter((r) => r.msgs?.length || r.id === sidst);
+    const svarKort = traade.map((r, n) => `<section class="kort hjkort"><h2><ha-icon icon="mdi:message-reply-text-outline"></ha-icon>Svar fra udvikleren <small class="hjgraa">${esc(r.id)}</small></h2>
+        ${r.msgs?.length ? r.msgs.map((m) => `<p class="${m.from === "dev" ? "hjok" : "hjgraa"}" style="white-space:pre-wrap"><b>${m.from === "dev" ? "Udvikleren" : "Dig"}:</b> ${esc(m.text)}</p>`).join("")
+          : `<p class="hjgraa">Venter på svar – du får besked i Home Assistant, når udvikleren svarer.</p>`}
+        ${n === 0 && r.msgs?.some((m) => m.from === "dev") ? `<textarea name="hjtilbage" class="hjtekst" placeholder="Skriv tilbage …">${esc(this._hjTilbage || "")}</textarea>
+          ${this._hjTilbageStatus === "sendt" ? `<p class="hjok">Sendt ✓</p>` : this._hjTilbageStatus === "fejl" ? `<p class="hjfejl">Kunne ikke sende lige nu.</p>` : ""}
+          <button class="knap" data-h="hjtilbage" data-id="${esc(r.id)}" ${this._hjTilbageStatus === "sender" ? "disabled" : ""}><ha-icon icon="mdi:reply"></ha-icon>${this._hjTilbageStatus === "sender" ? "Sender …" : "Send svar"}</button>` : ""}</section>`).join("");
+    return `${svarKort}<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
         <p class="hjgraa">Tjekker at tilbuddene hentes fra dine butikker, at Salling-nøglen og AI'en virker, og at beskederne kan sendes.</p>
         ${tjek}<button class="knap" data-h="hjtjek" ${t === "tjekker" ? "disabled" : ""}><ha-icon icon="mdi:play"></ha-icon>${Array.isArray(t) ? "Tjek igen" : "Tjek nu"}</button></section>
       <section class="kort hjkort"><h2><ha-icon icon="mdi:lifebuoy"></ha-icon>Få hjælp</h2>${hjaelp}</section>
@@ -2012,6 +2030,7 @@ class MadplanPanel extends MadplanCard {
       this._tegn();
     });
     this.shadowRoot.querySelector("textarea[name=hjbesked]")?.addEventListener("input", (e) => (this._hjBesked = e.target.value));
+    this.shadowRoot.querySelector("textarea[name=hjtilbage]")?.addEventListener("input", (e) => (this._hjTilbage = e.target.value));
     if (fokus) this._fokuser(fokus);
   }
 }
