@@ -177,7 +177,8 @@ data:
 - Data om planer, regler og kurv bliver i din Home Assistant. AI'en får kun tilbud, regler og antal personer.
 - **Hjælp og tjek** (🛟 øverst i panelet): *Tjek madplan* ser, at tilbuddene hentes fra dine butikker, og at Salling-nøglen,
   AI'en og beskederne virker. *Få hjælp* sender din besked, op til 3 billeder og tjekket privat til udvikleren – kun når
-  du trykker, og uden allergier, regler, opskrifter eller indkøbslister.
+  du trykker, og uden allergier, regler, opskrifter eller indkøbslister. Når udvikleren svarer (også på en fejl, appen
+  har sendt), står svaret under 🛟, og du får en besked i Home Assistant. Du kan skrive tilbage derfra.
 - **Del anonymt, hvad der virker** (slået til, kan slås fra under 🛟): én gang i døgnet version, kæder og hvilke funktioner
   der bruges; antal tilbud pr. kæde (så en kæde, der holder op med at give tilbud, bliver opdaget med det samme); varer,
   søgningen ikke kunne finde; og fejl i appen. **Aldrig** allergier, husstand, kostmål, regler, opskrifter,

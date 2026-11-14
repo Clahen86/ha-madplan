@@ -244,7 +244,7 @@ class Hjaelp:
     async def async_status(self) -> dict[str, Any]:
         """Til kortet: svarene hentes friske, når de er mere end 5 minutter gamle."""
         if self.vil_have_svar() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) > 300:
-            await self.async_hent_svar(besked=False)
+            await self.async_hent_svar()
         return self.status()
 
 
