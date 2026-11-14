@@ -160,6 +160,7 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "antal_retter": aktive,
             "retter": [r.get("navn", "") for r in retter],
             "lavet": p.get("lavet"),
+            "ai_reserve": p.get("ai_reserve"),  # en anden AI lavede planen, fordi den valgte ikke svarede
             "handl_senest": p.get("handl_senest"),
             "handledag": p.get("handledag"),
             # Standardvalget for næste plan: i morgen om lørdagen (søndagens tilbud), ellers i dag.

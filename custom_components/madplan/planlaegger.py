@@ -103,11 +103,16 @@ class ForLangtSvar(HomeAssistantError):
     """AI'ens svar ramte loftet for længde (MAX_TOKENS)."""
 
 
+class AISvarerIkke(HomeAssistantError):
+    """AI'en svarede ikke (travl, kvoten brugt op) - et kendt problem, ikke en fejl i Madplan."""
+
+
 class Madplan:
     """Holder planen, varelisten og historikken for én config entry."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self._madspild_dage = ""
+        self.ai_brugt: str | None = None
         self.hass = hass
         self.entry = entry
         self.butik = entry.data[CONF_BUTIK]
@@ -341,6 +346,7 @@ class Madplan:
         async with self._laas:
             try:
                 self._status("Henter tilbud og laver madplan …")
+                self.ai_brugt = None
                 dag = self.handledag(handler)
                 start, slut = self._plan_uge(dag)
                 await self._hent_data(dag, slut, nye_tilbud=True)  # tilbuddene skal gælde på indkøbsdagen
@@ -359,22 +365,41 @@ class Madplan:
                 if not dage:
                     raise HomeAssistantError("Alle dage er slået fra - vælg mindst én dag")
                 antal = len(dage)
-                datoer = ", ".join(f"{DAGE[i]} {(start + datetime.timedelta(days=i)).isoformat()}" for i in dage)
                 # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
                 behov = list(self.behov)
-                instr = (
-                    self._regler()
-                    + self._mine_retter_tekst(undgaa)
-                    + f"Lav {antal} aftensmåltider for {datoer}.\n"
-                    + (f"Undgå disse retter fra de seneste uger: {', '.join(undgaa)}.\n" if undgaa else "")
-                    + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov else "")
-                    + f'Svar KUN med JSON: {{"retter": [{antal} x '
-                    + self._ret_skema()
-                    + "]"
-                    + (", " + self._behov_skema() if behov else "")
-                    + "} med retterne i samme rækkefølge som dagene.\n\n"
-                )
-                svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
+
+                def byg(dd: list[int], med_behov: bool, ogsaa_undgaa: list[str]) -> str:
+                    n = len(dd)
+                    datoer = ", ".join(f"{DAGE[i]} {(start + datetime.timedelta(days=i)).isoformat()}" for i in dd)
+                    alle_undgaa = [*undgaa, *ogsaa_undgaa]
+                    return (
+                        self._regler()
+                        + self._mine_retter_tekst(undgaa)
+                        + f"Lav {n} aftensmåltider for {datoer}.\n"
+                        + (f"Undgå disse retter: {', '.join(alle_undgaa)}.\n" if alle_undgaa else "")
+                        + (f"\nEKSTRA VARER: {self._behov_regler(behov)}\n" if behov and med_behov else "")
+                        + f'Svar KUN med JSON: {{"retter": [{n} x '
+                        + self._ret_skema()
+                        + "]"
+                        + (", " + self._behov_skema() if behov and med_behov else "")
+                        + "} med retterne i samme rækkefølge som dagene.\n\n"
+                    )
+
+                try:
+                    instr = byg(dage, True, [])
+                    svar = await self._spoerg("Madplan uge", lambda liste: instr + self._vare_tekst(liste))
+                except ForLangtSvar:
+                    if len(dage) < 2:
+                        raise
+                    # Hele ugen i ét svar blev for langt for AI'en: to halve uger, hver kun halvt så lang.
+                    _LOGGER.warning("%s: svaret blev for langt - deler ugen i to", self.butik_navn)
+                    self._status("Laver madplanen i to dele …")
+                    halv = (len(dage) + 1) // 2
+                    i1 = byg(dage[:halv], True, [])
+                    a = await self._spoerg("Madplan uge 1/2", lambda liste: i1 + self._vare_tekst(liste))
+                    i2 = byg(dage[halv:], False, [str(r.get("navn", "")) for r in a.get("retter", [])])
+                    b = await self._spoerg("Madplan uge 2/2", lambda liste: i2 + self._vare_tekst(liste))
+                    svar = {**a, "retter": a.get("retter", [])[:halv] + b.get("retter", [])}
                 nye = svar.get("retter", [])[:antal]
                 _LOGGER.debug("Madspild valgt af AI: %s", [
                     (i.get("navn"), i.get("vare")) for r in nye for i in r.get("ingredienser", [])
@@ -417,6 +442,7 @@ class Madplan:
                     "madspild_fundet": getattr(self, "_madspild_fundet", None),
                     "retter": retter,
                     "lavet": dt_util.now().isoformat(timespec="minutes"),
+                    "ai_reserve": self._ai_navn(self.ai_brugt),  # en anden AI lavede planen
                 }
                 self._beregn(ny=True)
                 self._gem_historik()
@@ -433,6 +459,10 @@ class Madplan:
                         _LOGGER.warning("Ekstra varer fejlede: %s", e)
                     await self._gem()
                     self.opdater()
+            except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
+                _LOGGER.warning("Madplan fejlede: %s", e)
+                self._status(f"Fejl: {str(e)[:120]}")
+                return
             except Exception as e:  # noqa: BLE001 - vises i status på dashboardet
                 _LOGGER.exception("Madplan fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -558,6 +588,9 @@ class Madplan:
                 self.plan["status"] = "Klar"
                 await self._gem()
                 self.opdater()
+            except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
+                _LOGGER.warning("Byt ret fejlede: %s", e)
+                self._status(f"Fejl: {str(e)[:120]}")
             except Exception as e:  # noqa: BLE001
                 _LOGGER.exception("Byt ret fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -617,6 +650,9 @@ class Madplan:
                 self.en_ret = [self._beregn_en_ret(ret, n, idag, har, oenske)] + self.en_ret[:4]
                 await self._gem()
                 self._en_status("")
+            except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
+                _LOGGER.warning("Én ret fejlede: %s", e)
+                self._en_status(f"Fejl: {str(e)[:120]}")
             except Exception as e:  # noqa: BLE001 - vises på siden
                 _LOGGER.exception("Én ret fejlede")
                 self._en_status(f"Fejl: {str(e)[:120]}")
@@ -923,6 +959,9 @@ class Madplan:
                 self.plan["status"] = "Klar"
                 await self._gem()
                 self.opdater()
+            except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
+                _LOGGER.warning("Ekstra vare fejlede: %s", e)
+                self._status(f"Fejl: {str(e)[:120]}")
             except Exception as e:  # noqa: BLE001
                 _LOGGER.exception("Ekstra vare fejlede")
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -1435,39 +1474,56 @@ class Madplan:
             instruktioner = await self.hass.async_add_executor_job(byg, False)
             return await self._spoerg_ai(opgave, instruktioner + "\nHold svaret ekstra kort.")
 
+    def _ai_navn(self, entity_id: str | None) -> str | None:
+        if not entity_id:
+            return None
+        st = self.hass.states.get(entity_id)
+        return (st.attributes.get("friendly_name") if st else None) or entity_id
+
+    def _ai_raekke(self) -> list[str]:
+        """Den valgte AI først; svarer den ikke, prøves de andre AI-opgaver i Home Assistant (en anden model har
+        sin egen gratis kvote)."""
+        valgt = self.entry.options[CONF_AI_ENTITY]
+        andre = [s.entity_id for s in self.hass.states.async_all("ai_task") if s.entity_id != valgt and s.state != "unavailable"]
+        return [valgt, *sorted(andre)]
+
     async def _spoerg_ai(self, opgave: str, instruktioner: str) -> dict:
-        """Kalder ai_task; prøver igen ved travlhed (503/429). Hvert forsøg er et kald."""
+        """Kalder ai_task; prøver igen ved travlhed (503/429) og derefter en anden AI. Hvert forsøg er et kald."""
         sidste_fejl = ""
-        for forsoeg in range(3):
-            try:
-                async with self._ai_laas:
-                    svar = await self.hass.services.async_call(
-                        "ai_task",
-                        "generate_data",
-                        {
-                            "entity_id": self.entry.options[CONF_AI_ENTITY],
-                            "task_name": opgave,
-                            "instructions": instruktioner,
-                        },
-                        blocking=True,
-                        return_response=True,
-                    )
-                if data := (svar or {}).get("data"):
-                    return _parse_json(data)
-                sidste_fejl = "tomt svar"
-            except (HomeAssistantError, ValueError) as e:
-                sidste_fejl = str(e)
-            if "MAX_TOKENS" in sidste_fejl.upper():
-                # Et for langt svar bliver ikke kortere af at spørge igen.
-                raise ForLangtSvar(sidste_fejl)
-            if re.search(r"per.?day|PerDay", sidste_fejl):
-                # Dagskvoten er brugt: nye forsøg ville bare bruge af morgendagens kvote.
-                raise HomeAssistantError("AI'ens gratis dagskvote er brugt op – prøv igen i morgen")
-            _LOGGER.warning("AI-forsøg %s fejlede: %s", forsoeg + 1, sidste_fejl[:200])
-            # Kvoten pr. minut (429) nulstilles efter et minut; hurtige forsøg bruger den bare op igen.
-            kvote = re.search(r"429|quota|resource.?exhausted|rate.?limit", sidste_fejl, re.I)
-            await asyncio.sleep(65 if kvote else 20 + forsoeg * 20)
-        raise HomeAssistantError(f"AI svarede ikke: {sidste_fejl}")
+        raekke = self._ai_raekke()
+        for nr, ai in enumerate(raekke):
+            for forsoeg in range(3 if nr == 0 else 1):
+                try:
+                    async with self._ai_laas:
+                        svar = await self.hass.services.async_call(
+                            "ai_task",
+                            "generate_data",
+                            {"entity_id": ai, "task_name": opgave, "instructions": instruktioner},
+                            blocking=True,
+                            return_response=True,
+                        )
+                    if data := (svar or {}).get("data"):
+                        ud = _parse_json(data)
+                        self.ai_brugt = ai if nr else None  # vises i planen, når en anden AI tog over
+                        return ud
+                    sidste_fejl = "tomt svar"
+                except (HomeAssistantError, ValueError) as e:
+                    sidste_fejl = str(e)
+                if "MAX_TOKENS" in sidste_fejl.upper():
+                    # Et for langt svar bliver ikke kortere af at spørge igen - kalderen deler opgaven op.
+                    _LOGGER.warning("%s: svaret blev for langt (%s)", ai, sidste_fejl[:150])
+                    raise ForLangtSvar("AI'ens svar blev for langt – sæt 'Maksimale tokens' op i AI-integrationen og prøv igen")
+                if re.search(r"per.?day|PerDay", sidste_fejl):
+                    _LOGGER.warning("%s: dagskvoten er brugt op", ai)
+                    break  # nye forsøg ville bare bruge af morgendagens kvote - næste AI
+                _LOGGER.warning("AI-forsøg %s med %s fejlede: %s", forsoeg + 1, ai, sidste_fejl[:200])
+                if forsoeg < (2 if nr == 0 else 0):
+                    # Kvoten pr. minut (429) nulstilles efter et minut; ved travlhed (503) ventes længere og længere.
+                    kvote = re.search(r"429|quota|resource.?exhausted|rate.?limit", sidste_fejl, re.I)
+                    await asyncio.sleep(65 if kvote else 30 + forsoeg * 30)
+        if re.search(r"per.?day|PerDay", sidste_fejl):
+            raise AISvarerIkke("AI'ens gratis dagskvote er brugt op – prøv igen i morgen")
+        raise AISvarerIkke(f"AI svarede ikke: {sidste_fejl[:150]}")
 
     def _vare_tekst(self, liste: bool = True, aftensmad: bool = True) -> str:
         """Ugens tilbud og REMA's navne på basisvarerne. Pris og størrelse slås op bagefter.

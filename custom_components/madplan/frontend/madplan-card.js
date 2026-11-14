@@ -1433,6 +1433,7 @@ class MadplanPanel extends MadplanCard {
              <div class="atekst"><span>${kr(a.pris_praecis)} tilbudspriser</span><span>ca. ${kr(a.pris_ca)} anslået</span></div></div>`
           : ""
       }
+      ${a.ai_reserve ? `<div class="info"><ha-icon icon="mdi:robot-outline"></ha-icon>Lavet med ${esc(a.ai_reserve)}, fordi den valgte AI ikke svarede</div>` : ""}
       ${a.handl_senest ? `<div class="info"><ha-icon icon="mdi:calendar-clock"></ha-icon>${a.handledag ? `Handles ${esc(this._dato(a.handledag))} · ` : ""}tilbuddene gælder til ${esc(this._dato(a.handl_senest))}</div>` : ""}
       ${
         (a.advarsler || []).length
