@@ -1564,6 +1564,20 @@ class MadplanPanel extends MadplanCard {
     });
   }
 
+  _forslag() {  // "Passer også til dit hjem" og "Fra samme udvikler" under Hjælp (fælles fil i alle Clahen86's apps)
+    const pladser = [["mp-forslag", "card"], ["mp-flere", "list"]].map(([id, mode]) => [this.shadowRoot.getElementById(id), mode]).filter(([e]) => e);
+    if (!pladser.length) return;
+    import("/madplan/suggest.js").then(({ defineSuggest }) => {
+      for (const [e, mode] of pladser) {
+        const k = `_sg_${mode}`;
+        if (mode === "card" && !this._hass.user?.is_admin) continue;  // kun admins kan installere
+        if (!this[k]) { this[k] = document.createElement(defineSuggest("madplan")); this[k].setAttribute("mode", mode); }
+        this[k].hass = this._hass;
+        if (e.isConnected) e.appendChild(this[k]);
+      }
+    }).catch(() => {});
+  }
+
   _hjaelpSide() {
     const t = this._hjTjek, svar = this._hjSvar, del = this._hjStatus?.del ?? true, bil = this._hjBilleder || [];
     const tjek = t === "tjekker"
@@ -1595,7 +1609,8 @@ class MadplanPanel extends MadplanCard {
       <section class="kort hjkort"><h2><ha-icon icon="mdi:lifebuoy"></ha-icon>Få hjælp</h2>${hjaelp}</section>
       <section class="kort hjkort"><div class="hjdel"><div><b>Del anonymt, hvad der virker</b>
         <small>Hjælper alle: hvilke kæder der giver tilbud, varer søgningen ikke fandt, og fejl i appen. Aldrig allergier, regler, opskrifter, indkøbslister eller navne.</small></div>
-        <button class="hjkontakt ${del ? "til" : ""}" data-h="hjdel" aria-pressed="${del}" aria-label="Del anonymt"></button></div></section>`;
+        <button class="hjkontakt ${del ? "til" : ""}" data-h="hjdel" aria-pressed="${del}" aria-label="Del anonymt"></button></div></section>
+      <div id="mp-forslag"></div><div id="mp-flere"></div>`;
   }
 
   _mineSide(a) {
@@ -2008,6 +2023,7 @@ class MadplanPanel extends MadplanCard {
       m.hass = this._hass;
       m.narrow = this._narrow;
     }
+    this._forslag();
     this.shadowRoot.querySelector(".indhold").scrollTop = rul;
     [".bchips", ".topfaner"].forEach((v, i) => {
       const e = this.shadowRoot.querySelector(v);

@@ -419,7 +419,8 @@ async def _registrer_kort(hass: HomeAssistant) -> None:
     tid = int(await hass.async_add_executor_job(lambda: (mappe / "frontend" / "madplan-card.js").stat().st_mtime))
     version = f"{version}-{tid}"
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True)]
+        [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True),
+         StaticPathConfig("/madplan/suggest.js", str(mappe / "frontend" / "suggest.js"), True)]
     )
     add_extra_js_url(hass, f"{KORT_URL}?v={version}")
     # Eget punkt i sidemenuen, så madplanen virker som en app uden opsætning af dashboards.
