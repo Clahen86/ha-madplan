@@ -171,11 +171,9 @@ class Hjaelp:
         st = self.hass.states.get(ai) if ai else None
         ud.append({"del": "AI", "ok": bool(st and st.state != "unavailable"),
                    "tekst": "Klar" if st and st.state != "unavailable" else ("Ikke valgt" if not ai else "Ikke tilgængelig")})
-        modtagere = hoved.entry.options.get(CONF_NOTIFY) or []
-        if isinstance(modtagere, str):
-            modtagere = [modtagere]
+        modtagere = hoved._notify_tjenester() if hasattr(hoved, "_notify_tjenester") else []
         if modtagere:
-            mangler = [m for m in modtagere if not self.hass.services.has_service("notify", str(m).split(".")[-1])]
+            mangler = [m for m in modtagere if not self.hass.services.has_service(*(m.partition(".")[::2] if "." in m else ("notify", m)))]
             ud.append({"del": "Beskeder", "ok": not mangler, "tekst": "Klar" if not mangler else f"{len(mangler)} modtager findes ikke"})
         self.d["tjek"] = {"t": time.time(), "resultat": ud}
         await self.store.async_save(self.d)

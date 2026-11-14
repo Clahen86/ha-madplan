@@ -135,7 +135,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     from .hjaelp import async_setup_hjaelp
 
     hjaelp = await async_setup_hjaelp(hass)
-    hass.data.setdefault(DOMAIN, {})["hjaelp"] = hjaelp
+    hass.data["madplan_hjaelp"] = hjaelp  # ikke i hass.data[DOMAIN]: det er planernes fælles opslag
 
     async def tjek(call: ServiceCall) -> ServiceResponse:
         return {"resultat": await hjaelp.async_tjek()}

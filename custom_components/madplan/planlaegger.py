@@ -1124,7 +1124,7 @@ class Madplan:
         if "øko" not in navn:
             katalog = {k: v for k, v in katalog.items() if "øko" not in v["navn"].lower()}
         fundet = soeg.find_vare(katalog, navn, dato, behov) or soeg.find_vare(self.katalog, navn, dato, behov)
-        if not fundet and (h := (self.hass.data.get(DOMAIN) or {}).get("hjaelp")):
+        if not fundet and (h := self.hass.data.get("madplan_hjaelp")):
             h.ikke_fundet(navn)  # lær sammen: varer søgningen ikke fandt
         return fundet
 
@@ -1186,7 +1186,7 @@ class Madplan:
                 for tid, t in ekstra.items():
                     if tid not in self.tilbud:
                         self.tilbud[tid] = {**t, "butik": andre}
-            if h := (self.hass.data.get(DOMAIN) or {}).get("hjaelp"):
+            if h := self.hass.data.get("madplan_hjaelp"):
                 h.tilbud(antal)  # lær sammen: 0 tilbud fra flere hjem = kilden er gået i stykker
             try:
                 self.butik_info = await kilder.hent_butik_info(self.hass, self.dealer)
