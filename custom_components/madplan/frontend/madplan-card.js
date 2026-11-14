@@ -1567,7 +1567,8 @@ class MadplanPanel extends MadplanCard {
   _forslag() {  // "Passer også til dit hjem" og "Fra samme udvikler" under Hjælp (fælles fil i alle Clahen86's apps)
     const pladser = [["mp-forslag", "card"], ["mp-flere", "list"]].map(([id, mode]) => [this.shadowRoot.getElementById(id), mode]).filter(([e]) => e);
     if (!pladser.length) return;
-    import("/madplan/suggest.js").then(({ defineSuggest }) => {
+    import(`/madplan/suggest.js${new URL(import.meta.url).search}`)  // same version as the card, never an old copy
+    .then(({ defineSuggest }) => {
       for (const [e, mode] of pladser) {
         const k = `_sg_${mode}`;
         if (mode === "card" && !this._hass.user?.is_admin) continue;  // kun admins kan installere
