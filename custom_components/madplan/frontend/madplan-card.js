@@ -1583,7 +1583,9 @@ class MadplanPanel extends MadplanCard {
         ${n === 0 && r.msgs?.some((m) => m.from === "dev") ? `<textarea name="hjtilbage" class="hjtekst" placeholder="Skriv tilbage …">${esc(this._hjTilbage || "")}</textarea>
           ${this._hjTilbageStatus === "sendt" ? `<p class="hjok">Sendt ✓</p>` : this._hjTilbageStatus === "fejl" ? `<p class="hjfejl">Kunne ikke sende lige nu.</p>` : ""}
           <button class="knap" data-h="hjtilbage" data-id="${esc(r.id)}" ${this._hjTilbageStatus === "sender" ? "disabled" : ""}><ha-icon icon="mdi:reply"></ha-icon>${this._hjTilbageStatus === "sender" ? "Sender …" : "Send svar"}</button>` : ""}</section>`).join("");
-    return `${svarKort}<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
+    const noter = (this._hjStatus?.svar?.notes || []).filter((x) => x.msgs?.length).map((x) => `<section class="kort hjkort"><h2><ha-icon icon="mdi:message-alert-outline"></ha-icon>Besked fra udvikleren om en fejl</h2>
+        ${x.msgs.map((m) => `<p class="hjok" style="white-space:pre-wrap">${esc(m.text)}</p>`).join("")}</section>`).join("");
+    return `${noter}${svarKort}<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
         <p class="hjgraa">Tjekker at tilbuddene hentes fra dine butikker, at Salling-nøglen og AI'en virker, og at beskederne kan sendes.</p>
         ${tjek}<button class="knap" data-h="hjtjek" ${t === "tjekker" ? "disabled" : ""}><ha-icon icon="mdi:play"></ha-icon>${Array.isArray(t) ? "Tjek igen" : "Tjek nu"}</button></section>
       <section class="kort hjkort"><h2><ha-icon icon="mdi:lifebuoy"></ha-icon>Få hjælp</h2>${hjaelp}</section>

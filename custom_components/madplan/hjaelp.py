@@ -7,9 +7,9 @@
 - Lær sammen (slået til, kan slås fra): én gang i døgnet en lille anonym linje (version, kæder, hvilke funktioner der
   bruges), antal tilbud pr. kæde når de hentes, varer søgningen ikke kunne finde, og fejl i appen.
 
-- Svar: når udvikleren skriver en kommentar på hjælpebeskeden, henter Madplan den hver time i 60 dage (med sit eget
-  install-id, så ingen andre kan læse den), viser den under Hjælp og giver en besked i Home Assistant. Brugeren kan
-  skrive tilbage derfra.
+- Svar: når udvikleren skriver en kommentar på hjælpebeskeden - eller på en fejl, appen har sendt - henter Madplan den
+  (med sit eget install-id, så ingen andre kan læse den), viser den under Hjælp og giver én besked i Home Assistant pr.
+  kommentar. På en hjælpebesked kan brugeren skrive tilbage.
 
 Sendes aldrig: allergier, husstand, kostmål, regler, opskrifter, indkøbslister, navne, adresse eller nøgler.
 """
@@ -111,6 +111,8 @@ class Hjaelp:
         if self._fejl_sendt.get(h) == idag:
             return
         self._fejl_sendt[h] = idag
+        if self.del_anonymt:
+            self.d["fejl_t"] = time.time()  # en besked fra udvikleren om fejlen kan komme tilbage
         self._linje("error", {"hash": h, "text": tekst, "version": self.version()})
 
     def daglig(self) -> dict[str, Any]:
@@ -133,21 +135,23 @@ class Hjaelp:
 
     # ---------- svar fra udvikleren ----------
     def vil_have_svar(self) -> bool:
-        return time.time() - float((self.d.get("seneste_hjaelp") or {}).get("t") or 0) < SVAR_DAGE * DOEGN
+        sidst = max(float((self.d.get("seneste_hjaelp") or {}).get("t") or 0), float(self.d.get("fejl_t") or 0))
+        return time.time() - sidst < SVAR_DAGE * DOEGN
 
     async def async_hent_svar(self, besked: bool = True) -> dict[str, Any]:
         d = await self._post("/replies", {"install": self.d.get("install")})
         if not d or "reports" not in d:
             return self.d.get("svar") or {}
-        self.d["svar"] = {"reports": d["reports"][:5], "t": time.time()}
-        dev = sum(1 for r in self.d["svar"]["reports"] for m in r.get("msgs") or [] if m.get("from") == "dev")
-        set_ = int(self.d.get("svar_set") or 0)
-        self.d["svar_set"] = dev
+        self.d["svar"] = {"reports": d["reports"][:5], "notes": (d.get("notes") or [])[:5], "t": time.time()}
+        nyeste = max((str(m.get("t") or "") for r in self.d["svar"]["reports"] + self.d["svar"]["notes"] for m in r.get("msgs") or []
+                      if m.get("from") == "dev"), default="")
+        set_ = self.d.get("svar_set") if isinstance(self.d.get("svar_set"), str) else ""
+        self.d["svar_set"] = max(nyeste, set_)
         await self.store.async_save(self.d)
-        if besked and dev > set_:
+        if besked and nyeste > set_:  # én gang pr. ny kommentar - at lukke issuet ændrer intet
             from homeassistant.components import persistent_notification
 
-            persistent_notification.async_create(self.hass, "💬 Udvikleren har svaret på din besked. Åbn Madplan → 🛟 Hjælp for at læse og svare.",
+            persistent_notification.async_create(self.hass, "💬 Ny besked fra udvikleren. Åbn Madplan → 🛟 Hjælp for at læse den.",
                                                  title="Madplan", notification_id="madplan_svar")
         return self.d["svar"]
 
@@ -159,7 +163,9 @@ class Hjaelp:
         return {"ok": False, "error": (svar or {}).get("error", "unreachable"), **self.status()}
 
     async def async_dagens_runde(self, _now: Any = None) -> None:
-        if self.vil_have_svar() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) >= 3000:
+        # hver time mens en hjælpebesked eller fejl er frisk; ellers én gang i døgnet (fejl sendt af en ældre version)
+        hver = 3000 if self.vil_have_svar() else DOEGN if self.del_anonymt else None
+        if hver and time.time() - float((self.d.get("svar") or {}).get("t") or 0) >= hver:
             await self.async_hent_svar()
         if not self.del_anonymt:
             return
