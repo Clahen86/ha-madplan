@@ -105,6 +105,8 @@ class Hjaelp:
         if not record.exc_info or not record.exc_info[1]:
             return
         exc = record.exc_info[1]
+        if _network(exc):
+            return
         rammer = [r for r in traceback.extract_tb(record.exc_info[2]) if "madplan" in r.filename]
         hvor = f"{os.path.basename(rammer[-1].filename)}:{rammer[-1].lineno} {rammer[-1].name}" if rammer else "?"
         tekst = f"{type(exc).__name__} at {hvor}"
@@ -323,3 +325,18 @@ async def async_setup_hjaelp(hass: HomeAssistant) -> Hjaelp:
     async_track_time_interval(hass, h.async_svar_runde, datetime.timedelta(minutes=10))
     hass.loop.call_later(600, lambda: hass.async_create_task(h.async_dagens_runde()))
     return h
+
+
+def _network(exc: BaseException) -> bool:
+    """Home Assistant restarting or the network gone (502, timeout, no connection) - not a fault in the app."""
+    import asyncio
+
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+        return True
+    try:
+        import aiohttp
+    except ImportError:
+        return False
+    if isinstance(exc, aiohttp.ClientResponseError):
+        return exc.status >= 500
+    return isinstance(exc, aiohttp.ClientConnectionError)
