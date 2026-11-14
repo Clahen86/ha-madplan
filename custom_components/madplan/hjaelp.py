@@ -36,6 +36,9 @@ URL = "https://ep-reports.clahen86.workers.dev"
 HOVED = {"x-ep-client": "madplan"}
 DOEGN = 24 * 3600
 SVAR_DAGE = 60
+FRISK = 7 * DOEGN  # hvert 10. minut den første uge efter en hjælpebesked eller fejl, så hver time
+LUKKET_BEHOLD = 7 * DOEGN  # et svar på et lukket issue forsvinder en uge efter, det blev lukket
+SET_BEHOLD = 14 * DOEGN  # ... eller to uger efter, det blev set - en ny kommentar henter det frem igen
 
 
 class Hjaelp:
@@ -134,9 +137,61 @@ class Hjaelp:
         }
 
     # ---------- svar fra udvikleren ----------
+    def _sidst_sendt(self) -> float:
+        return max(float((self.d.get("seneste_hjaelp") or {}).get("t") or 0), float(self.d.get("fejl_t") or 0))
+
     def vil_have_svar(self) -> bool:
-        sidst = max(float((self.d.get("seneste_hjaelp") or {}).get("t") or 0), float(self.d.get("fejl_t") or 0))
-        return time.time() - sidst < SVAR_DAGE * DOEGN
+        return time.time() - self._sidst_sendt() < SVAR_DAGE * DOEGN
+
+    def svar_hver(self) -> float | None:
+        if self.vil_have_svar():
+            return 590 if time.time() - self._sidst_sendt() < FRISK else 3000
+        return DOEGN if self.del_anonymt else None  # en fejl sendt af en ældre version
+
+    @staticmethod
+    def _noegle(r: dict[str, Any]) -> str:
+        return str(r.get("id") or "e:" + hashlib.sha1(str(r.get("error")).encode()).hexdigest()[:12])
+
+    @staticmethod
+    def _nyeste(r: dict[str, Any]) -> str:
+        return max((str(m.get("t") or "") for m in r.get("msgs") or [] if m.get("from") == "dev"), default="")
+
+    def synlige(self, marker_set: bool = False) -> dict[str, Any]:
+        """Det kortet viser: ikke dem, der er lukket med "Luk", et lukket issue efter en uge, eller et set for to uger siden."""
+        alt = self.d.get("svar") or {}
+        skjult, set_ = self.d.get("svar_skjult") or {}, self.d.setdefault("svar_vist", {})
+        nu, ud = time.time(), {"reports": [], "notes": [], "t": alt.get("t")}
+        for slags in ("reports", "notes"):
+            for r in alt.get(slags) or []:
+                k, ny = self._noegle(r), self._nyeste(r)
+                if k in skjult and skjult[k] >= ny:
+                    continue
+                lukket = r.get("closed_at")
+                try:
+                    if lukket and datetime.datetime.fromisoformat(str(lukket).replace("Z", "+00:00")).timestamp() < nu - LUKKET_BEHOLD and ny <= lukket:
+                        continue
+                except ValueError:
+                    pass
+                v = set_.get(k)
+                if ny and v and v.get("t") == ny and nu - float(v.get("at") or 0) > SET_BEHOLD:
+                    continue
+                if marker_set and ny and (not v or v.get("t") != ny):
+                    set_[k] = {"t": ny, "at": nu}
+                ud[slags].append({**r, "key": k})
+        return ud
+
+    async def async_skjul(self, noegle: str) -> dict[str, Any]:
+        alt = self.d.get("svar") or {}
+        r = next((x for slags in ("reports", "notes") for x in alt.get(slags) or [] if self._noegle(x) == noegle), None)
+        if r is not None:
+            self.d.setdefault("svar_skjult", {})[noegle] = self._nyeste(r)
+            await self.store.async_save(self.d)
+        return self.status()
+
+    async def async_svar_runde(self, _now: Any = None) -> None:
+        hver = self.svar_hver()
+        if hver and time.time() - float((self.d.get("svar") or {}).get("t") or 0) >= hver:
+            await self.async_hent_svar()
 
     async def async_hent_svar(self, besked: bool = True) -> dict[str, Any]:
         d = await self._post("/replies", {"install": self.d.get("install")})
@@ -163,10 +218,6 @@ class Hjaelp:
         return {"ok": False, "error": (svar or {}).get("error", "unreachable"), **self.status()}
 
     async def async_dagens_runde(self, _now: Any = None) -> None:
-        # hver time mens en hjælpebesked eller fejl er frisk; ellers én gang i døgnet (fejl sendt af en ældre version)
-        hver = 3000 if self.vil_have_svar() else DOEGN if self.del_anonymt else None
-        if hver and time.time() - float((self.d.get("svar") or {}).get("t") or 0) >= hver:
-            await self.async_hent_svar()
         if not self.del_anonymt:
             return
         if time.time() - float(self.d.get("sendt") or 0) >= DOEGN:
@@ -239,13 +290,15 @@ class Hjaelp:
         return {"ok": False, "error": (svar or {}).get("error", "unreachable")}
 
     def status(self) -> dict[str, Any]:
-        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp"), "svar": self.d.get("svar") or {}}
+        return {"del": self.del_anonymt, "tjek": self.d.get("tjek"), "seneste_hjaelp": self.d.get("seneste_hjaelp"), "svar": self.synlige()}
 
     async def async_status(self) -> dict[str, Any]:
         """Til kortet: svarene hentes friske, når de er mere end 5 minutter gamle."""
-        if self.vil_have_svar() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) > 300:
+        if self.svar_hver() and time.time() - float((self.d.get("svar") or {}).get("t") or 0) > 300:
             await self.async_hent_svar()
-        return self.status()
+        ud = {**self.status(), "svar": self.synlige(marker_set=True)}
+        await self.store.async_save(self.d)
+        return ud
 
 
 class FejlHaandtering(logging.Handler):
@@ -267,5 +320,6 @@ async def async_setup_hjaelp(hass: HomeAssistant) -> Hjaelp:
     from homeassistant.helpers.event import async_track_time_interval
 
     async_track_time_interval(hass, h.async_dagens_runde, datetime.timedelta(hours=1))
+    async_track_time_interval(hass, h.async_svar_runde, datetime.timedelta(minutes=10))
     hass.loop.call_later(600, lambda: hass.async_create_task(h.async_dagens_runde()))
     return h

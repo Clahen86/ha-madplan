@@ -233,6 +233,9 @@ class MadplanCard extends HTMLElement {
       case "hjny":
         this._hjSvar = null;
         break;
+      case "hjluk":
+        this._hjKald("skjul_svar", { noegle: el.dataset.id }).then((r) => { if (r) this._hjStatus = r; }).catch(() => {}).finally(() => this._tegn());
+        break;
       case "hjtilbage": {
         const tekst = (this._hjTilbage || "").trim();
         if (!tekst) break;
@@ -1577,13 +1580,13 @@ class MadplanPanel extends MadplanCard {
         <button class="knap stor" data-h="hjsend" ${svar === "sender" ? "disabled" : ""}><ha-icon icon="mdi:send"></ha-icon>${svar === "sender" ? "Sender …" : "Send"}</button>`;
     const sidst = this._hjStatus?.seneste_hjaelp?.id;
     const traade = (this._hjStatus?.svar?.reports || []).filter((r) => r.msgs?.length || r.id === sidst);
-    const svarKort = traade.map((r, n) => `<section class="kort hjkort"><h2><ha-icon icon="mdi:message-reply-text-outline"></ha-icon>Svar fra udvikleren <small class="hjgraa">${esc(r.id)}</small></h2>
+    const svarKort = traade.map((r, n) => `<section class="kort hjkort">${r.key && r.msgs?.length ? `<button class="knap" style="float:right;padding:2px 10px" data-h="hjluk" data-id="${esc(r.key)}">Luk</button>` : ""}<h2><ha-icon icon="mdi:message-reply-text-outline"></ha-icon>Svar fra udvikleren <small class="hjgraa">${esc(r.id)}</small></h2>
         ${r.msgs?.length ? r.msgs.map((m) => `<p class="${m.from === "dev" ? "hjok" : "hjgraa"}" style="white-space:pre-wrap"><b>${m.from === "dev" ? "Udvikleren" : "Dig"}:</b> ${esc(m.text)}</p>`).join("")
           : `<p class="hjgraa">Venter på svar – du får besked i Home Assistant, når udvikleren svarer.</p>`}
         ${n === 0 && r.msgs?.some((m) => m.from === "dev") ? `<textarea name="hjtilbage" class="hjtekst" placeholder="Skriv tilbage …">${esc(this._hjTilbage || "")}</textarea>
           ${this._hjTilbageStatus === "sendt" ? `<p class="hjok">Sendt ✓</p>` : this._hjTilbageStatus === "fejl" ? `<p class="hjfejl">Kunne ikke sende lige nu.</p>` : ""}
           <button class="knap" data-h="hjtilbage" data-id="${esc(r.id)}" ${this._hjTilbageStatus === "sender" ? "disabled" : ""}><ha-icon icon="mdi:reply"></ha-icon>${this._hjTilbageStatus === "sender" ? "Sender …" : "Send svar"}</button>` : ""}</section>`).join("");
-    const noter = (this._hjStatus?.svar?.notes || []).filter((x) => x.msgs?.length).map((x) => `<section class="kort hjkort"><h2><ha-icon icon="mdi:message-alert-outline"></ha-icon>Besked fra udvikleren om en fejl</h2>
+    const noter = (this._hjStatus?.svar?.notes || []).filter((x) => x.msgs?.length).map((x) => `<section class="kort hjkort"><button class="knap" style="float:right;padding:2px 10px" data-h="hjluk" data-id="${esc(x.key)}">Luk</button><h2><ha-icon icon="mdi:message-alert-outline"></ha-icon>Besked fra udvikleren om en fejl</h2>
         ${x.msgs.map((m) => `<p class="hjok" style="white-space:pre-wrap">${esc(m.text)}</p>`).join("")}</section>`).join("");
     return `${noter}${svarKort}<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
         <p class="hjgraa">Tjekker at tilbuddene hentes fra dine butikker, at Salling-nøglen og AI'en virker, og at beskederne kan sendes.</p>

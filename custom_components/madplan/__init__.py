@@ -146,6 +146,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def hjaelp_status(call: ServiceCall) -> ServiceResponse:
         return await hjaelp.async_status()
 
+    async def skjul_svar(call: ServiceCall) -> ServiceResponse:
+        return await hjaelp.async_skjul(call.data["noegle"])
+
     async def skriv_tilbage(call: ServiceCall) -> ServiceResponse:
         return await hjaelp.async_skriv_tilbage(call.data["id"], call.data["tekst"])
 
@@ -163,6 +166,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DOMAIN, "skriv_tilbage", skriv_tilbage, supports_response=SupportsResponse.ONLY,
         schema=vol.Schema({vol.Required("id"): cv.string, vol.Required("tekst"): vol.All(cv.string, vol.Length(min=1, max=4000))}),
     )
+    hass.services.async_register(DOMAIN, "skjul_svar", skjul_svar, supports_response=SupportsResponse.ONLY,
+                                 schema=vol.Schema({vol.Required("noegle"): cv.string}))
     hass.services.async_register(DOMAIN, "del_anonymt", del_anonymt, schema=vol.Schema({vol.Required("til"): cv.boolean}))
 
     def _madplaner(call: ServiceCall, alle: bool = False) -> list[Madplan]:

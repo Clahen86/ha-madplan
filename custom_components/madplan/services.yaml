@@ -400,6 +400,15 @@ faa_hjaelp:
 hjaelp_status:
   name: Hjælp-status
   description: Seneste tjek, om der deles anonymt, seneste hjælp og svar fra udvikleren.
+skjul_svar:
+  name: Luk svar
+  description: Fjerner et svar fra udvikleren fra panelet. Det kommer igen ved en ny kommentar.
+  fields:
+    noegle:
+      name: Nøgle
+      required: true
+      selector:
+        text:
 skriv_tilbage:
   name: Skriv tilbage
   description: Svarer udvikleren på en hjælpebesked.
