@@ -1958,7 +1958,7 @@ class MadplanPanel extends MadplanCard {
           <div class="hrad">
             <ha-menu-button></ha-menu-button>${logo}
             <div class="htekst"><div class="htitel">Madplan</div>${under ? `<div class="hunder">${under}</div>` : ""}</div>
-            ${s ? `<button class="hplus" data-h="side" data-side="hjaelp" title="Hjælp og tjek"><ha-icon icon="mdi:lifebuoy"></ha-icon></button>` : ""}
+            ${s ? `<button class="hhjaelp ${this._side === "hjaelp" ? "aktiv" : ""}" data-h="side" data-side="hjaelp" title="Hjælp og tjek"><ha-icon icon="mdi:lifebuoy"></ha-icon><span>Hjælp</span></button>` : ""}
             <a class="hplus" href="${tilfoejUrl}" title="Tilføj butik"><ha-icon icon="mdi:storefront-plus-outline"></ha-icon></a>
           </div>
           ${s ? this._butikChips(planer) : ""}
@@ -2017,6 +2017,10 @@ class MadplanPanel extends MadplanCard {
 }
 
 const PANEL_CSS = `
+  .hhjaelp { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px 0 9px; margin-right: 6px; border-radius: 17px;
+    border: 1px solid color-mix(in srgb, var(--brand-tekst, #fff) 45%, transparent); background: color-mix(in srgb, var(--brand-tekst, #fff) 16%, transparent);
+    color: var(--brand-tekst, #fff); font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; flex: none; }
+  .hhjaelp ha-icon { --mdc-icon-size: 19px; } .hhjaelp.aktiv { background: color-mix(in srgb, var(--brand-tekst, #fff) 30%, transparent); }
   .hjkort { padding: 16px; } .hjkort h2 { display: flex; gap: 8px; align-items: center; font-size: 17px; margin: 0 0 6px; }
   .hjgraa { color: var(--secondary-text-color); font-size: 13.5px; margin: 4px 0 10px; }
   .hjok { color: var(--success-color, #2e7d32); font-weight: 600; } .hjfejl { color: var(--error-color, #c62828); }
