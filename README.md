@@ -175,6 +175,13 @@ data:
 - **Priser** er vejledende. Tilbud og madspild-varer kan være udsolgt, og cirkapriser uden for REMA 1000 er anslået ud fra REMA's normalpriser (eller hentet fra Salling Group, hvis du bruger en nøgle).
 - **Tilbud** skal gælde på den dag, I handler (planens første dag eller i dag). Kæderne skifter avis på forskellige dage, så du behøver ikke vente – planen bruger de tilbud, der gælder, når du handler. Vælg **Jeg handler: I dag / I morgen** ved "Ny madplan". Den automatiske lørdagsplan venter til søndag kl. 7, hvis næste uges avis ikke er ude endnu. Indkøbslisten viser, hvornår det første tilbud udløber.
 - Data om planer, regler og kurv bliver i din Home Assistant. AI'en får kun tilbud, regler og antal personer.
+- **Hjælp og tjek** (🛟 øverst i panelet): *Tjek madplan* ser, at tilbuddene hentes fra dine butikker, og at Salling-nøglen,
+  AI'en og beskederne virker. *Få hjælp* sender din besked, op til 3 billeder og tjekket privat til udvikleren – kun når
+  du trykker, og uden allergier, regler, opskrifter eller indkøbslister.
+- **Del anonymt, hvad der virker** (slået til, kan slås fra under 🛟): én gang i døgnet version, kæder og hvilke funktioner
+  der bruges; antal tilbud pr. kæde (så en kæde, der holder op med at give tilbud, bliver opdaget med det samme); varer,
+  søgningen ikke kunne finde; og fejl i appen. **Aldrig** allergier, husstand, kostmål, regler, opskrifter,
+  indkøbslister, navne, adresse eller nøgler.
 
 ## Licens
 

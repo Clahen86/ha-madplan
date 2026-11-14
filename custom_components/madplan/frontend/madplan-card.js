@@ -209,6 +209,29 @@ class MadplanCard extends HTMLElement {
       case "side":
         this._side = el.dataset.side;
         this._tilTop = true;
+        if (this._side === "hjaelp" && !this._hjStatus) this._hjHent();
+        break;
+      case "hjtjek":
+        this._hjTjek = "tjekker";
+        this._tegn();
+        this._hjKald("tjek").then((r) => (this._hjTjek = r?.resultat || [])).catch(() => (this._hjTjek = null)).finally(() => this._tegn());
+        break;
+      case "hjsend":
+        this._hjSvar = "sender";
+        this._tegn();
+        this._hjKald("faa_hjaelp", { besked: this._hjBesked || "", billeder: (this._hjBilleder || []).map((b) => ({ name: b.name, data: b.url.split(",")[1] })) })
+          .then((r) => { this._hjSvar = r?.ok ? { id: r.id } : "fejl"; if (r?.ok) { this._hjBesked = ""; this._hjBilleder = []; } })
+          .catch(() => (this._hjSvar = "fejl")).finally(() => this._tegn());
+        break;
+      case "hjfjern":
+        this._hjBilleder.splice(Number(el.dataset.i), 1);
+        break;
+      case "hjdel":
+        this._hjStatus = { ...(this._hjStatus || {}), del: !(this._hjStatus?.del ?? true) };
+        this._hass.callService("madplan", "del_anonymt", { til: this._hjStatus.del });
+        break;
+      case "hjny":
+        this._hjSvar = null;
         break;
       case "forrige":
       case "naeste":
@@ -1502,6 +1525,55 @@ class MadplanPanel extends MadplanCard {
   }
 
   /** Mine retter: familiens egne opskrifter. Fælles for alle butikker; hver kan slås til og fra. */
+  _hjKald(service, data = {}) {
+    return this._hass.connection
+      .sendMessagePromise({ type: "call_service", domain: "madplan", service, service_data: data, return_response: true })
+      .then((r) => r?.response);
+  }
+
+  _hjHent() {
+    this._hjKald("hjaelp_status").then((r) => { this._hjStatus = r || {}; if (r?.tjek?.resultat && !this._hjTjek) this._hjTjek = r.tjek.resultat; this._tegn(); }).catch(() => {});
+  }
+
+  _hjSkrump(fil) {
+    // Et billede gøres mindre i browseren: højst 1600 px som JPEG (et telefonbillede bliver ca. 300 kB).
+    return new Promise((ok) => {
+      const img = new Image(), url = URL.createObjectURL(fil);
+      img.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        ok({ name: fil.name, url: c.toDataURL("image/jpeg", 0.8) });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); ok(null); };
+      img.src = url;
+    });
+  }
+
+  _hjaelpSide() {
+    const t = this._hjTjek, svar = this._hjSvar, del = this._hjStatus?.del ?? true, bil = this._hjBilleder || [];
+    const tjek = t === "tjekker"
+      ? `<p class="hjgraa">Tjekker tilbud, Salling, AI og beskeder …</p>`
+      : Array.isArray(t)
+        ? `<ul class="hjliste">${t.map((x) => `<li class="${x.ok ? "ok" : "fejl"}"><span>${x.ok ? "✅" : "❌"}</span><div><b>${esc(x.del)}</b><small>${esc(x.tekst)}</small></div></li>`).join("")}</ul>`
+        : "";
+    const hjaelp = svar && svar.id
+      ? `<p class="hjok">Sendt ✓ – dit nummer er ${esc(svar.id)}. Nævn det, hvis du skriver til udvikleren.</p><button class="knap" data-h="hjny">Skriv en ny</button>`
+      : `<p class="hjgraa">Skriv hvad der er galt, og vedhæft gerne billeder. Udvikleren får også tjekket og en kort beskrivelse af opsætningen – aldrig allergier, regler, opskrifter eller indkøbslister.</p>
+        <textarea name="hjbesked" class="hjtekst" placeholder="Hvad er der galt? (valgfrit)">${esc(this._hjBesked || "")}</textarea>
+        <div class="hjbilleder">${bil.map((b, i) => `<span><img src="${b.url}" alt=""><button data-h="hjfjern" data-i="${i}" aria-label="Fjern">✕</button></span>`).join("")}</div>
+        ${bil.length < 3 ? `<label class="knap hjvedhaeft"><ha-icon icon="mdi:camera-outline"></ha-icon>Vedhæft billeder<input type="file" accept="image/*" multiple data-hjfil hidden></label>` : `<p class="hjgraa">Højst 3 billeder</p>`}
+        ${svar === "fejl" ? `<p class="hjfejl">Kunne ikke sende lige nu. Prøv igen om lidt.</p>` : ""}
+        <button class="knap stor" data-h="hjsend" ${svar === "sender" ? "disabled" : ""}><ha-icon icon="mdi:send"></ha-icon>${svar === "sender" ? "Sender …" : "Send"}</button>`;
+    return `<section class="kort hjkort"><h2><ha-icon icon="mdi:clipboard-check-outline"></ha-icon>Tjek madplan</h2>
+        <p class="hjgraa">Tjekker at tilbuddene hentes fra dine butikker, at Salling-nøglen og AI'en virker, og at beskederne kan sendes.</p>
+        ${tjek}<button class="knap" data-h="hjtjek" ${t === "tjekker" ? "disabled" : ""}><ha-icon icon="mdi:play"></ha-icon>${Array.isArray(t) ? "Tjek igen" : "Tjek nu"}</button></section>
+      <section class="kort hjkort"><h2><ha-icon icon="mdi:lifebuoy"></ha-icon>Få hjælp</h2>${hjaelp}</section>
+      <section class="kort hjkort"><div class="hjdel"><div><b>Del anonymt, hvad der virker</b>
+        <small>Hjælper alle: hvilke kæder der giver tilbud, varer søgningen ikke fandt, og fejl i appen. Aldrig allergier, regler, opskrifter, indkøbslister eller navne.</small></div>
+        <button class="hjkontakt ${del ? "til" : ""}" data-h="hjdel" aria-pressed="${del}" aria-label="Del anonymt"></button></div></section>`;
+  }
+
   _mineSide(a) {
     const r = a.regler || {};
     const mine = a.mine_retter || [];
@@ -1856,7 +1928,9 @@ class MadplanPanel extends MadplanCard {
         this._dagValgt = i >= 0 ? i : 0;
       }
       const harPlan = a.antal_retter > 0 || dage.some((d) => d && d.state !== "–");
-      if (this._side === "mine") {
+      if (this._side === "hjaelp") {
+        krop = this._hjaelpSide();
+      } else if (this._side === "mine") {
         krop = this._mineSide(a);
       } else if (!harPlan && this._side === "regler") {
         krop = this._reglerSide(a);
@@ -1884,6 +1958,7 @@ class MadplanPanel extends MadplanCard {
           <div class="hrad">
             <ha-menu-button></ha-menu-button>${logo}
             <div class="htekst"><div class="htitel">Madplan</div>${under ? `<div class="hunder">${under}</div>` : ""}</div>
+            ${s ? `<button class="hplus" data-h="side" data-side="hjaelp" title="Hjælp og tjek"><ha-icon icon="mdi:lifebuoy"></ha-icon></button>` : ""}
             <a class="hplus" href="${tilfoejUrl}" title="Tilføj butik"><ha-icon icon="mdi:storefront-plus-outline"></ha-icon></a>
           </div>
           ${s ? this._butikChips(planer) : ""}
@@ -1930,11 +2005,36 @@ class MadplanPanel extends MadplanCard {
       kanter();
       tf.addEventListener("scroll", kanter, { passive: true });
     }
+    const fil = this.shadowRoot.querySelector("[data-hjfil]");
+    fil?.addEventListener("change", async (e) => {
+      this._hjBilleder = this._hjBilleder || [];
+      for (const f of [...e.target.files].slice(0, 3 - this._hjBilleder.length)) { const b = await this._hjSkrump(f); if (b) this._hjBilleder.push(b); }
+      this._tegn();
+    });
+    this.shadowRoot.querySelector("textarea[name=hjbesked]")?.addEventListener("input", (e) => (this._hjBesked = e.target.value));
     if (fokus) this._fokuser(fokus);
   }
 }
 
 const PANEL_CSS = `
+  .hjkort { padding: 16px; } .hjkort h2 { display: flex; gap: 8px; align-items: center; font-size: 17px; margin: 0 0 6px; }
+  .hjgraa { color: var(--secondary-text-color); font-size: 13.5px; margin: 4px 0 10px; }
+  .hjok { color: var(--success-color, #2e7d32); font-weight: 600; } .hjfejl { color: var(--error-color, #c62828); }
+  .hjliste { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 6px; }
+  .hjliste li { display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px; border-radius: 12px; background: var(--secondary-background-color); }
+  .hjliste li.fejl { outline: 1px solid color-mix(in srgb, var(--error-color, #c62828) 40%, transparent); }
+  .hjliste b { display: block; } .hjliste small { color: var(--secondary-text-color); }
+  .hjtekst { width: 100%; box-sizing: border-box; min-height: 80px; border-radius: 12px; border: 1px solid var(--divider-color); padding: 10px;
+    background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+  .hjbilleder { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .hjbilleder span { position: relative; width: 72px; height: 72px; border-radius: 10px; overflow: hidden; }
+  .hjbilleder img { width: 100%; height: 100%; object-fit: cover; }
+  .hjbilleder button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+  .hjvedhaeft { display: inline-flex; margin: 4px 0 10px; cursor: pointer; }
+  .hjdel { display: flex; gap: 12px; align-items: center; } .hjdel > div { flex: 1; } .hjdel small { display: block; color: var(--secondary-text-color); margin-top: 3px; }
+  .hjkontakt { width: 46px; height: 28px; border-radius: 14px; border: 0; background: var(--divider-color); position: relative; cursor: pointer; flex: none; }
+  .hjkontakt::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .hjkontakt.til { background: var(--brand, #3f51b5); } .hjkontakt.til::after { left: 21px; }
   :host { display: block; height: 100%; background: var(--primary-background-color); color: var(--primary-text-color); }
   .app { display: flex; flex-direction: column; height: 100%; container-type: inline-size; overflow-x: clip; }
   /* Butikslinjen og fanerne ruller selv sidelæns, uden at bevægelsen skubber hele siden. */

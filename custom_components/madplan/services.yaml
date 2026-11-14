@@ -384,3 +384,28 @@ slet_profil:
       required: true
       selector:
         text:
+
+tjek:
+  name: Tjek madplan
+  description: Tjekker tilbud fra hver valgt kæde, Salling-nøglen, AI'en og beskederne.
+faa_hjaelp:
+  name: Få hjælp
+  description: Sender en besked, op til 3 billeder og tjekket privat til udvikleren.
+  fields:
+    besked:
+      name: Besked
+      selector:
+        text:
+          multiline: true
+hjaelp_status:
+  name: Hjælp-status
+  description: Seneste tjek, om der deles anonymt, og seneste hjælp.
+del_anonymt:
+  name: Del anonymt
+  description: Slå "Del anonymt, hvad der virker" til eller fra.
+  fields:
+    til:
+      name: Til
+      required: true
+      selector:
+        boolean:

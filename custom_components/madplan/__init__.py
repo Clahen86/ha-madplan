@@ -132,6 +132,31 @@ type MadplanConfigEntry = ConfigEntry[Madplan]
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Services: ny_plan, byt_ret, fjern_ret og overfoer, plus dashboard-kortet."""
     await _registrer_kort(hass)
+    from .hjaelp import async_setup_hjaelp
+
+    hjaelp = await async_setup_hjaelp(hass)
+    hass.data.setdefault(DOMAIN, {})["hjaelp"] = hjaelp
+
+    async def tjek(call: ServiceCall) -> ServiceResponse:
+        return {"resultat": await hjaelp.async_tjek()}
+
+    async def faa_hjaelp(call: ServiceCall) -> ServiceResponse:
+        return await hjaelp.async_faa_hjaelp(call.data.get("besked", ""), call.data.get("billeder") or [])
+
+    async def hjaelp_status(call: ServiceCall) -> ServiceResponse:
+        return hjaelp.status()
+
+    async def del_anonymt(call: ServiceCall) -> None:
+        await hjaelp.async_saet_del(call.data["til"])
+
+    hass.services.async_register(DOMAIN, "tjek", tjek, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(
+        DOMAIN, "faa_hjaelp", faa_hjaelp, supports_response=SupportsResponse.ONLY,
+        schema=vol.Schema({vol.Optional("besked", default=""): vol.All(cv.string, vol.Length(max=4000)),
+                           vol.Optional("billeder", default=[]): vol.All(cv.ensure_list, vol.Length(max=3), [dict])}),
+    )
+    hass.services.async_register(DOMAIN, "hjaelp_status", hjaelp_status, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "del_anonymt", del_anonymt, schema=vol.Schema({vol.Required("til"): cv.boolean}))
 
     def _madplaner(call: ServiceCall, alle: bool = False) -> list[Madplan]:
         """Madplanen for entity_id, eller den eneste (alle for ny_plan) hvis den er udeladt."""

@@ -1123,7 +1123,10 @@ class Madplan:
         katalog = self.katalog
         if "øko" not in navn:
             katalog = {k: v for k, v in katalog.items() if "øko" not in v["navn"].lower()}
-        return soeg.find_vare(katalog, navn, dato, behov) or soeg.find_vare(self.katalog, navn, dato, behov)
+        fundet = soeg.find_vare(katalog, navn, dato, behov) or soeg.find_vare(self.katalog, navn, dato, behov)
+        if not fundet and (h := (self.hass.data.get(DOMAIN) or {}).get("hjaelp")):
+            h.ikke_fundet(navn)  # lær sammen: varer søgningen ikke fandt
+        return fundet
 
     # ------------------------------------------------------------------ data
 
@@ -1172,15 +1175,19 @@ class Madplan:
             # Kopier, så butiksmærket ikke ændrer i det, der blev hentet.
             hentet = await kilder.hent_tilbud(self.hass, self.dealer, start, slut)
             self.tilbud = {tid: {**t, "butik": self.butik} for tid, t in hentet.items()}
+            antal = {self.butik_navn: len(hentet)}
             for andre in self.ekstra_butikker[:MAKS_EKSTRA_BUTIKKER]:
                 try:
                     ekstra = await kilder.hent_tilbud(self.hass, BUTIKKER[andre][1], start, slut)
                 except Exception as e:  # noqa: BLE001 - planen laves med hovedbutikken alene
                     _LOGGER.warning("Tilbud fra %s kunne ikke hentes: %s", BUTIKKER[andre][0], e)
                     continue
+                antal[BUTIKKER[andre][0]] = len(ekstra)
                 for tid, t in ekstra.items():
                     if tid not in self.tilbud:
                         self.tilbud[tid] = {**t, "butik": andre}
+            if h := (self.hass.data.get(DOMAIN) or {}).get("hjaelp"):
+                h.tilbud(antal)  # lær sammen: 0 tilbud fra flere hjem = kilden er gået i stykker
             try:
                 self.butik_info = await kilder.hent_butik_info(self.hass, self.dealer)
             except Exception:  # noqa: BLE001 - logo og farve er pynt
