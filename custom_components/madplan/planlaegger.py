@@ -321,8 +321,9 @@ class Madplan:
                 ud.append(f"Kun {len(navne)} vare{'r' if len(navne) > 1 else ''} fra {butik} – er turen det værd?")
         if self.plan.get("salling_fejl"):
             ud.append("Salling-priser kunne ikke hentes for alle varer – nogle priser er ca.")
-        if r["budget"] and self.plan.get("total_alle", 0) > r["budget"]:
-            ud.append(f"Koster {self.plan['total_alle']} kr (budget {r['budget']} kr)")
+        # Budgettet holdes op mod det, der skal købes - det, I har hjemme, er allerede betalt.
+        if r["budget"] and self.plan.get("total", 0) > r["budget"]:
+            ud.append(f"Koster {self.plan['total']} kr at købe (budget {r['budget']} kr)")
         if self.plan.get("madspild_fejl"):
             ud.append("Madspild: Salling-nøglen har ikke adgang til Food Waste API – se Salling-guiden")
         return ud

@@ -733,7 +733,7 @@ class MadplanCard extends HTMLElement {
             style="--b:${esc(a.butik_farve || "var(--primary-color)")}">
           ${a.butik_logo ? `<img src="${esc(a.butik_logo)}" alt="">` : `<ha-icon icon="mdi:store"></ha-icon>`}
           <span class="bnavn">${esc(a.butik)}</span>
-          <span class="btotal">${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}` : "–"}</span>
+          <span class="btotal">${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}<i class="hu">hele ugen</i>` : "–"}</span>
           ${billigst ? `<span class="billigst">Billigst</span>` : ""}
         </button>`;
       })
@@ -1946,7 +1946,7 @@ class MadplanPanel extends MadplanCard {
         const billigst = min !== null && a.antal_retter && a.total_alle === min;
         return `<button class="bchip ${e === this._valgt ? "valgt" : ""}" data-h="butik" data-id="${esc(e)}">
           ${a.butik_logo ? `<img src="${esc(a.butik_logo)}" alt="">` : ""}<span>${esc(a.butik)}</span>
-          <small>${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}` : "–"}</small>
+          <small>${a.antal_retter ? `${a.total_alle_ca ? "ca. " : ""}${kr(a.total_alle)}<i class="hu">hele ugen</i>` : "–"}</small>
           ${billigst ? `<em>Billigst</em>` : ""}</button>`;
       })
       .join("")}</div>`;
@@ -2137,6 +2137,7 @@ const PANEL_CSS = `
   .bchip img { width: 28px; height: 28px; border-radius: 50%; background: #fff; object-fit: contain; padding: 2px; box-sizing: border-box; }
   .bchip span { font-weight: 600; }
   .bchip small { opacity: .8; color: inherit; }
+  .hu { display: block; font-style: normal; font-size: 9px; line-height: 1; opacity: .75; }
   .bchip.valgt { background: #fff; color: #1c1c1c; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
   .bchip em { position: absolute; top: -8px; right: 4px; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .5px;
     text-transform: uppercase; background: #2e7d32; color: #fff; border-radius: 6px; padding: 1px 5px; }
