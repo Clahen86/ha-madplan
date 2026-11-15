@@ -6,6 +6,22 @@
 // No network: it looks only at what Home Assistant already has. What was shown or closed is kept per user in HA
 // (frontend user data), shared by all the apps, so closing it in one app closes it in all.
 
+// my.home-assistant.io links open right inside Home Assistant (/_my_redirect/...), also from an add-on's page and
+// the phone app, so nobody has to set up my.home-assistant.io. Outside Home Assistant the normal link is kept.
+if (!window.__clahen86MyGo) {
+  window.__clahen86MyGo = true;
+  window.addEventListener("click", (e) => {
+    const a = e.composedPath().find((n) => n.tagName === "A" && n.href);
+    const m = a && a.href.match(/^https:\/\/my\.home-assistant\.io\/redirect\/([^/?]+)\/?(\?.*)?$/);
+    if (!m || e.button || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    let top; try { top = window.top; top.document; } catch { top = window; }
+    if (!top.document.querySelector("home-assistant")) return;
+    e.preventDefault();
+    top.history.pushState(null, "", `/_my_redirect/${m[1]}${m[2] || ""}`);
+    top.dispatchEvent(new CustomEvent("location-changed"));
+  }, true);
+}
+
 const KEY = "clahen86_suggest";
 const DAY = 86400000;
 const GH = "https://github.com/Clahen86/";
