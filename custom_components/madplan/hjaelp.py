@@ -132,7 +132,8 @@ class Hjaelp:
             "salling": any(p.salling_aktiv for p in planer),
             "profiles": len(((getattr(hoved, "profiler", None) or {}).get("profiler") or {})) if hoved else 0,
             "features": {"auto_plan": any(getattr(p, "auto_plan", False) for p in planer),
-                         "rester": any(bool((p.regler or {}).get("rester")) for p in planer),
+                         "rester": any(any(isinstance(r, dict) and "rester_fra" in r for r in ((getattr(p, "plan", None) or {}).get("retter") or []))
+                                      for p in planer),
                          "mine_retter": any(bool(getattr(p, "mine_retter", None)) for p in planer),
                          "kcal": any(bool((p.regler or {}).get("kcal")) for p in planer),
                          "mail": any(bool(p.entry.options.get(CONF_NOTIFY)) for p in planer)},
