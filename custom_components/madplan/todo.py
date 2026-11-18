@@ -15,6 +15,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities([MadplanVarer(entry.runtime_data), MadplanEkstra(entry.runtime_data)])
 
 
+def varer(madplan) -> list[TodoItem]:
+    """Aftensmadens varer. Også appen fra et link bruger dem."""
+    return [
+        TodoItem(
+            summary=vare_tekst(v),
+            uid=v["key"],
+            status=TodoItemStatus.COMPLETED if v.get("hjemme") or v.get("kurv") else TodoItemStatus.NEEDS_ACTION,
+            # "pris · butik" for varer fra en anden kæde (fx Netto), så kortet kan gruppere dem.
+            description=pris_tekst(v) + (f" · {v['butik']}" if v.get("butik") else ""),
+        )
+        for v in madplan.plan.get("varer", [])
+    ]
+
+
+def ekstra(madplan) -> list[TodoItem]:
+    """Varer til ugens øvrige behov (pålæg, madpakker …)."""
+    return [
+        TodoItem(
+            summary=vare_tekst(e),
+            uid=e["uid"],
+            status=TodoItemStatus.COMPLETED if e.get("hjemme") or e.get("kurv") else TodoItemStatus.NEEDS_ACTION,
+            description=f"{pris_tekst(e)} · {e['behov']}",
+        )
+        for e in madplan.plan.get("ekstra", [])
+    ]
+
+
 class MadplanVarer(MadplanEntity, TodoListEntity):
     _attr_name = "Varer"
     _attr_icon = "mdi:cart"
@@ -25,16 +52,7 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
 
     @property
     def todo_items(self) -> list[TodoItem]:
-        return [
-            TodoItem(
-                summary=vare_tekst(v),
-                uid=v["key"],
-                status=TodoItemStatus.COMPLETED if v.get("hjemme") or v.get("kurv") else TodoItemStatus.NEEDS_ACTION,
-                # "pris · butik" for varer fra en anden kæde (fx Netto), så kortet kan gruppere dem.
-                description=pris_tekst(v) + (f" · {v['butik']}" if v.get("butik") else ""),
-            )
-            for v in self.madplan.plan.get("varer", [])
-        ]
+        return varer(self.madplan)
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         await self.madplan.async_saet_hjemme(item.uid, item.status == TodoItemStatus.COMPLETED)
@@ -56,15 +74,7 @@ class MadplanEkstra(MadplanEntity, TodoListEntity):
 
     @property
     def todo_items(self) -> list[TodoItem]:
-        return [
-            TodoItem(
-                summary=vare_tekst(e),
-                uid=e["uid"],
-                status=TodoItemStatus.COMPLETED if e.get("hjemme") or e.get("kurv") else TodoItemStatus.NEEDS_ACTION,
-                description=f"{pris_tekst(e)} · {e['behov']}",
-            )
-            for e in self.madplan.plan.get("ekstra", [])
-        ]
+        return ekstra(self.madplan)
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         # Afkrydset i HA's to-do-liste = lagt i kurven.

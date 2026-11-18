@@ -74,6 +74,8 @@ TJEK_DEALER_URL = "https://squid-api.tjek.com/v2/dealers/{dealer}"
 REMA_URL = "https://api.digital.rema1000.dk/api/v3/products?per_page=100&page={side}"
 
 SIGNAL_OPDATERET = "madplan_opdateret_{}"
+# Fælles aftale med Pligt-pilot og Hus-chat: fyres, når en dag får en kok, og igen kl. 7 på dagen.
+EVENT_KOK = "madplan_cook"
 
 DAGE = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag"]
 # Varer der aldrig indgår i aftensmad; holder AI-prompten kortere.

@@ -219,4 +219,7 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "min_ret": mit["navn"] if mit else None,
             "link": mit.get("link") if mit else None,
             "noter": mit.get("noter") if mit else None,
+            # Hvem laver mad: person.x eller et navn - og navnet, kortet viser.
+            "kok": r.get("kok"),
+            "kok_navn": self.madplan.kok_navn(r.get("kok")),
         }

@@ -289,6 +289,24 @@
         }
       }
     },
+    "dag_kok": {
+      "name": "Who cooks",
+      "description": "Who cooks dinner on a day: a person in Home Assistant or a name. Fires madplan_cook with the dish, the method and the ingredients – and again at 7 on the day.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        },
+        "kok": {
+          "name": "Cook",
+          "description": "person.x or a name. Empty = nobody."
+        }
+      }
+    },
     "dag_personer": {
       "name": "People on one day",
       "description": "Number of people for one day's dinner, e.g. with guests. Quantities and the shopping list follow.",

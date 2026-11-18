@@ -21,6 +21,8 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
 - **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
+- **Hvem laver mad?**: vælg for hver dag en person fra Home Assistant eller skriv et navn. Valget gemmes med planen, og Madplan fyrer eventet `madplan_cook` (se nedenfor).
+- **App uden login**: et link til familien, der åbner planen, opskrifterne og indkøbslisten uden Home Assistant-login (se nedenfor).
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
 - **Vælg dage**: slå dage fra (fx når I spiser ude onsdag), så planen kun laves for resten.
 - **Opskrifter der hænger sammen**: nævner trinene noget, der ikke står på ingredienslisten (fx løg eller bare "krydderier"), retter AI'en opskriften i ét ekstra kald.
@@ -114,6 +116,12 @@ Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail,
 
 <img src="docs/profiler.png" alt="Profiler under Regler" width="360">
 
+### App uden login (fx til børnene eller køkkenets tablet)
+
+Under **Regler → App uden login** (kun for administratorer) skriver du et navn og trykker **+**. Så får du et link, som du kan kopiere, dele eller vise som QR-kode. Linket åbner profilens madplan, opskrifterne og indkøbslisten uden login. Tryk **Installer** (på iPhone: Del → *Føj til hjemmeskærm*), så ligger den som en app.
+
+Linket kan kun se planen og krydse varer af på indkøbslisten. Det kan ikke lave en ny plan, ændre regler, bruge AI'en eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
+
 ### Kort til dine egne dashboards
 
 Integrationen registrerer kortet selv – du skal ikke tilføje en ressource:
@@ -143,6 +151,7 @@ For hver butik:
 | `madplan.ny_plan` | Ny plan (alle butikker, hvis `entity_id` udelades). |
 | `madplan.byt_ret` / `madplan.fjern_ret` | Byt eller fjern én dags ret (`dag`: 1 = søndag … 7 = lørdag). |
 | `madplan.dag_personer` | Antal personer én dag (0 = som resten af ugen). |
+| `madplan.dag_kok` | Hvem laver mad én dag: `kok: person.silas` eller et navn ("" = ingen). |
 | `madplan.rester` | Lav én dags ret til 2 dage (`til: false` fortryder). |
 | `madplan.auto_plan` | Automatisk lørdagsplan til/fra for en butik (`til: false`). |
 | `madplan.ekstra_butikker` | Andre kæder, planen også må bruge tilbud fra, fx `butikker: ["netto"]`. |
@@ -168,6 +177,10 @@ data:
   dag: 6
   personer: 8
 ```
+
+### Eventet `madplan_cook`
+
+Når en dag får en kok, og igen kl. 7 på selve dagen, fyrer Madplan `madplan_cook` med `person` (person.x eller navnet), `kid` (navnet), `date`, `meal`, `recipe` (fremgangsmåden kort), `ingredients` og eventuelt `url` (link til jeres egen opskrift). Fx Pligt-pilot og Hus-chat kan lytte på det. Lytter ingen, sker der intet.
 
 ## Godt at vide
 

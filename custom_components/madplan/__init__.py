@@ -114,6 +114,8 @@ EKSTRA_BUTIKKER_SKEMA = SKEMA.extend(
 )
 RESTER_SKEMA = DAG_SKEMA.extend({vol.Optional("til", default=True): cv.boolean})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
+# Hvem laver mad: person.x eller et navn. "" = ingen.
+DAG_KOK_SKEMA = DAG_SKEMA.extend({vol.Required("kok"): vol.All(cv.string, vol.Length(max=60))})
 
 PROFIL_SKEMA = vol.Schema(
     {
@@ -136,6 +138,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     hjaelp = await async_setup_hjaelp(hass)
     hass.data["madplan_hjaelp"] = hjaelp  # ikke i hass.data[DOMAIN]: det er planernes fælles opslag
+    from . import app
+
+    await app.async_setup(hass)  # Madplan som app fra et link - uden login
 
     async def tjek(call: ServiceCall) -> ServiceResponse:
         return {"resultat": await hjaelp.async_tjek()}
@@ -228,6 +233,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def dag_personer(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_dag_personer(call.data["dag"], call.data["personer"])
+
+    async def dag_kok(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_dag_kok(call.data["dag"], call.data["kok"])
 
     async def en_ret(call: ServiceCall) -> None:
         m = _madplaner(call)[0]
@@ -388,6 +396,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "en_ret_mail", en_ret_mail, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "dag_mail", dag_mail, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
+    hass.services.async_register(DOMAIN, "dag_kok", dag_kok, schema=DAG_KOK_SKEMA)
     hass.services.async_register(DOMAIN, "rester", rester, schema=RESTER_SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_butikker", ekstra_butikker, schema=EKSTRA_BUTIKKER_SKEMA)
     hass.services.async_register(DOMAIN, "auto_plan", auto_plan, schema=SKEMA.extend({vol.Required("til"): cv.boolean}))
@@ -424,9 +433,11 @@ async def _registrer_kort(hass: HomeAssistant) -> None:
     version = f"{version}-{tid}"
     await hass.http.async_register_static_paths(
         [StaticPathConfig(KORT_URL, str(mappe / "frontend" / "madplan-card.js"), True),
-         StaticPathConfig("/madplan/suggest.js", str(mappe / "frontend" / "suggest.js"), True)]
+         StaticPathConfig("/madplan/suggest.js", str(mappe / "frontend" / "suggest.js"), True),
+         StaticPathConfig("/madplan/qr.js", str(mappe / "frontend" / "qr.js"), True)]
     )
     add_extra_js_url(hass, f"{KORT_URL}?v={version}")
+    hass.data["madplan_kort_url"] = f"{KORT_URL}?v={version}"  # appen fra et link henter samme kort
     # Eget punkt i sidemenuen, så madplanen virker som en app uden opsætning af dashboards.
     if "madplan" not in hass.data.get("frontend_panels", {}):
         await panel_custom.async_register_panel(
@@ -447,6 +458,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MadplanConfigEntry) -> b
 
     @callback
     def _automatisk(now) -> None:
+        if dt_util.as_local(now).hour == 7:
+            madplan.fyr_kok_i_dag()  # dagens kok får besked igen - også i en "sovende" butik
         if not madplan.auto_plan:
             return  # "sovende" butik: laver kun plan, når man selv trykker
         nu = dt_util.as_local(now)

@@ -289,6 +289,24 @@
         }
       }
     },
+    "dag_kok": {
+      "name": "Hvem laver mad",
+      "description": "Hvem laver aftensmad en dag: en person i Home Assistant eller et navn. Fyrer madplan_cook med retten, fremgangsmåden og ingredienserne – og igen kl. 7 på dagen.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        },
+        "kok": {
+          "name": "Kok",
+          "description": "person.x eller et navn. Tom = ingen."
+        }
+      }
+    },
     "dag_personer": {
       "name": "Personer én dag",
       "description": "Antal personer til én dags aftensmad, fx når der kommer gæster. Mængder og indkøbsliste følger med.",

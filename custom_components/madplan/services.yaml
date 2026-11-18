@@ -184,6 +184,15 @@ marker:
 toem_kurv:
   fields:
     entity_id: *madplan
+dag_kok:
+  fields:
+    entity_id: *madplan
+    dag: *dag
+    kok:
+      required: true
+      example: "person.silas"
+      selector:
+        text:
 dag_personer:
   fields:
     entity_id: *madplan

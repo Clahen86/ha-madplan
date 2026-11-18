@@ -36,6 +36,7 @@ from .const import (
     CONF_SALLING_NOEGLE,
     DAGE,
     DOMAIN,
+    EVENT_KOK,
     HISTORIK_UGER,
     IKKE_MAD,
     KATALOG_MAX_ALDER,
@@ -580,6 +581,8 @@ class Madplan:
                 ret = (await self._tjek_opskrifter([ret]))[0]
                 if gammel_ret.get("personer"):
                     ret["personer"] = gammel_ret["personer"]  # gæsterne kommer stadig
+                if gammel_ret.get("kok"):
+                    ret["kok"] = gammel_ret["kok"]  # samme kok - nu med den nye ret
                 await self.hass.async_add_executor_job(self._find_varer, [ret], start)
                 self.plan["salling_priser"] = self._salling_priser
                 self._ophaev_rester(dag - 1)
@@ -589,6 +592,7 @@ class Madplan:
                 self.plan["status"] = "Klar"
                 await self._gem()
                 self.opdater()
+                self.fyr_kok(dag - 1)
             except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
                 _LOGGER.warning("Byt ret fejlede: %s", e)
                 self._status(f"Fejl: {str(e)[:120]}")
@@ -901,6 +905,58 @@ class Madplan:
         self._beregn()
         await self._gem()
         self.opdater()
+
+    async def async_dag_kok(self, dag: int, kok: str) -> None:
+        """Hvem laver mad den dag: en person i HA (person.x) eller et navn. "" = ingen. Gemmes med planen."""
+        retter = self.plan.get("retter") or []
+        if not 1 <= dag <= len(retter):
+            return
+        ret = retter[dag - 1]
+        kok = kok.strip()
+        if kok:
+            ret["kok"] = kok
+        else:
+            ret.pop("kok", None)
+        await self._gem()
+        self.opdater()
+        self.fyr_kok(dag - 1)
+
+    def kok_navn(self, kok: str | None) -> str | None:
+        """Navnet på den, der laver mad - personens navn i HA, ellers den frie tekst."""
+        if not kok:
+            return None
+        if kok.startswith("person.") and (s := self.hass.states.get(kok)):
+            return s.name
+        return kok
+
+    def fyr_kok(self, i: int) -> bool:
+        """madplan_cook på HA's bus (fælles aftale med Pligt-pilot og Hus-chat). Lytter ingen, sker der intet."""
+        retter = self.plan.get("retter") or []
+        if not 0 <= i < len(retter):
+            return False
+        ret = retter[i]
+        dato = ret.get("_dato")
+        if not ret.get("kok") or not dato or ret.get("fjernet") or dato < dt_util.now().date().isoformat():
+            return False
+        trin = [str(t) for t in ret.get("trin") or []]
+        data: dict[str, Any] = {
+            "person": ret["kok"],
+            "kid": self.kok_navn(ret["kok"]),
+            "date": dato,
+            "meal": str(ret.get("navn", "")),
+            "recipe": "\n".join(f"{n}. {t}" for n, t in enumerate(trin, 1))[:1500],
+            "ingredients": list(ret.get("_linjer") or []),
+        }
+        link = (self.min_ret(ret) or {}).get("link") or ""
+        if re.match(r"^https?://", link):
+            data["url"] = link
+        self.hass.bus.async_fire(EVENT_KOK, data)
+        return True
+
+    def fyr_kok_i_dag(self) -> bool:
+        """Om morgenen: dagens kok får besked igen."""
+        idag = dt_util.now().date().isoformat()
+        return any(self.fyr_kok(i) for i, r in enumerate(self.plan.get("retter") or []) if r.get("_dato") == idag)
 
     async def async_saet_hjemme(self, key: str, hjemme: bool) -> None:
         """Afkrydsning i HA's egen to-do-liste: lagt i kurven (eller fortrudt)."""
