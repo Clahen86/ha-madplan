@@ -36,6 +36,11 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Eget punkt i sidemenuen**, der virker som en app – også på en lille telefonskærm. Fanerne i toppen kan rulles sidelæns på telefonen. Tre designs og frit valg af farve.
 - **Send indkøbslisten** til en to-do-liste i Home Assistant eller som mail – også til flere modtagere (fx begge telefoner).
 
+<p align="center">
+  <img src="docs/en-ret.png" alt="Én ret: det I har i køleskabet, retten, hvad der skal købes, og knapper til listen, REMA-appen og mail" width="260">
+  <img src="docs/en-ret-2.png" alt="Én ret: trinene, udførlig opskrift, byt ret og gem som min ret" width="260">
+</p>
+
 <p align="center"><img src="docs/designs.jpg" alt="Tre designs: Farverig, Lys og Mørk" width="100%"></p>
 
 ### Kæder

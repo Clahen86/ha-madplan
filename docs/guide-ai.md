@@ -27,6 +27,6 @@ Tryk **Ny madplan** for at prøve.
 
 ## Godt at vide
 
-- **Gratis kvote:** Googles gratis plan giver et begrænset antal kald om dagen (typisk ca. 20 pr. model). En ugeplan er ét kald, *Byt ret*, *Ekstra varer* og *Én ret* er ét kald hver – almindelig brug ligger langt under.
+- **Gratis kvote:** Googles gratis plan giver et begrænset antal kald om dagen (typisk ca. 20 pr. model). En ugeplan er ét kald, *Byt ret*, *Ekstra varer*, *Én ret* og *Udførlig opskrift* er ét kald hver (også når du bytter Én ret) – almindelig brug ligger langt under.
 - **"Dagskvoten er brugt op":** Vent til næste dag (nulstilles ca. kl. 9 dansk tid). Madplan bruger ikke flere kald på at prøve igen.
 - **Andre AI'er:** OpenAI og Anthropic virker også, hvis de er sat op som AI Task i Home Assistant (de koster penge).
