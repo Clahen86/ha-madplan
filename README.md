@@ -28,7 +28,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Opskrifter der hænger sammen**: nævner trinene noget, der ikke står på ingredienslisten (fx løg eller bare "krydderier"), retter AI'en opskriften i ét ekstra kald.
 - **Udførlig opskrift**: tryk på "Vis udførlig opskrift" på en ret, så skriver AI'en den grundigt – med mængder, temperaturer og tider i trinene. Den gemmes, så det kun koster ét kald.
 - **Rester**: lav en ret til 2 dage – mængden fordobles, og næste dag bliver rester uden indkøb.
-- **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail eller indkøbslisten.
+- **Én ret fra køleskabet**: skriv hvad I har, og få én ret til i dag med en liste over det, der mangler – helt adskilt fra ugeplanen. Send kun det, der mangler, på mail, indkøbslisten eller REMA-appen. Retten kan det samme som en ret i ugeplanen: byt den, vis den udførlige opskrift, ret antal personer (mængder og indkøb regnes om) og gem den som min ret.
 - **Familiens regler**: niveau (hverdag, hygge eller gourmet), husstand (børn eller voksne), budget, økologi, allergier, ting I vil undgå, yndlingskøkkener, antal vegetar- og fiskeretter, maks tid på hverdage og i weekenden, faste dage (fx fredag: pizza) og andre krav. Planen bliver tjekket mod reglerne (også allergener i sammensatte ord som "rødløg" og samme protein for mange gange), og brud vises som advarsler.
 - **Mine retter**: jeres egne opskrifter med ingredienser, fremgangsmåde, antal portioner, link og noter til AI'en. Hver opskrift kan slås til og fra, og under *Hvor tit* vælger I aldrig, nogle gange eller ofte. AI'en tager de tilslåede med, når tilbuddene passer, bruger jeres ingredienser (regnet om til jeres antal personer) og viser jeres egen fremgangsmåde. En opskrift kan "række til 2 dage", så næste dag automatisk bliver rester. Tryk *Gem som min ret* under en opskrift i planen for at gemme den og rette den til.
 - **Mål pr. portion** (valgfrit): sæt kcal og/eller protein pr. portion under Regler. Hver ret viser AI'ens skøn ("ca. 640 kcal · ca. 34 g protein"), og der kommer en advarsel, hvis retter ligger langt fra målet. Tallene er et skøn – ikke præcise næringsberegninger.
@@ -120,7 +120,7 @@ Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail,
 
 Under **Regler → App uden login** (kun for administratorer) vælger du **Børn · kun se** eller **Voksen · må styre**, skriver et navn og trykker **+**. Så får du et link, som du kan kopiere, dele eller vise som QR-kode. Linket åbner profilens madplan, opskrifterne og indkøbslisten uden login. Tryk **Installer** (på iPhone: Del → *Føj til hjemmeskærm*), så ligger den som en app.
 
-Et **børnelink** kan kun se planen og krydse varer af på indkøbslisten. Et **voksenlink** kan også lave en ny madplan, bytte eller fjerne en ret, vælge dage, personer og hvem der laver mad, tilføje ekstra varer og sende indkøbslisten. Ingen af dem kan ændre regler, profiler, Mine retter eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
+Et **børnelink** kan kun se planen og krydse varer af på indkøbslisten. Et **voksenlink** kan også lave en ny madplan, bytte eller fjerne en ret, vælge dage, personer og hvem der laver mad, tilføje ekstra varer, sende indkøbslisten og bruge **Én ret**. Ingen af dem kan ændre regler, profiler, Mine retter eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
 
 ### Kort til dine egne dashboards
 
@@ -159,7 +159,9 @@ For hver butik:
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
 | `madplan.en_ret` | Én ret fra køleskabet, fx `har: ["kylling", "ris"]`. |
-| `madplan.en_ret_mail` / `madplan.en_ret_paa_listen` | Send det, der mangler til én ret, på mail eller indkøbslisten. |
+| `madplan.en_ret_mail` / `madplan.en_ret_paa_listen` / `madplan.en_ret_rema` | Send det, der mangler til én ret, på mail, indkøbslisten eller REMA-appen. |
+| `madplan.en_ret_byt` / `madplan.en_ret_udfoerlig` / `madplan.en_ret_gem` | Byt én ret, skriv den udførlige opskrift, eller gem den under Mine retter. |
+| `madplan.en_ret_personer` | Ret antal personer til én ret, fx `personer: 6`. |
 | `madplan.dag_mail` | Send én dags ret fra ugeplanen på mail med indkøbsliste og opskrift. |
 | `madplan.gem_regler` | Familiens regler. |
 | `madplan.gem_min_ret` | Gem eller ret en egen opskrift (navn, ingredienser, fremgangsmåde, til/fra …). Giver id tilbage. |

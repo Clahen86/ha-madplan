@@ -236,6 +236,33 @@ en_ret_mail:
   fields:
     entity_id: *madplan
     id: *en_id
+en_ret_byt:
+  fields:
+    entity_id: *madplan
+    id: *en_id
+en_ret_udfoerlig:
+  fields:
+    entity_id: *madplan
+    id: *en_id
+en_ret_gem:
+  fields:
+    entity_id: *madplan
+    id: *en_id
+en_ret_rema:
+  fields:
+    entity_id: *madplan
+    id: *en_id
+en_ret_personer:
+  fields:
+    entity_id: *madplan
+    id: *en_id
+    personer:
+      required: true
+      example: 6
+      selector:
+        number:
+          min: 1
+          max: 30
 dag_mail:
   fields:
     entity_id: *madplan

@@ -604,6 +604,80 @@
           "description": "The profile id."
         }
       }
+    },
+    "en_ret_byt": {
+      "name": "Swap one dish",
+      "description": "Finds another dish from the same fridge and replaces the old one.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
+    },
+    "en_ret_udfoerlig": {
+      "name": "Detailed recipe for one dish",
+      "description": "The AI writes the steps in detail, with times, temperatures and amounts.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
+    },
+    "en_ret_gem": {
+      "name": "Save one dish as my dish",
+      "description": "Saves the dish under My dishes.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
+    },
+    "en_ret_rema": {
+      "name": "One dish to the REMA app",
+      "description": "Adds what is missing for the dish to the REMA 1000 app.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        }
+      }
+    },
+    "en_ret_personer": {
+      "name": "Number of people for one dish",
+      "description": "Recalculates amounts and shopping for another number of people.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "id": {
+          "name": "Id",
+          "description": "The dish's id."
+        },
+        "personer": {
+          "name": "People",
+          "description": "Number of people."
+        }
+      }
     }
   }
 }

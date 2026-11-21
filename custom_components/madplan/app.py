@@ -5,8 +5,8 @@ for sig, som kan lægges på hjemmeskærmen som en app. Linket er nøglen. Et li
 
 - børn (standard): kan kun læse madplanen og krydse varer af på indkøbslisten
 - voksen: kan også styre ugens plan - ny madplan, bytte eller fjerne en ret, dage, personer, hvem der laver mad,
-  ekstra varer og sende indkøbslisten. Kun Madplans egne handlinger på linkets egne planer (STYR), aldrig regler,
-  profiler, Mine retter, hjælp eller andet i Home Assistant.
+  ekstra varer og sende indkøbslisten - og bruge "Én ret" (hvad har I i køleskabet). Kun Madplans egne handlinger
+  på linkets egne planer (STYR), aldrig regler, profiler, hjælp eller andet i Home Assistant.
 """
 
 from __future__ import annotations
@@ -37,10 +37,13 @@ API = "/api/madplan/app"
 DATA = "madplan_app"  # hass.data - ikke hass.data[DOMAIN], det er planernes fælles opslag
 # Det, appen ikke skal se: HA-brugernes id'er og ting, man kun bruger i Home Assistant.
 SKJULT = frozenset({"profiler", "auto_planer", "mine_retter", "en_ret", "en_ret_status"})
+EN_RET = frozenset({"en_ret", "en_ret_status"})  # "Én ret" - kun for et voksen-link
 ROLLER = ("boern", "voksen")
-# Det, et voksen-link må kalde: Madplans egne handlinger for ugens plan. Ikke regler, profiler, Mine retter, hjælp osv.
+# Det, et voksen-link må kalde: Madplans egne handlinger for ugens plan og "Én ret". Ikke regler, profiler, hjælp osv.
 STYR = frozenset({"ny_plan", "byt_ret", "fjern_ret", "udfoerlig_opskrift", "overfoer", "tilfoej_behov", "fjern_behov",
-                  "ekstra_antal", "marker", "toem_kurv", "dag_kok", "dag_personer", "rester", "dag_mail"})
+                  "ekstra_antal", "marker", "toem_kurv", "dag_kok", "dag_personer", "rester", "dag_mail",
+                  "en_ret", "slet_en_ret", "en_ret_paa_listen", "en_ret_mail", "en_ret_byt", "en_ret_udfoerlig",
+                  "en_ret_personer", "en_ret_gem", "en_ret_rema"})
 KALD = vol.Schema(
     {
         vol.Required("domain"): vol.In(["madplan", "number"]),
@@ -111,8 +114,8 @@ def _plan_id(hass: HomeAssistant, m) -> str | None:
     return er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{m.entry.entry_id}_total")
 
 
-def _tilstand(s) -> dict[str, Any]:
-    return {"entity_id": s.entity_id, "state": s.state, "attributes": {k: v for k, v in s.attributes.items() if k not in SKJULT}}
+def _tilstand(s, skjul: frozenset[str] = SKJULT) -> dict[str, Any]:
+    return {"entity_id": s.entity_id, "state": s.state, "attributes": {k: v for k, v in s.attributes.items() if k not in skjul}}
 
 
 def oejebliksbillede(hass: HomeAssistant, link: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +126,7 @@ def oejebliksbillede(hass: HomeAssistant, link: dict[str, Any]) -> dict[str, Any
         eid = _plan_id(hass, m)
         if not eid or not (s := hass.states.get(eid)):
             continue
-        states[eid] = _tilstand(s)
+        states[eid] = _tilstand(s, SKJULT - EN_RET if voksen(link) else SKJULT)
         a = s.attributes
         for x in [*(a.get("dag_entiteter") or []), a.get("personer_entitet")]:
             if x and (d := hass.states.get(x)):

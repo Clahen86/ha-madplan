@@ -490,14 +490,17 @@ class Madplan:
         ret = retter[dag - 1]
         if ret.get("udfoerlig") or ret.get("udfoerlig_status") == "laver":
             return
+        await self._skriv_udfoerlig(ret, ret.get("personer") or self.personer, ret.get("_linjer") or [])
+
+    async def _skriv_udfoerlig(self, ret: dict, n: int, linjer: list[str]) -> None:
+        """Ét AI-kald: trin med temperaturer, tider og mængder, og op til 3 tips. Gemmes i retten."""
         ret["udfoerlig_status"] = "laver"
         self.opdater()
         try:
-            n = ret.get("personer") or self.personer
             instr = (
                 f"Skriv en udførlig opskrift på dansk på retten \"{ret.get('navn')}\" til {n} personer, så en, der ikke "
                 "laver mad så tit, kan følge den. Brug PRÆCIS disse ingredienser og mængder:\n"
-                + "\n".join(ret.get("_linjer") or []) + "\n\n"
+                + "\n".join(linjer) + "\n\n"
                 "Hvert trin skal være konkret: hvad der skæres og hvor stort, mængder i trinet, ovn- eller "
                 "pandetemperatur, tider, og hvordan man ser, at det er færdigt. Højst 12 trin. Tilføj op til 3 korte "
                 "tips (fx forberedelse, rester, eller hvad børn kan lide). "
@@ -619,10 +622,16 @@ class Madplan:
 
     # ------------------------------------------------------------------ én ret (køleskab)
 
-    async def async_en_ret(self, har: list[str], personer: int | None = None, oenske: str = "") -> None:
-        """Én ret til i dag ud fra det, man har i køleskabet. Helt adskilt fra ugeplanen."""
+    async def async_en_ret(self, har: list[str], personer: int | None = None, oenske: str = "",
+                           erstat: str | None = None) -> None:
+        """Én ret til i dag ud fra det, man har i køleskabet. Helt adskilt fra ugeplanen.
+        erstat: en tidligere rets id - så findes en anden ret ud fra det samme, og den gamle byttes ud."""
         if self._en_laas.locked():
             return
+        undgaa: list[str] = []
+        if erstat:
+            gammel = self._en(erstat)
+            undgaa = [*(gammel.get("fravalgt") or []), gammel["navn"]][-6:]
         async with self._en_laas:
             try:
                 n = int(personer or self.personer)
@@ -641,6 +650,7 @@ class Madplan:
                         else ""
                     )
                     + (f"Ønske: {oenske.strip()}.\n" if oenske.strip() else "")
+                    + (f"Familien vil IKKE have: {', '.join(undgaa)} - lav noget andet.\n" if undgaa else "")
                     + "Det, der mangler, skal købes: brug helst tilbudsvarer (T:), ellers S:navn. Køb så lidt som muligt.\n"
                     + 'Svar KUN med JSON: {"ret": '
                     + self._ret_skema().replace('"basis": bool}', '"basis": bool, "har": bool}')
@@ -652,7 +662,10 @@ class Madplan:
                     raise HomeAssistantError("AI'en gav ingen ret")
                 ret = (await self._tjek_opskrifter([ret]))[0]
                 await self.hass.async_add_executor_job(self._find_varer, [ret], idag)
-                self.en_ret = [self._beregn_en_ret(ret, n, idag, har, oenske)] + self.en_ret[:4]
+                ny = self._beregn_en_ret(ret, n, idag, har, oenske)
+                if undgaa:
+                    ny["fravalgt"] = undgaa
+                self.en_ret = [ny] + [r for r in self.en_ret if r["id"] != erstat][:4]
                 await self._gem()
                 self._en_status("")
             except HomeAssistantError as e:  # kendt: AI'en svarede ikke, for langt svar, et valg - ingen programfejl
@@ -665,13 +678,16 @@ class Madplan:
     def _beregn_en_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str], oenske: str) -> dict:
         """Mængder, og hvad der skal købes, for én ret. Ingen AI her."""
         linjer, varer = self._koeb_til_ret(ret, n, dato, har)
+        total = round(sum(v["kr"] for v in varer))
         return {
-            "id": f"{int(time.time())}",
+            "id": uuid.uuid4().hex[:10],
             "lavet": dt_util.now().isoformat(timespec="minutes"),
             "navn": ret.get("navn", ""),
             "kort": ret.get("kort", ""),
             "tid": ret.get("tid_min"),
             "sundhed": ret.get("sundhed", ""),
+            "kcal": ret.get("kcal"),
+            "protein": ret.get("protein"),
             "billede": self._billede(ret, dato),
             "personer": n,
             "har": har,
@@ -679,8 +695,10 @@ class Madplan:
             "ingredienser": linjer,
             "trin": ret.get("trin", []),
             "koeb": varer,
-            "koeb_total": round(sum(v["kr"] for v in varer)),
+            "koeb_total": total,
             "koeb_ca": any(v["ca"] for v in varer),
+            "pr_person": round(total / n, 1) if n else None,
+            "_ing": ret.get("ingredienser", []),  # AI'ens mængder pr. person - så kan antallet ændres bagefter
         }
 
     def _koeb_til_ret(self, ret: dict, n: int, dato: datetime.date, har: list[str]) -> tuple[list[str], list[dict]]:
@@ -705,18 +723,81 @@ class Madplan:
                                               "ukendt": ing["vare"].startswith("S:"), "ca": self._ca(ing["vare"]), "andel": 0.0})
             k["andel"] += 1.0 if ing.get("pakke_ukendt") or pakke <= 0 else mgd / pakke
         varer = []
-        for k in koeb.values():
+        for key, k in koeb.items():
             antal = min(MAKS_PAKKER, max(1, math.ceil(k["andel"] - 0.15)))
             v = {"navn": k["navn"], "str": k["str"], "antal": antal, "pris": round(antal * k["enhedspris"], 2),
                  "tilbud": k["tilbud"], "ukendt": k["ukendt"], "anslaaet": k["ca"]}
             varer.append({"tekst": vare_tekst(v), "pris": pris_tekst(v, 0), "kr": 0 if k["ukendt"] else v["pris"],
-                          "tilbud": k["tilbud"], "ca": k["ca"]})
+                          "tilbud": k["tilbud"], "ca": k["ca"], "key": key, "navn": k["navn"], "str": k["str"], "antal": antal})
         return linjer, varer
 
     async def async_slet_en_ret(self, ret_id: str) -> None:
         self.en_ret = [r for r in self.en_ret if r["id"] != ret_id]
         await self._gem()
         self.opdater()
+
+    def _en(self, ret_id: str) -> dict:
+        ret = next((r for r in self.en_ret if r["id"] == ret_id), None)
+        if not ret:
+            raise HomeAssistantError("Retten findes ikke længere")
+        return ret
+
+    async def async_en_ret_byt(self, ret_id: str) -> None:
+        """En anden ret ud fra det samme køleskab, antal og ønske. Den gamle ret byttes ud."""
+        r = self._en(ret_id)
+        await self.async_en_ret(r.get("har") or [], r.get("personer"), r.get("oenske") or "", erstat=ret_id)
+
+    async def async_en_ret_udfoerlig(self, ret_id: str) -> None:
+        r = self._en(ret_id)
+        if r.get("udfoerlig") or r.get("udfoerlig_status") == "laver":
+            return
+        await self._skriv_udfoerlig(r, r["personer"], r["ingredienser"])
+
+    async def async_en_ret_personer(self, ret_id: str, antal: int) -> None:
+        """Flere eller færre personer: mængder og indkøb regnes om (ingen AI)."""
+        r = self._en(ret_id)
+        antal = max(1, min(30, int(antal)))
+        if not r.get("_ing"):
+            raise HomeAssistantError("Retten er fra en ældre version - find den igen for at ændre antallet")
+        if antal == r["personer"]:
+            return
+        idag = dt_util.now().date()
+        await self._hent_data(idag, idag)
+        linjer, varer = self._koeb_til_ret({"ingredienser": r["_ing"]}, antal, idag, r.get("har") or [])
+        total = round(sum(v["kr"] for v in varer))
+        r.update(personer=antal, ingredienser=linjer, koeb=varer, koeb_total=total, koeb_ca=any(v["ca"] for v in varer),
+                 pr_person=round(total / antal, 1))
+        r.pop("udfoerlig", None)  # mængderne i trinene passer ikke længere
+        r.pop("udfoerlig_status", None)
+        await self._gem()
+        self.opdater()
+
+    async def async_en_ret_gem(self, ret_id: str) -> None:
+        """Retten under Mine retter, med ingredienser og trin som de er nu."""
+        r = self._en(ret_id)
+        trin = (r.get("udfoerlig") or {}).get("trin") or r.get("trin") or []
+        r["min_ret"] = await self.async_gem_min_ret({
+            "navn": r["navn"][:60], "portioner": r["personer"],
+            "ingredienser": "\n".join(r["ingredienser"])[:2000], "fremgangsmaade": "\n".join(trin)[:4000],
+        })
+        await self._gem()
+        self._en_status("✅ Gemt under Mine retter")
+
+    async def async_en_ret_rema(self, ret_id: str) -> None:
+        """Det, der mangler til retten, i REMA 1000-appen."""
+        r = self._en(ret_id)
+        o = self.entry.options
+        if not (o.get(CONF_REMA_EMAIL) and o.get(CONF_REMA_KODE)):
+            raise HomeAssistantError("REMA-appen er ikke sat op under Konfigurer")
+        if not r["koeb"]:
+            self._en_status("✅ Der er intet at købe")
+            return
+        if not self.katalog:
+            idag = dt_util.now().date()
+            await self._hent_data(idag, idag)
+        varer = [{"key": v.get("key"), "navn": v.get("navn") or re.sub(r"^🏷️\s*", "", v["tekst"]), "str": v.get("str", ""),
+                  "antal": v.get("antal", 1), "pris": v["kr"], "tilbud": v.get("tilbud")} for v in r["koeb"]]
+        self._en_status(await self._send_til_rema(varer, [{"ingredienser": r.get("_ing") or []}]))
 
     async def async_en_ret_paa_listen(self, ret_id: str) -> None:
         """Det, der mangler til én ret, på den valgte indkøbsliste."""
@@ -1138,11 +1219,11 @@ class Madplan:
             _LOGGER.error("Overførsel fejlede: %s", e)
             self._status(f"Fejl ved overførsel: {str(e)[:120]}")
 
-    async def _send_til_rema(self, varer: list[dict]) -> str:
+    async def _send_til_rema(self, varer: list[dict], retter: list[dict] | None = None) -> str:
         """Til REMA 1000-appen: REMA-varer med varenummer (præcis vare), resten som tekst."""
         if not self.katalog:
             await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
-        ud = await self.hass.async_add_executor_job(self._rema_varer, varer)
+        ud = await self.hass.async_add_executor_job(self._rema_varer, varer, retter)
         o = self.entry.options
         try:
             n = await rema_app.async_send(self.hass, o[CONF_REMA_EMAIL], o[CONF_REMA_KODE], ud)
@@ -1153,14 +1234,14 @@ class Madplan:
             return "⚠️ REMA-appen svarede ikke – prøv igen om lidt"
         return f"✅ {n} varer lagt i REMA-appen"
 
-    def _rema_varer(self, varer: list[dict]) -> list[dict]:
+    def _rema_varer(self, varer: list[dict], retter: list[dict] | None = None) -> list[dict]:
         """REMA-appen viser kun varer med varenummer rigtigt (tekst bliver "uspecificeret"). Tilbud fra avisen
         og andre varer slås derfor op i REMA's katalog. Kører uden for event loop (vareopslag)."""
         dato = dt_util.now().date()
         # Det, retterne kalder varen ("Laksefileter"), er mere præcist end tilbuddets navn
         # ("Laksefileter, rødspættefileter eller mørksejfilet").
         brug: dict[str, str] = {}
-        for ret in self.plan.get("retter") or []:
+        for ret in (self.plan.get("retter") or []) if retter is None else retter:
             for ing in ret.get("ingredienser", []):
                 if isinstance(ing, dict) and ing.get("vare") and ing.get("navn"):
                     brug.setdefault(str(ing["vare"]), str(ing["navn"]))

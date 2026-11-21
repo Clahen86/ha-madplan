@@ -2,6 +2,11 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.21.0 – 2026-11-21
+
+- One dish from the fridge can now do what a dish in the week plan can: swap it for another dish from the same fridge, show the detailed recipe, change the number of people (amounts and shopping are recalculated), save it as my dish, and send what is missing to the REMA app. It also shows kcal, protein, price per person and the health note
+- Adult app links get the "One dish" tab too
+
 ## 1.20.0 – 2026-11-21
 
 - App without login: choose "Children · view only" or "Adult · can control" when you make a link. An adult link can also make a new meal plan, swap or remove a dish, choose days, people and who cooks, add extra items and send the shopping list. Rules and settings are still only changed in Home Assistant

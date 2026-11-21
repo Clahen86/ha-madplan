@@ -6,9 +6,12 @@ const KORT = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 // Appen fra et link (uden login): kun at se planen og krydse varer af. Serveren tillader heller ikke andet.
 const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap"]);
 const APP_SIDER = ["uge", "ret", "indkob"];
-// Et voksen-link må også styre ugens plan (serveren tjekker hvert kald).
+// Et voksen-link må også styre ugens plan og bruge "Én ret" (serveren tjekker hvert kald).
 const STYR_TILLADT = new Set(["ny", "rester", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
-  "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov"]);
+  "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov",
+  "harfjern", "enpers", "findret", "envaelg", "enslet", "enmail", "enliste", "enrema", "enbyt", "enudf", "engem", "enantal"]);
+const STYR_SIDER = [...APP_SIDER, "enret"];
+const undtagen = (h) => [...h].map((x) => `:not([data-h="${x}"])`).join("");
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -180,10 +183,10 @@ class MadplanCard extends HTMLElement {
     const el = ev.target.closest("[data-h]");
     if (!el) return;
     const h = el.dataset.h;
-    if (this._app && (!(APP_TILLADT.has(h) || (this._styr && STYR_TILLADT.has(h))) || (h === "side" && !APP_SIDER.includes(el.dataset.side)))) return;
+    if (this._app && (!(APP_TILLADT.has(h) || (this._styr && STYR_TILLADT.has(h))) || (h === "side" && !(this._styr ? STYR_SIDER : APP_SIDER).includes(el.dataset.side)))) return;
     const dag = Number(el.dataset.dag || 0);
     const id = `${h}-${dag}`;
-    if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv", "enslet", "mslet"].includes(h) && this._bekraeft !== id) {
+    if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv", "enslet", "mslet", "enbyt"].includes(h) && this._bekraeft !== id) {
       this._bekraeft = id;
       clearTimeout(this._timer);
       this._timer = setTimeout(() => {
@@ -485,21 +488,42 @@ class MadplanCard extends HTMLElement {
         this._tilTop = true;
         break;
       case "enslet": {
-        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        const r = this._enRet(a);
         if (r) this._kald("madplan", "slet_en_ret", { entity_id: plan, id: r.id });
         this._enValgt = null;
+        break;
+      }
+      case "enbyt": {
+        const r = this._enRet(a);
+        if (r) this._kald("madplan", "en_ret_byt", { entity_id: plan, id: r.id }).catch(() => {});
+        this._enValgt = null;
+        this._tilTop = true;
+        break;
+      }
+      case "enudf":
+      case "engem":
+      case "enrema": {
+        const r = this._enRet(a);
+        const tjeneste = { enudf: "en_ret_udfoerlig", engem: "en_ret_gem", enrema: "en_ret_rema" }[h];
+        if (r) this._kald("madplan", tjeneste, { entity_id: plan, id: r.id }).catch(() => {});
+        break;
+      }
+      case "enantal": {
+        const r = this._enRet(a);
+        const ny = r && Math.min(30, Math.max(1, Number(r.personer) + Number(el.dataset.d)));
+        if (ny && ny !== r.personer) this._kald("madplan", "en_ret_personer", { entity_id: plan, id: r.id, personer: ny }).catch(() => {});
         break;
       }
       case "dagmail":
         this._kald("madplan", "dag_mail", { entity_id: plan, dag }).catch(() => {});
         break;
       case "enmail": {
-        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        const r = this._enRet(a);
         if (r) this._kald("madplan", "en_ret_mail", { entity_id: plan, id: r.id }).catch(() => {});
         break;
       }
       case "enliste": {
-        const r = (a.en_ret || []).find((x) => x.id === this._enValgt) || (a.en_ret || [])[0];
+        const r = this._enRet(a);
         if (r) this._kald("madplan", "en_ret_paa_listen", { entity_id: plan, id: r.id }).catch(() => {});
         break;
       }
@@ -890,7 +914,7 @@ class MadplanCard extends HTMLElement {
   }
 
   /** "Sådan gør du": the short steps with a button for the detailed recipe - or the detailed recipe itself. */
-  _trin(a, dag) {
+  _trin(a, dag, h = "udfoerlig") {
     const u = a.udfoerlig, st = a.udfoerlig_status || "";
     return u
       ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
@@ -898,7 +922,7 @@ class MadplanCard extends HTMLElement {
          ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}`
       : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
          ${st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
-           : `<button class="udf-knap" data-h="udfoerlig" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
+           : `<button class="udf-knap" data-h="${h}" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
               ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
   }
 
@@ -1957,11 +1981,17 @@ class MadplanPanel extends MadplanCard {
   }
 
   /** Én ret ud fra køleskabet - helt adskilt fra ugeplanen og dens indkøbsliste. */
+  /** Den ret, man kigger på under "Én ret": den valgte, ellers den nyeste. */
+  _enRet(a) {
+    const liste = a.en_ret || [];
+    return liste.find((r) => r.id === this._enValgt) || liste[0];
+  }
+
   _enRetSide(a, n) {
     const liste = a.en_ret || [];
     const status = a.en_ret_status || "";
     const arbejder = status.endsWith("…");
-    const valgt = liste.find((r) => r.id === this._enValgt) || liste[0];
+    const valgt = this._enRet(a);
     const pers = this._enPers ?? Math.round(Number(n || a.personer || 4));
     const har = this._har || [];
     let html = `<section class="rkort">
@@ -1984,22 +2014,32 @@ class MadplanPanel extends MadplanCard {
       <h1>${esc(valgt.navn)}</h1>
       ${valgt.kort ? `<p class="kort">${esc(valgt.kort)}</p>` : ""}
       <div class="fakta"><span><ha-icon icon="mdi:timer-outline"></ha-icon>${esc(valgt.tid ?? "?")} min</span>
-        <span><ha-icon icon="mdi:account-group"></ha-icon>${esc(valgt.personer)} pers.</span>
-        <span><ha-icon icon="mdi:cart-outline"></ha-icon>${valgt.koeb.length ? `${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}` : "Intet at købe"}</span></div>
+        <span><ha-icon icon="mdi:cart-outline"></ha-icon>${valgt.koeb.length ? `${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}` : "Intet at købe"}</span>
+        ${valgt.koeb.length && valgt.pr_person != null ? `<span><ha-icon icon="mdi:account"></ha-icon>${esc(String(valgt.pr_person).replace(".", ","))} kr/pers.</span>` : ""}
+        ${valgt.kcal ? `<span title="AI'ens skøn pr. voksen portion"><ha-icon icon="mdi:fire"></ha-icon>ca. ${esc(valgt.kcal)} kcal</span>` : ""}
+        ${valgt.protein ? `<span title="AI'ens skøn pr. voksen portion"><ha-icon icon="mdi:arm-flex-outline"></ha-icon>ca. ${esc(valgt.protein)} g protein</span>` : ""}</div>
+      ${valgt.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(valgt.sundhed)}</div>` : ""}
+      ${valgt.min_ret ? `<span class="minmaerke"><ha-icon icon="mdi:heart"></ha-icon>Gemt som min ret</span>` : ""}
+      <div class="dagpers"><ha-icon icon="mdi:account-group"></ha-icon><span class="dptekst">Personer</span>
+        ${valgt._ing ? `<div class="stepper"><button data-h="enantal" data-d="-1" aria-label="Færre">−</button>
+          <span>${esc(valgt.personer)}</span><button data-h="enantal" data-d="1" aria-label="Flere">+</button></div>` : `<b>${esc(valgt.personer)}</b>`}</div>
       ${valgt.har.length ? `<div class="harliste"><ha-icon icon="mdi:fridge-outline"></ha-icon><span>${valgt.har.map(esc).join(", ")}</span></div>` : ""}
       ${
         valgt.koeb.length
           ? `<div class="kasse"><div class="overskrift"><ha-icon icon="mdi:cart-outline"></ha-icon>Skal købes<small>${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}</small></div>
               ${valgt.koeb.map((v) => `<div class="koebrad"><span>${esc(v.tekst.replace(/^🏷️\s*/, ""))}${v.tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span><b>${esc(v.pris)}</b></div>`).join("")}
               <div class="enknapper">${a.har_indkobsliste ? this._knap("enliste", "Til listen", "mdi:playlist-plus", "lille") : ""}
+                ${a.har_rema ? this._knap("enrema", "Til REMA-appen", "mdi:cellphone-arrow-down", "lille") : ""}
                 ${a.har_mail ? this._knap("enmail", "Send på mail", "mdi:email-outline", "lille") : ""}</div></div>`
           : ""
       }
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:basket-outline"></ha-icon>Ingredienser<small>${esc(valgt.personer)} personer</small></div>
         <ul class="ing">${valgt.ingredienser.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
       <div class="kasse"><div class="overskrift"><ha-icon icon="mdi:chef-hat"></ha-icon>Sådan gør du</div>
-        <ol class="trin">${valgt.trin.map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol></div>
-      <div class="knapper">${this._knap("enslet", "Slet retten", "mdi:delete-outline", "graa")}</div>
+        ${this._trin(valgt, 0, "enudf")}</div>
+      <div class="knapper">${arbejder ? "" : this._knap("enbyt", "Byt ret", "mdi:swap-horizontal", "")}
+        ${valgt.min_ret ? "" : this._knap("engem", "Gem som min ret", "mdi:heart-plus-outline", "graa")}
+        ${this._knap("enslet", "Slet retten", "mdi:delete-outline", "graa")}</div>
     </article>`;
     const andre = liste.filter((r) => r !== valgt);
     if (andre.length)
@@ -2145,7 +2185,7 @@ class MadplanPanel extends MadplanCard {
                   "Indkøb",
                   "mdi:cart-outline",
                   mangler,
-                )}${this._app ? "" : `${this._fane("enret", "Én ret", "mdi:fridge-outline")}${this._fane("mine", "Mine retter", "mdi:heart-outline")}${this._fane(
+                )}${this._styr ? this._fane("enret", "Én ret", "mdi:fridge-outline") : ""}${this._app ? "" : `${this._fane("enret", "Én ret", "mdi:fridge-outline")}${this._fane("mine", "Mine retter", "mdi:heart-outline")}${this._fane(
                   "regler",
                   "Regler",
                   "mdi:tune-variant",
@@ -2450,7 +2490,7 @@ const PANEL_CSS = `
   .applink .hhjaelp, .applink .hplus, .applink ha-menu-button, .applink .advarsler,
   .applink:not(.appstyr) .styring, .applink:not(.appstyr) form, .applink:not(.appstyr) .ekstra > .hjaelp, .applink:not(.appstyr) .chips.kladde,
   .applink:not(.appstyr) [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]),
-  .appstyr form:not([data-form="behov"]), .appstyr [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]):not([data-h="ny"]):not([data-h="rester"]):not([data-h="handler"]):not([data-h="fridag"]):not([data-h="plus"]):not([data-h="minus"]):not([data-h="byt"]):not([data-h="udfoerlig"]):not([data-h="fjern"]):not([data-h="send"]):not([data-h="sendrema"]):not([data-h="dpers"]):not([data-h="dagmail"]):not([data-h="toemkurv"]):not([data-h="eplus"]):not([data-h="eminus"]):not([data-h="fjernbehov"]):not([data-h="kladdefjern"]):not([data-h="findbehov"]) { display: none !important; }
+  .appstyr form:not([data-form="behov"]):not([data-form="har"]), .appstyr [data-h]${undtagen(APP_TILLADT)}${undtagen(STYR_TILLADT)} { display: none !important; }
   .phjaelp { display: block; color: var(--secondary-text-color); font-size: 12px; margin-top: 6px; line-height: 1.4; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;

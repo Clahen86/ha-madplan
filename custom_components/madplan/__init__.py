@@ -91,6 +91,7 @@ EN_RET_SKEMA = SKEMA.extend(
     }
 )
 EN_RET_ID_SKEMA = SKEMA.extend({vol.Required("id"): cv.string})
+EN_RET_PERSONER_SKEMA = EN_RET_ID_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=1, max=30))})
 # Familiens egen opskrift. Uden id oprettes en ny (eller den med samme navn rettes).
 MIN_RET_SKEMA = vol.Schema(
     {
@@ -256,6 +257,25 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def en_ret_paa_listen(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_en_ret_paa_listen(call.data["id"])
 
+    async def en_ret_byt(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        m._en(call.data["id"])  # findes den ikke, siges det med det samme
+        m.entry.async_create_background_task(hass, m.async_en_ret_byt(call.data["id"]), "madplan_en_ret_byt")
+
+    async def en_ret_udfoerlig(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        m._en(call.data["id"])
+        m.entry.async_create_background_task(hass, m.async_en_ret_udfoerlig(call.data["id"]), "madplan_en_ret_udfoerlig")
+
+    async def en_ret_personer(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_en_ret_personer(call.data["id"], call.data["personer"])
+
+    async def en_ret_gem(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_en_ret_gem(call.data["id"])
+
+    async def en_ret_rema(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_en_ret_rema(call.data["id"])
+
     async def marker(call: ServiceCall) -> None:
         d = call.data
         await _madplaner(call)[0].async_marker(d["liste"], d["uid"], d["felt"], d["vaerdi"])
@@ -394,6 +414,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "slet_en_ret", slet_en_ret, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "en_ret_paa_listen", en_ret_paa_listen, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "en_ret_mail", en_ret_mail, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_byt", en_ret_byt, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_udfoerlig", en_ret_udfoerlig, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_personer", en_ret_personer, schema=EN_RET_PERSONER_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_gem", en_ret_gem, schema=EN_RET_ID_SKEMA)
+    hass.services.async_register(DOMAIN, "en_ret_rema", en_ret_rema, schema=EN_RET_ID_SKEMA)
     hass.services.async_register(DOMAIN, "dag_mail", dag_mail, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "dag_personer", dag_personer, schema=DAG_PERSONER_SKEMA)
     hass.services.async_register(DOMAIN, "dag_kok", dag_kok, schema=DAG_KOK_SKEMA)

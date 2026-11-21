@@ -604,6 +604,80 @@
           "description": "Profilens id."
         }
       }
+    },
+    "en_ret_byt": {
+      "name": "Byt én ret",
+      "description": "Finder en anden ret ud fra det samme køleskab og bytter den gamle ud.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "en_ret_udfoerlig": {
+      "name": "Udførlig opskrift til én ret",
+      "description": "AI'en skriver trinene grundigt, med tider, temperaturer og mængder.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "en_ret_gem": {
+      "name": "Gem én ret som min ret",
+      "description": "Gemmer retten under Mine retter.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "en_ret_rema": {
+      "name": "Én ret til REMA-appen",
+      "description": "Lægger det, der mangler til retten, i REMA 1000-appen.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        }
+      }
+    },
+    "en_ret_personer": {
+      "name": "Antal personer til én ret",
+      "description": "Regner mængder og indkøb om til et andet antal personer.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "id": {
+          "name": "Id",
+          "description": "Rettens id."
+        },
+        "personer": {
+          "name": "Personer",
+          "description": "Antal personer."
+        }
+      }
     }
   }
 }

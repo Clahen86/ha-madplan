@@ -147,6 +147,14 @@ async def test_voksenlink_styrer_ugens_plan_men_ikke_resten(hass: HomeAssistant,
     assert (await post(voksen, "number", "set_value", {"entity_id": "number.andet", "value": 3})).status == 403
     assert (await post(barn, "madplan", "dag_kok", {"entity_id": eid, "dag": 1, "kok": "x"})).status == 403
     assert len(kald) == 2
+    # "Én ret": voksen-linket ser den og kan bruge den, børnelinket hverken ser eller kan
+    hass.services.async_register("madplan", "en_ret_byt", fang)
+    hass.states.async_set(eid, "123", {**hass.states.get(eid).attributes, "en_ret": [{"id": "a"}], "en_ret_status": ""})
+    assert (await (await client.get(f"/api/madplan/app/{voksen}/data")).json())["states"][eid]["attributes"]["en_ret"] == [{"id": "a"}]
+    assert "en_ret" not in (await (await client.get(f"/api/madplan/app/{barn}/data")).json())["states"][eid]["attributes"]
+    assert (await post(voksen, "madplan", "en_ret_byt", {"entity_id": eid, "id": "a"})).status == 200
+    assert (await post(barn, "madplan", "en_ret_byt", {"entity_id": eid, "id": "a"})).status == 403
+    assert kald[-1] == ("en_ret_byt", {"entity_id": eid, "id": "a"}) and len(kald) == 3
     # Siden ved, om den må styre
     side = await (await client.get(f"/madplan_app/{voksen}/")).text()
     assert "voksen: true" in side
