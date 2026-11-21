@@ -2021,7 +2021,7 @@ class MadplanPanel extends MadplanCard {
       ${valgt.sundhed ? `<div class="sundhed"><ha-icon icon="mdi:leaf"></ha-icon>${esc(valgt.sundhed)}</div>` : ""}
       ${valgt.min_ret ? `<span class="minmaerke"><ha-icon icon="mdi:heart"></ha-icon>Gemt som min ret</span>` : ""}
       <div class="dagpers"><ha-icon icon="mdi:account-group"></ha-icon><span class="dptekst">Personer</span>
-        ${valgt._ing ? `<div class="stepper"><button data-h="enantal" data-d="-1" aria-label="Færre">−</button>
+        ${valgt.kan_personer ? `<div class="stepper"><button data-h="enantal" data-d="-1" aria-label="Færre">−</button>
           <span>${esc(valgt.personer)}</span><button data-h="enantal" data-d="1" aria-label="Flere">+</button></div>` : `<b>${esc(valgt.personer)}</b>`}</div>
       ${valgt.har.length ? `<div class="harliste"><ha-icon icon="mdi:fridge-outline"></ha-icon><span>${valgt.har.map(esc).join(", ")}</span></div>` : ""}
       ${
@@ -2029,7 +2029,7 @@ class MadplanPanel extends MadplanCard {
           ? `<div class="kasse"><div class="overskrift"><ha-icon icon="mdi:cart-outline"></ha-icon>Skal købes<small>${valgt.koeb_ca ? "ca. " : ""}${kr(valgt.koeb_total)}</small></div>
               ${valgt.koeb.map((v) => `<div class="koebrad"><span>${esc(v.tekst.replace(/^🏷️\s*/, ""))}${v.tilbud ? ` <span class="tag">Tilbud</span>` : ""}</span><b>${esc(v.pris)}</b></div>`).join("")}
               <div class="enknapper">${a.har_indkobsliste ? this._knap("enliste", "Til listen", "mdi:playlist-plus", "lille") : ""}
-                ${a.har_rema ? this._knap("enrema", "Til REMA-appen", "mdi:cellphone-arrow-down", "lille") : ""}
+                ${a.har_rema ? this._knap("enrema", "REMA-appen", "mdi:cellphone-arrow-down", "lille") : ""}
                 ${a.har_mail ? this._knap("enmail", "Send på mail", "mdi:email-outline", "lille") : ""}</div></div>`
           : ""
       }

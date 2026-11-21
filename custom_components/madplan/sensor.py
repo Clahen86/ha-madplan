@@ -131,7 +131,9 @@ class MadplanSensor(MadplanEntity, SensorEntity):
                 )
             ],
             "kaeder": [[k, v[0]] for k, v in BUTIKKER.items() if k != self.madplan.butik],
-            "en_ret": self.madplan.en_ret,
+            # En kopi: rettes en ret (fx antal personer), skal HA kunne se forskel og sende den nye tilstand ud.
+            "en_ret": [{**{k: v for k, v in r.items() if k != "_ing"}, "kan_personer": bool(r.get("_ing"))}
+                       for r in self.madplan.en_ret],
             "en_ret_status": self.madplan.en_ret_status,
             # Hvilke knapper "Én ret" kan vise.
             "har_indkobsliste": bool(self.madplan.entry.options.get("indkobsliste")),

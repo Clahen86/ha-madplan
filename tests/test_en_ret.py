@@ -107,3 +107,17 @@ def test_rema_bruger_rettens_egne_navne(hass: HomeAssistant) -> None:
     ud = m._rema_varer([{"key": "S:Kylling", "navn": "Noget andet", "antal": 2}],
                        [{"ingredienser": [{"vare": "S:Kylling", "navn": "Kyllingebryst"}]}])
     assert ud == [{"product_id": 55, "amount": 2}]
+
+
+async def test_sensoren_ser_aendringen(hass: HomeAssistant) -> None:
+    """Sensoren får en kopi: ellers ser HA ikke, at retten er ændret, og kortet viser det gamle antal."""
+    from custom_components.madplan.sensor import MadplanSensor
+
+    m = await _klar(hass)
+    sensor = MadplanSensor(m)
+    sensor.hass = hass
+    foer = sensor.extra_state_attributes["en_ret"]
+    assert foer[0]["kan_personer"] is True and "_ing" not in foer[0]
+    await m.async_en_ret_personer("a", 4)
+    efter = sensor.extra_state_attributes["en_ret"]
+    assert foer[0]["personer"] == 2 and efter[0]["personer"] == 4 and foer != efter

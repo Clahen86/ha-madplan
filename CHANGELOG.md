@@ -2,6 +2,10 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.21.1 – 2026-11-21
+
+- One dish: a new number of people shows right away (the page kept showing the old amounts)
+
 ## 1.21.0 – 2026-11-21
 
 - One dish from the fridge can now do what a dish in the week plan can: swap it for another dish from the same fridge, show the detailed recipe, change the number of people (amounts and shopping are recalculated), save it as my dish, and send what is missing to the REMA app. It also shows kcal, protein, price per person and the health note
