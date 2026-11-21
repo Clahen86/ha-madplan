@@ -118,9 +118,9 @@ Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail,
 
 ### App uden login (fx til børnene eller køkkenets tablet)
 
-Under **Regler → App uden login** (kun for administratorer) skriver du et navn og trykker **+**. Så får du et link, som du kan kopiere, dele eller vise som QR-kode. Linket åbner profilens madplan, opskrifterne og indkøbslisten uden login. Tryk **Installer** (på iPhone: Del → *Føj til hjemmeskærm*), så ligger den som en app.
+Under **Regler → App uden login** (kun for administratorer) vælger du **Børn · kun se** eller **Voksen · må styre**, skriver et navn og trykker **+**. Så får du et link, som du kan kopiere, dele eller vise som QR-kode. Linket åbner profilens madplan, opskrifterne og indkøbslisten uden login. Tryk **Installer** (på iPhone: Del → *Føj til hjemmeskærm*), så ligger den som en app.
 
-Linket kan kun se planen og krydse varer af på indkøbslisten. Det kan ikke lave en ny plan, ændre regler, bruge AI'en eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
+Et **børnelink** kan kun se planen og krydse varer af på indkøbslisten. Et **voksenlink** kan også lave en ny madplan, bytte eller fjerne en ret, vælge dage, personer og hvem der laver mad, tilføje ekstra varer og sende indkøbslisten. Ingen af dem kan ændre regler, profiler, Mine retter eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
 
 ### Kort til dine egne dashboards
 

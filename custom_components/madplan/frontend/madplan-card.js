@@ -6,6 +6,9 @@ const KORT = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 // Appen fra et link (uden login): kun at se planen og krydse varer af. Serveren tillader heller ikke andet.
 const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap"]);
 const APP_SIDER = ["uge", "ret", "indkob"];
+// Et voksen-link må også styre ugens plan (serveren tjekker hvert kald).
+const STYR_TILLADT = new Set(["ny", "rester", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
+  "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov"]);
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -177,7 +180,7 @@ class MadplanCard extends HTMLElement {
     const el = ev.target.closest("[data-h]");
     if (!el) return;
     const h = el.dataset.h;
-    if (this._app && (!APP_TILLADT.has(h) || (h === "side" && !APP_SIDER.includes(el.dataset.side)))) return;
+    if (this._app && (!(APP_TILLADT.has(h) || (this._styr && STYR_TILLADT.has(h))) || (h === "side" && !APP_SIDER.includes(el.dataset.side)))) return;
     const dag = Number(el.dataset.dag || 0);
     const id = `${h}-${dag}`;
     if (["ny", "byt", "fjern", "send", "fjernbehov", "toemkurv", "enslet", "mslet"].includes(h) && this._bekraeft !== id) {
@@ -245,10 +248,13 @@ class MadplanCard extends HTMLElement {
         break;
       case "appny": {
         const navn = (this._inputs.app_navn || "").trim();
-        if (navn) this._appLinks({ opret: { navn, profil: a.profil || "" } });
+        if (navn) this._appLinks({ opret: { navn, profil: a.profil || "", rolle: this._appRolle || "boern" } });
         this._inputs.app_navn = "";
         break;
       }
+      case "approlle":
+        this._appRolle = el.dataset.v;
+        break;
       case "appslet":
         if (confirm(`Slette linket "${el.dataset.navn}"? Appen holder op med at virke.`)) this._appLinks({ slet: el.dataset.id });
         break;
@@ -743,7 +749,7 @@ class MadplanCard extends HTMLElement {
 
   /** Antal personer én dag - fx når der kommer gæster. */
   _dagPersoner(a, dag) {
-    if (this._app) {
+    if (this._app && !this._styr) {
       return `${a.gaester ? `<div class="dagpers gaester"><ha-icon icon="mdi:account-group"></ha-icon><span class="dptekst">Gæster i dag · ${esc(a.personer)} personer</span></div>` : ""}${this._dagKok(a, dag)}`;
     }
     return `${this._dagKok(a, dag)}<div class="dagpers ${a.gaester ? "gaester" : ""}"><ha-icon icon="mdi:account-group"></ha-icon>
@@ -756,7 +762,7 @@ class MadplanCard extends HTMLElement {
   /** Hvem laver mad? En person fra Home Assistant eller et navn. Gemmes med planen. */
   _dagKok(a, dag) {
     if (a.fjernet || a.forbi || !a.dato) return "";
-    if (this._app) {
+    if (this._app && !this._styr) {
       return a.kok ? `<div class="dagpers kok"><ha-icon icon="mdi:chef-hat"></ha-icon><span class="dptekst">${esc(a.kok_navn || a.kok)} laver mad</span></div>` : "";
     }
     const personer = Object.keys(this._hass.states)
@@ -1463,6 +1469,7 @@ class MadplanPanel extends MadplanCard {
     this._side = "uge";
     this._fuld = true;
     this._app = !!window.MADPLAN_APP;  // åbnet fra et link uden login
+    this._styr = this._app && !!window.MADPLAN_APP.voksen;  // voksen-link: må styre ugens plan
   }
 
   set narrow(v) {
@@ -1894,10 +1901,10 @@ class MadplanPanel extends MadplanCard {
     const links = (d?.links || []).filter((x) => (x.profil || "") === profil);
     return `<section class="rkort">
         <div class="rtitel"><span class="rikon"><ha-icon icon="mdi:cellphone-link"></ha-icon></span>
-          <span><b>App uden login</b><small>Et link, der åbner ugens madplan, opskrifterne og indkøbslisten – uden Home Assistant-login. Det kan kun se planen og krydse varer af.</small></span></div>
+          <span><b>App uden login</b><small>Et link, der åbner ugens madplan, opskrifterne og indkøbslisten – uden Home Assistant-login. Et børnelink kan kun se planen og krydse varer af. Et voksenlink kan også lave en ny plan, bytte retter, vælge dage, personer og hvem der laver mad. Regler og indstillinger ændres kun her.</small></span></div>
         ${d && !d.ude ? `<small class="phjaelp" style="color:var(--warning-color)">Linket virker kun hjemme. Slå Nabu Casa eller en ekstern adresse til, så det virker overalt.</small>` : ""}
         ${links
-          .map((x) => `<div class="profil"><div class="rlinje"><span class="rnavn2"><b>${esc(x.navn)}</b><small>${esc(a.profil_navn || "")}</small></span>
+          .map((x) => `<div class="profil"><div class="rlinje"><span class="rnavn2"><b>${esc(x.navn)}</b><small>${x.rolle === "voksen" ? "Voksen · må styre" : "Børn · kun se"}${a.profil_navn ? ` · ${esc(a.profil_navn)}` : ""}</small></span>
               <button class="ikonknap" data-h="appslet" data-id="${esc(x.id)}" data-navn="${esc(x.navn)}" aria-label="Slet link"><ha-icon icon="mdi:delete-outline"></ha-icon></button></div>
             <div class="chips"><button class="rchip" data-h="appkopi" data-u="${esc(x.url)}"><ha-icon icon="mdi:content-copy"></ha-icon><span>Kopiér</span></button>
               <button class="rchip ${this._appQr === x.id ? "valgt" : ""}" data-h="appqr" data-id="${esc(x.id)}"><ha-icon icon="mdi:qrcode"></ha-icon><span>QR-kode</span></button>
@@ -1905,7 +1912,9 @@ class MadplanPanel extends MadplanCard {
             ${this._appQr === x.id ? `<div class="appqr"><div>${this._qrSvg ? this._qrSvg(x.url) : ""}</div>
               <small class="phjaelp">Scan koden med telefonens kamera</small><small class="phjaelp appurl">${esc(x.url)}</small></div>` : ""}</div>`)
           .join("")}
-        <div class="behov-form"><input name="app_navn" autocomplete="off" maxlength="40" placeholder="Navn, fx Køkkenet eller Silas" value="${esc(this._inputs.app_navn || "")}">
+        <div class="chips"><button class="rchip ${(this._appRolle || "boern") === "boern" ? "valgt" : ""}" data-h="approlle" data-v="boern"><ha-icon icon="mdi:eye-outline"></ha-icon><span>Børn · kun se</span></button>
+          <button class="rchip ${this._appRolle === "voksen" ? "valgt" : ""}" data-h="approlle" data-v="voksen"><ha-icon icon="mdi:account-cog-outline"></ha-icon><span>Voksen · må styre</span></button></div>
+        <div class="behov-form"><input name="app_navn" autocomplete="off" maxlength="40" placeholder="${this._appRolle === "voksen" ? "Navn, fx Mor eller Far" : "Navn, fx Køkkenet eller Silas"}" value="${esc(this._inputs.app_navn || "")}">
           <button class="plusknap" data-h="appny" aria-label="Lav link"><ha-icon icon="mdi:plus"></ha-icon></button></div>
         <small class="phjaelp">Sådan bliver det en app: Åbn linket på telefonen og tryk »Installer«. På iPhone: tryk på Del og vælg »Føj til hjemmeskærm«.</small>
       </section>`;
@@ -2120,7 +2129,7 @@ class MadplanPanel extends MadplanCard {
     }
     const mangler = [...this._varer, ...this._ekstra].filter((v) => v.status !== "completed").length;
     this.shadowRoot.innerHTML = `<style>${CSS}${PANEL_CSS}</style>
-      <div class="app ${this._app ? "applink" : ""} design-${esc(this._udseende?.design || "farverig")}" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
+      <div class="app ${this._app ? "applink" : ""} ${this._styr ? "appstyr" : ""} design-${esc(this._udseende?.design || "farverig")}" style="--brand:${esc(farve)};--brand-tekst:${tekstPaa(farve)}">
         <header class="hero">
           <div class="hrad">
             <ha-menu-button></ha-menu-button>${logo}
@@ -2438,9 +2447,10 @@ const PANEL_CSS = `
   .pform { flex-wrap: wrap; } .pform input { flex: 1 1 100%; } .pform select { flex: 1; min-width: 0; }
   .appqr { text-align: center; margin-top: 10px; } .appqr > div { display: inline-block; width: 220px; max-width: 70vw; padding: 10px; background: #fff; border-radius: 14px; line-height: 0; }
   .appurl { word-break: break-all; user-select: all; }
-  .applink .hhjaelp, .applink .hplus, .applink ha-menu-button, .applink .styring, .applink .advarsler, .applink form,
-  .applink .ekstra > .hjaelp, .applink .chips.kladde,
-  .applink [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]) { display: none !important; }
+  .applink .hhjaelp, .applink .hplus, .applink ha-menu-button, .applink .advarsler,
+  .applink:not(.appstyr) .styring, .applink:not(.appstyr) form, .applink:not(.appstyr) .ekstra > .hjaelp, .applink:not(.appstyr) .chips.kladde,
+  .applink:not(.appstyr) [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]),
+  .appstyr form:not([data-form="behov"]), .appstyr [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]):not([data-h="ny"]):not([data-h="rester"]):not([data-h="handler"]):not([data-h="fridag"]):not([data-h="plus"]):not([data-h="minus"]):not([data-h="byt"]):not([data-h="udfoerlig"]):not([data-h="fjern"]):not([data-h="send"]):not([data-h="sendrema"]):not([data-h="dpers"]):not([data-h="dagmail"]):not([data-h="toemkurv"]):not([data-h="eplus"]):not([data-h="eminus"]):not([data-h="fjernbehov"]):not([data-h="kladdefjern"]):not([data-h="findbehov"]) { display: none !important; }
   .phjaelp { display: block; color: var(--secondary-text-color); font-size: 12px; margin-top: 6px; line-height: 1.4; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;

@@ -1,12 +1,17 @@
 """Madplan som app fra et hemmeligt link - for familien uden Home Assistant-login.
 
 Linket åbner ugens madplan, opskrifterne og indkøbslisten (samme madplan-card.js som i Home Assistant) på en side
-for sig, som kan lægges på hjemmeskærmen som en app. Linket er nøglen, og det kan kun læse madplanen og krydse
-varer af på indkøbslisten - aldrig lave en ny plan, ændre regler, kalde AI'en eller andet i Home Assistant.
+for sig, som kan lægges på hjemmeskærmen som en app. Linket er nøglen. Et link har en rolle:
+
+- børn (standard): kan kun læse madplanen og krydse varer af på indkøbslisten
+- voksen: kan også styre ugens plan - ny madplan, bytte eller fjerne en ret, dage, personer, hvem der laver mad,
+  ekstra varer og sende indkøbslisten. Kun Madplans egne handlinger på linkets egne planer (STYR), aldrig regler,
+  profiler, Mine retter, hjælp eller andet i Home Assistant.
 """
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 import uuid
@@ -19,7 +24,8 @@ from aiohttp import web
 
 from homeassistant.components import websocket_api
 from homeassistant.components.http import HomeAssistantView
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 
@@ -31,6 +37,17 @@ API = "/api/madplan/app"
 DATA = "madplan_app"  # hass.data - ikke hass.data[DOMAIN], det er planernes fælles opslag
 # Det, appen ikke skal se: HA-brugernes id'er og ting, man kun bruger i Home Assistant.
 SKJULT = frozenset({"profiler", "auto_planer", "mine_retter", "en_ret", "en_ret_status"})
+ROLLER = ("boern", "voksen")
+# Det, et voksen-link må kalde: Madplans egne handlinger for ugens plan. Ikke regler, profiler, Mine retter, hjælp osv.
+STYR = frozenset({"ny_plan", "byt_ret", "fjern_ret", "udfoerlig_opskrift", "overfoer", "tilfoej_behov", "fjern_behov",
+                  "ekstra_antal", "marker", "toem_kurv", "dag_kok", "dag_personer", "rester", "dag_mail"})
+KALD = vol.Schema(
+    {
+        vol.Required("domain"): vol.In(["madplan", "number"]),
+        vol.Required("service"): str,
+        vol.Required("data"): {vol.Required("entity_id"): str, vol.Extra: object},
+    }
+)
 MARKER = vol.Schema(
     {
         vol.Required("entity_id"): str,
@@ -61,10 +78,10 @@ class AppLinks:
                 return link
         return None
 
-    async def async_opret(self, navn: str, profil: str) -> dict[str, Any]:
+    async def async_opret(self, navn: str, profil: str, rolle: str = "boern") -> dict[str, Any]:
         lid = uuid.uuid4().hex[:10]
         self.links[lid] = {"navn": navn.strip()[:40], "profil": profil, "token": secrets.token_urlsafe(24),
-                           "oprettet": time.time()}
+                           "oprettet": time.time(), "rolle": rolle if rolle in ROLLER else "boern"}
         await self._gem()
         return self.links[lid]
 
@@ -115,7 +132,39 @@ def oejebliksbillede(hass: HomeAssistant, link: dict[str, Any]) -> dict[str, Any
             if x:
                 lister[x] = [{"uid": i.uid, "summary": i.summary, "status": str(i.status), "description": i.description}
                              for i in varer(m)]
-    return {"navn": link.get("navn"), "states": states, "todo": lister}
+    if voksen(link):  # "Hvem laver mad?": husets personer, kun navnet
+        for p in hass.states.async_all("person"):
+            states[p.entity_id] = {"entity_id": p.entity_id, "state": "", "attributes": {"friendly_name": p.name}}
+    return {"navn": link.get("navn"), "rolle": rolle(link), "states": states, "todo": lister}
+
+
+def rolle(link: dict[str, Any]) -> str:
+    return "voksen" if link.get("rolle") == "voksen" else "boern"
+
+
+def voksen(link: dict[str, Any]) -> bool:
+    return rolle(link) == "voksen"
+
+
+def tilladt(hass: HomeAssistant, link: dict[str, Any], d: dict[str, Any]):
+    """Planen, hvis et voksen-link må lave det kald, ellers None (eller en tekst med grunden)."""
+    if not voksen(link):
+        return None
+    eid = d["data"].get("entity_id")
+    planer = {_plan_id(hass, m): m for m in _madplaner(hass, link.get("profil") or "")}
+    if d["domain"] == "number":  # antal personer: kun planens egen
+        if d["service"] != "set_value":
+            return None
+        for pid, m in planer.items():
+            s = pid and hass.states.get(pid)
+            if s and s.attributes.get("personer_entitet") == eid and set(d["data"]) <= {"entity_id", "value"}:
+                return m
+        return None
+    if eid not in planer:
+        return None
+    if d["service"] == "gem_regler":  # kun ugens frie dage, ikke reglerne
+        return planer[eid] if set(d["data"]) <= {"entity_id", "fri_dage"} else None
+    return planer[eid] if d["service"] in STYR else None
 
 
 def _link(hass: HomeAssistant, token: str) -> dict[str, Any] | None:
@@ -153,6 +202,7 @@ class AppSideView(HomeAssistantView):
         if fil not in ("", "index.html"):
             return web.Response(status=HTTPStatus.NOT_FOUND)
         html = (SIDE.replace("{{base}}", base).replace("{{api}}", f"{API}/{token}")
+                .replace("{{voksen}}", "true" if voksen(link) else "false")
                 .replace("{{js}}", self.hass.data.get("madplan_kort_url", "/madplan/madplan-card.js")))
         return web.Response(text=html, content_type="text/html",
                             headers={"Cache-Control": "no-cache", "Referrer-Policy": "no-referrer"})
@@ -188,6 +238,8 @@ class AppApiView(HomeAssistantView):
         link = _link(self.hass, token)
         if not link:
             return self.json_message("Dette link er ikke længere i brug", HTTPStatus.NOT_FOUND)
+        if handling == "kald":
+            return await self._kald(request, link)
         if handling != "marker":
             return self.json_message("Ukendt", HTTPStatus.NOT_FOUND)
         try:
@@ -199,6 +251,25 @@ class AppApiView(HomeAssistantView):
         if m is None:
             return self.json_message("Ukendt madplan", HTTPStatus.NOT_FOUND)
         await m.async_marker(d["liste"], d["uid"], d["felt"], d["vaerdi"])
+        return self.json(oejebliksbillede(self.hass, link))
+
+    async def _kald(self, request: web.Request, link: dict[str, Any]) -> web.Response:
+        """Et voksen-link styrer ugens plan. En ny plan (AI) kan tage et minut: så svarer vi før, og den kører færdig."""
+        try:
+            d = KALD(await request.json())
+        except (ValueError, vol.Invalid):
+            return self.json_message("Forkert forespørgsel", HTTPStatus.BAD_REQUEST)
+        if tilladt(self.hass, link, d) is None:
+            return self.json_message("Det kan dette link ikke", HTTPStatus.FORBIDDEN)
+        opgave = self.hass.async_create_task(
+            self.hass.services.async_call(d["domain"], d["service"], d["data"], blocking=True, context=Context())
+        )
+        try:
+            await asyncio.wait_for(asyncio.shield(opgave), 15)
+        except TimeoutError:
+            pass  # kører videre; appen henter planen igen
+        except (HomeAssistantError, vol.Invalid, ValueError) as err:
+            return self.json_message(str(err) or "Det gik ikke", HTTPStatus.BAD_REQUEST)
         return self.json(oejebliksbillede(self.hass, link))
 
 
@@ -218,14 +289,15 @@ def _app_url(hass: HomeAssistant) -> tuple[str, bool]:
 def _liste(hass: HomeAssistant, links: AppLinks) -> dict[str, Any]:
     base, ude = _app_url(hass)
     return {"ude": ude, "links": [{"id": lid, "navn": x.get("navn"), "profil": x.get("profil") or "", "oprettet": x.get("oprettet"),
-                                   "url": f"{base}{PAGE}/{x['token']}/"}
+                                   "rolle": rolle(x), "url": f"{base}{PAGE}/{x['token']}/"}
                                   for lid, x in sorted(links.links.items(), key=lambda kv: kv[1].get("oprettet", 0))]}
 
 
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/app_links",
-        vol.Optional("opret"): {vol.Required("navn"): vol.All(str, vol.Length(min=1, max=40)), vol.Optional("profil", default=""): str},
+        vol.Optional("opret"): {vol.Required("navn"): vol.All(str, vol.Length(min=1, max=40)), vol.Optional("profil", default=""): str,
+                                vol.Optional("rolle", default="boern"): vol.In(ROLLER)},
         vol.Optional("slet"): str,
     }
 )
@@ -239,7 +311,7 @@ async def ws_links(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
         if profil and not any(e.runtime_data.profil == profil for e in hass.config_entries.async_loaded_entries(DOMAIN)):
             connection.send_error(msg["id"], "invalid", "Ukendt profil")
             return
-        await links.async_opret(o["navn"], profil)
+        await links.async_opret(o["navn"], profil, o["rolle"])
     if lid := msg.get("slet"):
         await links.async_slet(lid)
     connection.send_result(msg["id"], _liste(hass, links))
@@ -272,7 +344,7 @@ madplan-panel{flex:1;min-height:0;display:block;--primary-color:#03a9f4;--primar
 // Kortet taler med Home Assistant gennem linket i stedet for et login: en lille stand-in for HA's forbindelse.
 (() => {
   const API = "{{api}}";
-  window.MADPLAN_APP = { api: API, base: "{{base}}" };
+  window.MADPLAN_APP = { api: API, base: "{{base}}", voksen: {{voksen}} };
   // Ikoner som i Home Assistant: HA's egne mdi-filer, som ikke kræver login.
   if (!customElements.get("ha-icon")) {
     let meta = null;
@@ -323,10 +395,15 @@ madplan-panel{flex:1;min-height:0;display:block;--primary-color:#03a9f4;--primar
   };
   const svar = (r) => (r.status === 404 ? (vaek(), null) : r.ok ? r.json() : null);
   const hent = () => fetch(`${API}/data`, { cache: "no-store" }).then(svar).then(vis).catch(() => {});
-  // Det eneste, kortet må kalde: kryds en vare af. Alt andet afvises her - og på serveren.
-  const callService = (domain, service, d) => domain === "madplan" && service === "marker"
-    ? fetch(`${API}/marker`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) }).then(svar).then(vis)
-    : Promise.reject(new Error("Ikke i appen"));
+  // Børn: kun kryds en vare af. Voksne: også ugens plan - serveren tjekker hvert kald.
+  const post = (sti, body) => fetch(`${API}/${sti}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const fejl = async (r) => { if (r.status === 404) return svar(r); if (!r.ok) { let t = "Det gik ikke"; try { t = (await r.json()).message || t; } catch (e) { /* */ } alert(t); return null; } return r.json(); };
+  const callService = (domain, service, d) => {
+    if (window.MADPLAN_APP.voksen && d && d.entity_id) {
+      return post("kald", { domain, service, data: d }).then(fejl).then((x) => { vis(x); setTimeout(hent, 4000); setTimeout(hent, 20000); });
+    }
+    return domain === "madplan" && service === "marker" ? post("marker", d).then(svar).then(vis) : Promise.reject(new Error("Ikke i appen"));
+  };
   const hass = () => ({ connection: conn, states: data ? data.states : {}, user: { id: "", name: data && data.navn, is_admin: false },
     language: "da", locale: { language: "da" }, themes: { darkMode: dark.matches }, callService,
     callWS: () => Promise.reject(new Error("Ikke i appen")) });

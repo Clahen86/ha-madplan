@@ -82,6 +82,7 @@ async def test_kun_en_admin_laver_links(hass: HomeAssistant, hass_ws_client, has
     await ws.send_json({"id": 1, "type": "madplan/app_links", "opret": {"navn": "Datter", "profil": "datter"}})
     r = await ws.receive_json()
     assert r["success"] and r["result"]["links"][0]["navn"] == "Datter" and r["result"]["links"][0]["profil"] == "datter"
+    assert r["result"]["links"][0]["rolle"] == "boern"
     assert "/madplan_app/" in r["result"]["links"][0]["url"]
     await ws.send_json({"id": 2, "type": "madplan/app_links", "opret": {"navn": "X", "profil": "findes_ikke"}})
     assert not (await ws.receive_json())["success"]
@@ -110,3 +111,43 @@ async def test_integrationen_saetter_appen_op(hass: HomeAssistant, hass_client_n
     assert (await client.get("/madplan/qr.js")).status == 200
     token = (await hass.data[app.DATA].async_opret("Køkkenet", ""))["token"]
     assert hass.data["madplan_kort_url"] in await (await client.get(f"/madplan_app/{token}/")).text()
+
+
+async def test_voksenlink_styrer_ugens_plan_men_ikke_resten(hass: HomeAssistant, hass_client_no_auth) -> None:
+    links = await _klar(hass)
+    m, eid = await lav_madplan(hass)
+    _, datter_eid = await lav_madplan(hass, profil="datter", butik="netto")
+    hass.states.async_set("person.silas", "home", {"friendly_name": "Silas", "user_id": "hemmelig"})
+    kald = []
+
+    async def fang(call):
+        kald.append((call.service, dict(call.data)))
+
+    for navn in ("dag_kok", "ny_plan", "gem_regler", "auto_plan"):
+        hass.services.async_register("madplan", navn, fang)
+    voksen = (await links.async_opret("Mor", "", "voksen"))["token"]
+    barn = (await links.async_opret("Silas", ""))["token"]
+    client = await hass_client_no_auth()
+
+    d = await (await client.get(f"/api/madplan/app/{voksen}/data")).json()
+    assert d["rolle"] == "voksen" and d["states"]["person.silas"]["attributes"] == {"friendly_name": "Silas"}
+    assert "person.silas" not in (await (await client.get(f"/api/madplan/app/{barn}/data")).json())["states"]
+
+    async def post(token, domain, service, data):
+        return await client.post(f"/api/madplan/app/{token}/kald", json={"domain": domain, "service": service, "data": data})
+
+    assert (await post(voksen, "madplan", "dag_kok", {"entity_id": eid, "dag": 1, "kok": "person.silas"})).status == 200
+    assert (await post(voksen, "madplan", "gem_regler", {"entity_id": eid, "fri_dage": [5]})).status == 200
+    assert kald == [("dag_kok", {"entity_id": eid, "dag": 1, "kok": "person.silas"}), ("gem_regler", {"entity_id": eid, "fri_dage": [5]})]
+    # Ikke reglerne, ikke andre handlinger, ikke en anden profils plan, ikke andre domæner - og aldrig fra et børnelink
+    assert (await post(voksen, "madplan", "gem_regler", {"entity_id": eid, "budget": 1})).status == 403
+    assert (await post(voksen, "madplan", "auto_plan", {"entity_id": eid, "til": True})).status == 403
+    assert (await post(voksen, "madplan", "dag_kok", {"entity_id": datter_eid, "dag": 1, "kok": "x"})).status == 403
+    assert (await post(voksen, "light", "turn_on", {"entity_id": "light.stue"})).status == 400
+    assert (await post(voksen, "number", "set_value", {"entity_id": "number.andet", "value": 3})).status == 403
+    assert (await post(barn, "madplan", "dag_kok", {"entity_id": eid, "dag": 1, "kok": "x"})).status == 403
+    assert len(kald) == 2
+    # Siden ved, om den må styre
+    side = await (await client.get(f"/madplan_app/{voksen}/")).text()
+    assert "voksen: true" in side
+    assert "voksen: false" in await (await client.get(f"/madplan_app/{barn}/")).text()

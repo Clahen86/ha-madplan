@@ -2,6 +2,10 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.20.0 – 2026-11-21
+
+- App without login: choose "Children · view only" or "Adult · can control" when you make a link. An adult link can also make a new meal plan, swap or remove a dish, choose days, people and who cooks, add extra items and send the shopping list. Rules and settings are still only changed in Home Assistant
+
 ## 1.19.0 – 2026-11-18
 
 - Madplan as an app without login, who cooks each day
