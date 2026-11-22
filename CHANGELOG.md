@@ -2,6 +2,10 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.21.2 – 2026-11-22
+
+- No more warning in Home Assistant's log at start-up (the version was read from disk in the event loop)
+
 ## 1.21.1 – 2026-11-21
 
 - One dish: a new number of people shows right away (the page kept showing the old amounts)

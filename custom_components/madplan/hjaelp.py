@@ -65,11 +65,11 @@ class Hjaelp:
         await self.store.async_save(self.d)
 
     def version(self) -> str:
+        """From Home Assistant's loader - never read from disk in the event loop (HA warns about that)."""
         try:
-            import json
-            from pathlib import Path
+            from homeassistant.loader import async_get_loaded_integration
 
-            return json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
+            return str(async_get_loaded_integration(self.hass, DOMAIN).version or "?")
         except Exception:  # noqa: BLE001
             return "?"
 
