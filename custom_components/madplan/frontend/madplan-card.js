@@ -4,7 +4,7 @@ const DAGE = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "L�
 const KORT = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 
 // Appen fra et link (uden login): kun at se planen og krydse varer af. Serveren tillader heller ikke andet.
-const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap"]);
+const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap", "udfskift"]);
 const APP_SIDER = ["uge", "ret", "indkob"];
 // Et voksen-link må også styre ugens plan og bruge "Én ret" (serveren tjekker hvert kald).
 const STYR_TILLADT = new Set(["ny", "rester", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
@@ -407,6 +407,13 @@ class MadplanCard extends HTMLElement {
       case "byt":
         this._kald("madplan", "byt_ret", { entity_id: plan, dag });
         break;
+      case "udfskift": {
+        const k = el.dataset.k;
+        this._simpel = this._simpel || new Set();
+        if (this._simpel.has(k)) this._simpel.delete(k);
+        else this._simpel.add(k);
+        break;
+      }
       case "udfoerlig":
         this._kald("madplan", "udfoerlig_opskrift", { entity_id: plan, dag });
         break;
@@ -916,12 +923,18 @@ class MadplanCard extends HTMLElement {
   /** "Sådan gør du": the short steps with a button for the detailed recipe - or the detailed recipe itself. */
   _trin(a, dag, h = "udfoerlig") {
     const u = a.udfoerlig, st = a.udfoerlig_status || "";
-    return u
+    // Den udførlige er gemt: man kan skifte tilbage til de korte trin og frem igen uden at spørge AI'en.
+    const noegle = `${h}:${dag}:${a.dato || a.id || a.navn || ""}`;
+    const simpel = u && (this._simpel || (this._simpel = new Set())).has(noegle);
+    const skift = (tekst, ikon) => `<button class="udf-knap" data-h="udfskift" data-k="${esc(noegle)}"><ha-icon icon="${ikon}"></ha-icon>${tekst}</button>`;
+    return u && !simpel
       ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
          <ol class="trin">${(u.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
-         ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}`
+         ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+         ${skift("Vis kort opskrift", "mdi:format-list-numbered")}`
       : `<ol class="trin">${(a.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
-         ${st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
+         ${simpel ? skift("Vis udførlig opskrift", "mdi:book-open-variant")
+           : st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
            : `<button class="udf-knap" data-h="${h}" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
               ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
   }

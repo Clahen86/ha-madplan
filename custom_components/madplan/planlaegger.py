@@ -962,8 +962,10 @@ class Madplan:
 
     async def async_saet_personer(self, antal: int) -> None:
         self.personer = max(1, int(antal))
-        if self.plan.get("retter") and not self.optaget:
-            start = datetime.date.fromisoformat(self.plan["start"])
+        self.opdater()  # tallet vises med det samme - omregningen af planen kan tage lidt tid
+        start = datetime.date.fromisoformat(self.plan["start"]) if self.plan.get("start") else None
+        udloebet = start is None or start + datetime.timedelta(days=7) <= dt_util.now().date()
+        if self.plan.get("retter") and not self.optaget and not udloebet:
             await self._hent_data(start, None)
             # Pakkestørrelserne regnes forfra (rettelser i omregningen gælder også en gemt plan).
             await self.hass.async_add_executor_job(self._find_varer, self.plan["retter"], start)
@@ -1723,6 +1725,8 @@ class Madplan:
         """Slår AI'ens søgeord op for hele ugen på én gang, så samme vare bliver samme produkt,
         og pakningen vælges efter den samlede mængde."""
         for ret in retter:
+            rens_ret(ret, lambda v: (self.tilbud.get(v[2:]) if v.startswith("T:") else
+                                     self.katalog.get(v[2:]) if v.startswith("R:") else None))
             self._byt_allergener(ret)
             _ret_slags(ret)
             for ing in ret.get("ingredienser", []):
@@ -2071,20 +2075,17 @@ class Madplan:
 
         Retterne med fejl sendes tilbage til AI'en i ét samlet kald. Går det ikke (fx dagskvoten), sættes de
         manglende råvarer på listen, så de i det mindste kommer med på indkøbslisten."""
-        fejl = [i for i, r in enumerate(retter) if not self.min_ret(r) and opskrift_mangler(r)]
+        fejl = [i for i, r in enumerate(retter) if not self.min_ret(r) and ret_problemer(r)]
         if not fejl:
             return retter
         problemer = "\n".join(
-            f"{n + 1}. {retter[i].get('navn')}: " + ", ".join(
-                (f"'{m}' nævnes i trinene, men står ikke på ingredienslisten" if m != "krydderier"
-                 else "trinene siger bare 'krydderier' - nævn hvert krydderi")
-                for m in opskrift_mangler(retter[i]))
-            for n, i in enumerate(fejl)
+            f"{n + 1}. {retter[i].get('navn')}: " + "; ".join(ret_problemer(retter[i])) for n, i in enumerate(fejl)
         )
         instr = (
-            "Disse retter hænger ikke sammen - trinene nævner ting, der ikke er på ingredienslisten:\n"
-            + problemer + "\n\nRet dem: sæt alt, trinene nævner, på ingredienslisten med mængde, og skriv de "
-            "konkrete krydderier, retten skal have, i både trin og ingredienser. Behold resten af retten. "
+            "Disse retter hænger ikke sammen:\n"
+            + problemer + "\n\nRet dem: sæt alt, trinene nævner, på ingredienslisten med mængde, skriv de "
+            "konkrete krydderier, retten skal have, i både trin og ingredienser, lad navnet passe til det, der er i "
+            "retten, giv nok kød/fisk, og skriv en realistisk tid. Behold resten af retten. "
             + self._regler()
             + f'Svar KUN med JSON: {{"retter": [{len(fejl)} x ' + self._ret_skema() + "]} i samme rækkefølge.\n"
             + "RETTERNE:\n" + json.dumps([retter[i] for i in fejl], ensure_ascii=False) + "\n\n"
@@ -2098,7 +2099,7 @@ class Madplan:
         ud = list(retter)
         for n, i in enumerate(fejl):
             ny = rettede[n] if n < len(rettede) and isinstance(rettede[n], dict) else None
-            if ny and ny.get("ingredienser") and len(opskrift_mangler(ny)) < len(opskrift_mangler(retter[i])):
+            if ny and ny.get("ingredienser") and len(ret_problemer(ny)) < len(ret_problemer(retter[i])):
                 for k in ("personer", "min_ret"):
                     if k in retter[i]:
                         ny[k] = retter[i][k]
@@ -2220,7 +2221,15 @@ class Madplan:
             "Alt, trinene nævner (også løg, hvidløg, ingefær, olie, smør og hvert krydderi), skal stå i "
             "'ingredienser' med mængde. Skriv aldrig bare 'krydderier' - nævn hvert krydderi ved navn, og giv "
             "retten de krydderier, den rigtigt skal have (fx spidskommen, gurkemeje og garam masala i en dahl).\n"
-            f"Opskriftens trin skal være korte og konkrete på dansk: højst {8 if niveau == 'gourmet' else 6} trin. "
+            "MÆNGDER: kød eller fisk som hovedprotein 125-175 g pr. voksen (steg med ben eller svær ca. 250 g), "
+            "ris/pasta 75-100 g tør vægt og kartofler 250 g pr. person.\n"
+            "HELE MÅLTIDET: hver ret er et færdigt aftensmåltid med det tilbehør, den normalt serveres med "
+            "(fx flæskesteg med kartofler, brun sovs og rødkål; karbonader med kartofler og ærter), og navnet "
+            "skal passe til det, der faktisk er i retten. Skriv præcise varenavne (fx 'Creme fraiche 18%', "
+            "ikke 'Creme').\n"
+            f"Opskriftens trin skal være korte og konkrete på dansk: højst {8 if niveau == 'gourmet' else 6} trin, "
+            "med temperatur (fx 200 °C) og tider (fx 'steg 4-5 min ved middel varme'), men UDEN mængder - "
+            "mængderne står i ingredienslisten og regnes om til antal personer. "
             "'kort' højst 12 ord og "
             "'sundhed' højst 8 ord. Svar med kompakt JSON uden linjeskift.\n"
         )
@@ -2580,6 +2589,82 @@ RAAVARER = (
     "gulerødder", "selleri", "squash", "peberfrugt",
 )
 _VAGT = re.compile(r"\bkrydderi(?:er|erne)?\b", re.I)
+
+
+# Kød og fisk som rettens hovedprotein: under ca. 100 g pr. person bliver ingen mætte (400 g oksekød til 8).
+_KOED = re.compile(r"kød|kylling|flæsk|medister|bacon|pølse|frikadel|karbonade|kotelet|steg|filet|laks|torsk|sej|"
+                   r"rødspætte|fisk|rejer|tun\b|skinke|kalkun|lam|and\b|bøf|schnitzel|mørbrad|ribben", re.I)
+_KOED_IKKE = re.compile(r"bouillon|fond|sauce|krydderi|fars\s*krydderi", re.I)
+MIN_KOED_G = 100
+# Retter, der tager lang tid, uanset hvad AI'en skriver: flæskesteg på "60 min".
+_LANGSOM = ((re.compile(r"flæskesteg|ribbensteg|helstegt|hel kylling|langtidsstegt|pulled|oksesteg|lammesteg|"
+                        r"kalvesteg|andesteg|svinesteg|gryderet med oksekød|oksegryde", re.I), 90),)
+# Ord i navnet, der ikke er en vare ("Laks med salat" af tomat og agurk, "Kylling i ovnen").
+_IKKE_VARE = {"salat", "sovs", "sauce", "dressing", "grønt", "grøntsager", "tilbehør", "fyld", "ovnen", "ovn", "wok",
+              "fad", "pande", "gryde", "folie", "mild", "stærk", "cremet", "sprød", "sprøde", "hjemmelavet",
+              "hjemmelavede", "hjemmerørt", "bagt", "bagte", "stegt", "stegte", "kogt", "kogte", "familiens"}
+# Varenavne, butikken ikke kan finde: skriv hvad det er.
+_UKLAR = {"creme", "sauce", "krydderier", "tørrede krydderier", "krydderiblanding", "dressing", "grønt", "fyld"}
+
+
+def ret_problemer(ret: dict) -> list[str]:
+    """Det, der er galt med en ret fra AI'en, som tekst til den - tom liste når retten hænger sammen."""
+    ud = [(f"'{m}' nævnes i trinene, men står ikke på ingredienslisten" if m != "krydderier"
+           else "trinene siger bare 'krydderier' - nævn hvert krydderi") for m in opskrift_mangler(ret)]
+    ing = [i for i in ret.get("ingredienser") or [] if isinstance(i, dict)]
+    navne = " ".join(str(i.get("navn", "")) for i in ing).lower()
+    navn = str(ret.get("navn") or "").lower()
+    # Navnet lover noget, der ikke er i retten ("Karbonader med ærter" uden ærter).
+    for ord_ in re.findall(r"\b(?:med|og|i)\s+([a-zæøå]{4,})", navn):
+        stamme = _stamme(ord_)
+        if ord_ not in _FYLDORD and ord_ not in _IKKE_VARE and stamme[:5] not in navne and ord_[:5] not in navne:
+            ud.append(f"navnet nævner '{ord_}', men det er ikke på ingredienslisten")
+    # For lidt kød/fisk pr. person.
+    koed = 0.0
+    for i in ing:
+        if i.get("enhed") == "g" and _KOED.search(str(i.get("navn", ""))) and not _KOED_IKKE.search(str(i.get("navn", ""))):
+            try:
+                koed += float(i.get("pr_person") or 0)
+            except (TypeError, ValueError):
+                pass
+    if 0 < koed < MIN_KOED_G and not ret.get("vegetar"):
+        ud.append(f"kun {round(koed)} g kød/fisk pr. person - brug 125-175 g (steg med ben/svær ca. 250 g)")
+    for moenster, minut in _LANGSOM:
+        if moenster.search(navn) and int(ret.get("tid_min") or 0) < minut:
+            ud.append(f"'tid_min' er {ret.get('tid_min')}, men retten tager mindst {minut} min - vælg en hurtigere "
+                      "ret, hvis tiden ikke rækker")
+    uklare = [str(i.get("navn")) for i in ing if str(i.get("navn", "")).strip().lower() in _UKLAR]
+    if uklare:
+        ud.append("skriv præcist hvilken vare: " + ", ".join(f"'{u}'" for u in uklare) + " (fx 'Creme fraiche 18%')")
+    return ud
+
+
+_STR_BAGTIL = re.compile(r"[,(]?\s*\d+(?:[.,]\d+)?\s*(?:g|kg|ml|cl|dl|l|stk)\.?\)?\s*$", re.I)
+_MGD_I_TRIN = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:g|kg|ml|cl|dl|l)\b\.?(?:\s+pr\.?\s*person)?\s*", re.I)
+
+
+def rens_ret(ret: dict, slaa_op: Any = None) -> None:
+    """AI'ens navne som en person skriver dem: uden 'S:'-id, uden størrelse ("tomater, 400 g") og aldrig tomme -
+    og trinene uden mængder (de passer kun til ét antal personer; listen regnes om)."""
+    for ing in ret.get("ingredienser") or []:
+        if not isinstance(ing, dict):
+            continue
+        navn = re.sub(r"^[STRN]:", "", str(ing.get("navn") or "")).strip()
+        navn = _STR_BAGTIL.sub("", navn).strip(" ,")
+        if not navn:
+            v = str(ing.get("vare") or "")
+            fundet = slaa_op(v) if slaa_op and v[1:2] == ":" else None
+            navn = (fundet or {}).get("navn") or (v[2:] if v[1:2] == ":" else v)
+        ing["navn"] = navn
+    trin = []
+    for t in ret.get("trin") or []:
+        ny = _MGD_I_TRIN.sub("", str(t))
+        if ny != str(t):
+            ny = re.sub(r"\s+pr\.?\s*person\b", "", ny)  # "175 g kylling pr. person" - mængden er væk
+        ny = re.sub(r"\s{2,}", " ", ny).strip()
+        trin.append(ny[:1].upper() + ny[1:] if ny else ny)
+    if trin:
+        ret["trin"] = trin
 
 
 def opskrift_mangler(ret: dict) -> list[str]:

@@ -58,6 +58,7 @@ _UDTRYK = {
     "sej": "mørksejfilet",
     "rejer": "rejer i lage",
     "kalkun": "kalkunbryst",
+    "creme": "creme fraiche",  # AI'en skriver af og til bare "Creme" (fx i mexicanske retter)
     "svampe": "champignon",
     "kål": "hvidkål",
     "salat": "hjertesalat",
@@ -143,6 +144,11 @@ def _ny_farve(soeg_ord: list[str], navn: list[str]) -> bool:
 
 
 # Ord, der er for brede til at søge på alene ("taco krydderi" må ikke blive til pebernødkrydderi).
+# Tillægsord er aldrig en vares hovedord: "tørrede krydderier" blev til "Soltørrede tomater".
+_TILLAEG = {
+    "tørrede", "tørret", "hakkede", "hakket", "friske", "frisk", "frosne", "frossen", "frosset", "revet", "revne",
+    "røget", "røgede", "kogte", "kogt", "stegte", "stegt", "flåede", "grove", "groft", "fine", "fint", "blandede",
+}
 _GENERISK = {
     "krydderi", "krydderier", "sauce", "mix", "blanding", "salat", "ost", "suppe", "fyld",
     "tern", "skiver", "strimler", "stykker",
@@ -421,6 +427,8 @@ def find_vare(
     hoveder = []
     for o in ordlister:
         hoved = next((w for w in reversed(o) if w not in _GENERISK), None)
+        if hoved in _TILLAEG:
+            continue  # kun et tillægsord tilbage - hellere ingen vare end en forkert
         if len(o) > 1 and hoved:
             hoveder.append(([hoved], soegeord, 0))
     for runde in (hele, hoveder):

@@ -2,6 +2,15 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.22.0 – 2026-11-22
+
+- Better recipes: each dish is a whole dinner with its usual sides (roast pork with potatoes, gravy and red cabbage), steps with oven temperature and times (amounts stay in the ingredient list, so they follow the number of people), and enough meat or fish (125-175 g per person)
+- Dishes are checked before the plan is shown, and sent back to be fixed when the name promises something that isn't in it ("with peas" without peas), there's under 100 g meat or fish per person, a roast is given too little time, or an item is too vague to buy ("Creme")
+- After "Show detailed recipe" you can switch back to the short steps and forth again - no new AI call
+- Ingredient names are cleaned up: no "S:" in front, no pack size in the name, never empty
+- The number of people shows at once when you change it - also before a new plan
+- "Creme" is now bought as crème fraîche, and an item is never matched on a describing word alone ("dried spices" became sun-dried tomatoes)
+
 ## 1.21.2 – 2026-11-22
 
 - No more warning in Home Assistant's log at start-up (the version was read from disk in the event loop)
