@@ -9,6 +9,8 @@ Newest first. Each version lists what changed since the one before.
 - Who cooks and the number of people stay with the day
 - Can't move onto a day before the plan, into another dish's leftovers day, or a dish with short-dated food-waste items to a later day
 - Also works from the adult app link
+- Fixed: an "avoid" rule with more than one word (like "Mexican food") no longer warns on every dish that has a word ending like it - "mad" matched "madlavningsfløde". Only allergies also check the last word, and never common words like "food" or "cuisine"
+- Short words in allergy and avoid rules (3 letters or less) only count at the start or end of a word: "ost" finds "hytteost" and "ostesauce" but not "rostbøf", "and" not "mandler", "is" not "ris", and "te" only as a word of its own
 
 ## 1.22.0 – 2026-11-22
 

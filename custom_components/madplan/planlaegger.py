@@ -271,7 +271,7 @@ class Madplan:
                     hit = next((h for v in (ing or [ret.get("navn", "")]) if (h := allergener.rammer(v, g))), None)
                     if hit:
                         ud.append(f"{DAGE[i]}: indeholder {hit} ({ord_}, {slags})")
-                elif _indeholder(tekst, ord_):
+                elif _indeholder(tekst, ord_, slags == "allergi"):
                     ud.append(f"{DAGE[i]}: indeholder {ord_} ({slags})")
             if 1 <= i <= 5 and int(ret.get("tid_min") or 0) > r["max_tid"]:
                 ud.append(f"{DAGE[i]}: tager {ret.get('tid_min')} min (højst {r['max_tid']} på hverdage)")
@@ -1616,7 +1616,8 @@ class Madplan:
         if not katalog:
             return 0
         laast = {v["key"] for v in self.plan.get("varer", []) if v.get("kurv") or v.get("hjemme")}
-        forbudt = allergener.opdel(list(self.regler.get("allergier") or []) + list(self.regler.get("undgaa") or []))
+        forbudt = [(o, g, True) for o, g in allergener.opdel(list(self.regler.get("allergier") or []))]
+        forbudt += [(o, g, False) for o, g in allergener.opdel(list(self.regler.get("undgaa") or []))]
         start = datetime.date.fromisoformat(self.plan["start"])
         idag = dt_util.now().date()
         tid = dt_util.now().strftime("%H:%M")
@@ -1636,7 +1637,7 @@ class Madplan:
                 md = nu[ean]
                 if dage > 1 and not md.get("fryses"):
                     continue
-                if any(allergener.rammer(md["navn"], g) if g else _indeholder(md["navn"].lower(), o) for o, g in forbudt):
+                if any(allergener.rammer(md["navn"], g) if g else _indeholder(md["navn"].lower(), o, a) for o, g, a in forbudt):
                     continue  # bryder en allergi eller noget, familien ikke vil have
                 navn_l = str(ing.get("navn") or "").lower()
                 if any(m in navn_l and m not in md["navn"].lower() for m in ("glutenfri", "laktosefri", "økologisk")):
@@ -1904,7 +1905,7 @@ class Madplan:
             tekst = " ".join([ret.get("navn", "")] + ing).lower()
             for o, g in allergener.opdel(self.regler["allergier"]):
                 if (g and any(allergener.rammer(v, g) for v in ing or [ret.get("navn", "")])) or (
-                    not g and _indeholder(tekst, o)
+                    not g and _indeholder(tekst, o, True)
                 ):
                     dage.append(i + 1)
                     break
@@ -2573,12 +2574,43 @@ def _forklar(ord_: str, g: str | None) -> str:
     return f"{ord_} (dvs. ingen {', '.join(allergener.varer(g))})" if g else ord_
 
 
-def _indeholder(tekst: str, ord_: str) -> bool:
-    """Allergi/undgå: fanger også sammensatte ord (løg -> rødløg, løgpulver) og "rød peberfrugt" -> peberfrugt."""
+_GENERELLE = _FYLDORD | {"køkken", "stil", "agtig", "agtige", "type", "slags"}
+
+
+def _indeholder(tekst: str, ord_: str, allergi: bool = False) -> bool:
+    """Allergi/undgå: fanger også sammensatte ord (løg -> rødløg, løgpulver). Ved allergier også kun det sidste ord
+    ("rød peberfrugt" -> peberfrugt) - aldrig ved undgå ("mexicansk mad" må ikke ramme "madlavningsfløde"), og aldrig
+    et alment ord som "mad" eller "køkken"."""
     ord_ = ord_.strip().lower()
     if not ord_:
         return False
-    return ord_ in tekst or (" " in ord_ and ord_.split()[-1] in tekst)
+    if _har_ord(tekst, ord_):
+        return True
+    sidste = ord_.split()[-1]
+    return allergi and " " in ord_ and len(sidste) >= 3 and sidste not in _GENERELLE and _har_ord(tekst, sidste)
+
+
+# Korte ord står inde i mange andre ord. De tæller kun først eller sidst i et ord (ost: hytteost, ostesauce - ikke
+# rostbøf), og disse ord tæller ikke ("is" er ikke ris eller issalat). "te" tæller kun som helt ord.
+_KORTE_UNDTAG = {
+    "is": ["ris", "pris", "issalat", "isbjerg", "iskold", "isterning", "ishavsrejer"],
+    "and": ["vand", "sand", "rand", "land"],
+    "ost": ["frost", "kost", "most", "post"],
+    "æg": ["ægte", "væg"],
+    "øl": ["køl", "søl"],
+}
+_KUN_HELE = {"te"}
+
+
+def _har_ord(tekst: str, ord_: str) -> bool:
+    if " " in ord_ or len(ord_) > 3:
+        return ord_ in tekst
+    for u in _KORTE_UNDTAG.get(ord_, []):
+        tekst = re.sub(rf"\w*{re.escape(u)}\w*", " ", tekst)
+    o = re.escape(ord_)
+    if ord_ in _KUN_HELE:
+        return re.search(rf"(?<!\w){o}(?!\w)", tekst) is not None
+    return re.search(rf"(?<!\w){o}|{o}(?!\w)", tekst) is not None
 
 
 def _linjer(tekst: str) -> list[str]:

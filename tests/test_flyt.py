@@ -83,3 +83,4 @@ async def test_madspild_ikke_senere(hass: HomeAssistant) -> None:
         await m.async_flyt_ret(6, 2)  # madspild-retten ville blive skubbet til fredag
     await m.async_flyt_ret(1, 2)  # søndagens ret på mandag: madspild-retten kommer en dag tidligere
     assert [r["navn"] for r in m.plan["retter"][:2]] == ["Ret 1", "Ret 0"]
+
