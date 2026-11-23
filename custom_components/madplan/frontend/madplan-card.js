@@ -7,7 +7,7 @@ const KORT = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap", "udfskift"]);
 const APP_SIDER = ["uge", "ret", "indkob"];
 // Et voksen-link må også styre ugens plan og bruge "Én ret" (serveren tjekker hvert kald).
-const STYR_TILLADT = new Set(["ny", "rester", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
+const STYR_TILLADT = new Set(["ny", "rester", "flytvis", "flyt", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
   "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov",
   "harfjern", "enpers", "findret", "envaelg", "enslet", "enmail", "enliste", "enrema", "enbyt", "enudf", "engem", "enantal"]);
 const STYR_SIDER = [...APP_SIDER, "enret"];
@@ -407,6 +407,13 @@ class MadplanCard extends HTMLElement {
       case "byt":
         this._kald("madplan", "byt_ret", { entity_id: plan, dag });
         break;
+      case "flytvis":
+        this._flytAaben = this._flytAaben === dag ? null : dag;
+        break;
+      case "flyt":
+        this._flytAaben = null;
+        this._kald("madplan", "flyt_ret", { entity_id: plan, dag, til: Number(el.dataset.til) }).catch(() => {});
+        break;
       case "udfskift": {
         const k = el.dataset.k;
         this._simpel = this._simpel || new Set();
@@ -753,6 +760,24 @@ class MadplanCard extends HTMLElement {
   }
 
   /** "Lav til 2 dage": dobbelt portion i dag, rester i morgen - eller fortryd. */
+  /** "Flyt dag": retten (med evt. restedag) bytter plads med en anden dag - samme retter, samme indkøb. */
+  _flytKnap(a, dag) {
+    if (a.rester_fra) return "";
+    return this._knap("flytvis", "Flyt dag", "mdi:calendar-arrow-right", "graa", dag);
+  }
+
+  _flytValg(a, dag) {
+    if (this._flytAaben !== dag || a.rester_fra) return "";
+    const dage = this._hass.states[this._valgt]?.attributes.dag_entiteter || [];
+    const n = a.dobbelt ? 2 : 1;
+    const knapper = dage.map((e, j) => {
+      const d = this._hass.states[e]?.attributes || {};
+      if (j === dag - 1 || d.forbi || j + n > dage.length) return "";
+      return `<button data-h="flyt" data-dag="${dag}" data-til="${j + 1}" title="${DAGE[j]}">${KORT[j]}</button>`;
+    }).join("");
+    return `<div class="flytvalg"><span>Flyt til</span><div>${knapper}</div></div>`;
+  }
+
   _resterKnap(a, i, dage) {
     if (a.rester_fra) return this._knap("rester", "Fortryd rester", "mdi:undo", "graa", i);
     if (a.dobbelt) return this._knap("rester", "Kun 1 dag", "mdi:undo", "graa", i + 1);
@@ -977,8 +1002,9 @@ class MadplanCard extends HTMLElement {
         ${liste}
         <div class="knapper">
           ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", dag)}
+          ${this._flytKnap(a, dag)}
           ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", dag)}
-        </div>
+        </div>${this._flytValg(a, dag)}
       </div>
     </div>`;
   }
@@ -1313,6 +1339,12 @@ const CSS = `
   .knap.lys { background: #fff; color: #1c1c1c; }
   .knap.graa { background: var(--secondary-background-color); color: var(--primary-text-color); }
   .knap.fuld { width: 100%; padding: 12px; }
+  .flytvalg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+  .flytvalg > span { color: var(--secondary-text-color); }
+  .flytvalg > div { display: flex; gap: 6px; flex-wrap: wrap; }
+  .flytvalg button { min-width: 44px; height: 36px; padding: 0 10px; border-radius: 18px; border: 1px solid var(--divider-color);
+    background: none; color: var(--primary-text-color); font: inherit; cursor: pointer; }
+  .flytvalg button:active { background: var(--brand); border-color: var(--brand); color: var(--brand-tekst); }
   .knap.bekraeft { background: #ef6c00 !important; color: #fff !important; }
 
   /* Ugestribe */
@@ -1651,11 +1683,12 @@ class MadplanPanel extends MadplanCard {
         ${this._trin(a, i + 1)}</div>
       <div class="knapper">
         ${this._knap("byt", "Byt ret", "mdi:swap-horizontal", "", i + 1)}
+        ${this._flytKnap(a, i + 1)}
         ${this._knap("fjern", "Spiser ude", "mdi:close", "graa", i + 1)}
         ${this._resterKnap(a, i, dage)}
         ${a.min_ret || a.rester_fra ? "" : this._knap("gemmin", "Gem som min ret", "mdi:heart-plus-outline", "graa", i + 1)}
         ${this._hass.states[this._valgt]?.attributes.har_mail ? this._knap("dagmail", "Send på mail", "mdi:email-outline", "graa", i + 1) : ""}
-      </div>
+      </div>${this._flytValg(a, i + 1)}
     </article>`;
   }
 

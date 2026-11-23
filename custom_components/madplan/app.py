@@ -40,7 +40,7 @@ SKJULT = frozenset({"profiler", "auto_planer", "mine_retter", "en_ret", "en_ret_
 EN_RET = frozenset({"en_ret", "en_ret_status"})  # "Én ret" - kun for et voksen-link
 ROLLER = ("boern", "voksen")
 # Det, et voksen-link må kalde: Madplans egne handlinger for ugens plan og "Én ret". Ikke regler, profiler, hjælp osv.
-STYR = frozenset({"ny_plan", "byt_ret", "fjern_ret", "udfoerlig_opskrift", "overfoer", "tilfoej_behov", "fjern_behov",
+STYR = frozenset({"ny_plan", "byt_ret", "fjern_ret", "flyt_ret", "udfoerlig_opskrift", "overfoer", "tilfoej_behov", "fjern_behov",
                   "ekstra_antal", "marker", "toem_kurv", "dag_kok", "dag_personer", "rester", "dag_mail",
                   "en_ret", "slet_en_ret", "en_ret_paa_listen", "en_ret_mail", "en_ret_byt", "en_ret_udfoerlig",
                   "en_ret_personer", "en_ret_gem", "en_ret_rema"})

@@ -2,6 +2,14 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.23.0 – 2026-11-23
+
+- "Move day": move a dish to another day of the week - the two days swap places. Same dishes, same shopping list, no new AI plan
+- A dish made for 2 days moves together with its leftovers day
+- Who cooks and the number of people stay with the day
+- Can't move onto a day before the plan, into another dish's leftovers day, or a dish with short-dated food-waste items to a later day
+- Also works from the adult app link
+
 ## 1.22.0 – 2026-11-22
 
 - Better recipes: each dish is a whole dinner with its usual sides (roast pork with potatoes, gravy and red cabbage), steps with oven temperature and times (amounts stay in the ingredient list, so they follow the number of people), and enough meat or fish (125-175 g per person)

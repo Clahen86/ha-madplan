@@ -107,6 +107,24 @@
         }
       }
     },
+    "flyt_ret": {
+      "name": "Move dish",
+      "description": "Move the day's dish to another day; that day's dish comes to this day.",
+      "fields": {
+        "dag": {
+          "name": "Day",
+          "description": "1 = Sunday … 7 = Saturday"
+        },
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan to act on. Can be left out if there is only one store."
+        },
+        "til": {
+          "name": "To day",
+          "description": "1 = Sunday … 7 = Saturday"
+        }
+      }
+    },
     "overfoer": {
       "name": "Send shopping list",
       "description": "Sends missing items to the shopping list and/or e-mail.",

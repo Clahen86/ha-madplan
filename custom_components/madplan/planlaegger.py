@@ -960,6 +960,75 @@ class Madplan:
             await self._gem()
             self.opdater()
 
+    @staticmethod
+    def _blok(retter: list[dict], i: int) -> list[int]:
+        """Dagene, der hører sammen: en ret lavet til 2 dage og dens restedag flyttes sammen."""
+        if (fra := retter[i].get("rester_fra")) is not None:
+            return [fra, fra + 1]
+        if retter[i].get("dobbelt") and i + 1 < len(retter):
+            return [i, i + 1]
+        return [i]
+
+    @staticmethod
+    def _har_madspild(ret: dict) -> bool:
+        return any(str(x.get("vare", "")).startswith("T:madspild-") for x in ret.get("ingredienser") or [])
+
+    def _flyt(self, retter: list[dict], fra: int, til: int) -> None:
+        """Retten på dag 'fra' (med evt. restedag) kommer på dag 'til'; de retter, den skubber væk, får de ledige dage.
+        Hvem der laver mad og antal personer hører til dagen og bliver stående."""
+        n = len(retter)
+        blok = self._blok(retter, fra)
+        if retter[fra].get("rester_fra") is not None:
+            fra = blok[0]
+        if not 0 <= til < n or til + len(blok) > n:
+            raise HomeAssistantError("Retten kan ikke flyttes dertil")
+        if til == fra:
+            return
+        maal = list(range(til, til + len(blok)))
+        ud_af = [j for j in maal if j not in blok]  # de retter, der skubbes væk
+        ledige = [j for j in blok if j not in maal]
+        for j in maal + ud_af:
+            r = retter[j]
+            if r.get("forbi"):
+                raise HomeAssistantError(f"{DAGE[j]} er før planen")
+            if j not in blok and (r.get("dobbelt") or r.get("rester_fra") is not None):
+                raise HomeAssistantError(f"{DAGE[j]} er en del af en ret til 2 dage - flyt den først")
+        if til > fra and self._har_madspild(retter[fra]):
+            raise HomeAssistantError("Retten har madspild-varer med kort holdbarhed og kan ikke flyttes senere")
+        for k, j in enumerate(ud_af):
+            if ledige[k] > j and self._har_madspild(retter[j]):
+                raise HomeAssistantError(f"{DAGE[j]} har madspild-varer med kort holdbarhed og kan ikke flyttes senere")
+        dagens = {j: {k: retter[j].get(k) for k in ("kok", "personer")} for j in range(n)}
+        gamle = list(retter)
+        for k, j in enumerate(blok):
+            retter[maal[k]] = gamle[j]
+        for k, j in enumerate(ud_af):
+            retter[ledige[k]] = gamle[j]
+        for j in set(maal + ledige):
+            for k, v in dagens[j].items():
+                if v is None:
+                    retter[j].pop(k, None)
+                else:
+                    retter[j][k] = v
+        # Restedagen peger på sin ret - og siger, hvilken dag den er fra.
+        for j, r in enumerate(retter):
+            if r.get("rester_fra") is not None and j > 0 and retter[j - 1].get("dobbelt"):
+                r["rester_fra"] = j - 1
+                r["kort"] = f"Rester fra {DAGE[j - 1].lower()} - intet at købe."
+                r["trin"] = [f"Varm resterne fra {DAGE[j - 1].lower()}, og server."]
+
+    async def async_flyt_ret(self, dag: int, til: int) -> None:
+        """Flyt dagens ret til en anden dag; retten dér kommer på denne dag. Samme retter, samme indkøb."""
+        retter = self.plan.get("retter") or []
+        if self.optaget or not 1 <= dag <= len(retter):
+            raise HomeAssistantError("Retten kan ikke flyttes lige nu")
+        async with self._laas:
+            self._flyt(retter, dag - 1, til - 1)
+            await self._hent_data(datetime.date.fromisoformat(self.plan["start"]), None)
+            self._beregn()
+            await self._gem()
+            self.opdater()
+
     async def async_saet_personer(self, antal: int) -> None:
         self.personer = max(1, int(antal))
         self.opdater()  # tallet vises med det samme - omregningen af planen kan tage lidt tid

@@ -113,6 +113,7 @@ DAG_SKEMA = SKEMA.extend({vol.Required("dag"): vol.All(vol.Coerce(int), vol.Rang
 EKSTRA_BUTIKKER_SKEMA = SKEMA.extend(
     {vol.Required("butikker"): vol.All(cv.ensure_list, [vol.In(list(BUTIKKER))], vol.Length(max=2))}
 )
+FLYT_SKEMA = DAG_SKEMA.extend({vol.Required("til"): vol.All(vol.Coerce(int), vol.Range(min=1, max=7))})
 RESTER_SKEMA = DAG_SKEMA.extend({vol.Optional("til", default=True): cv.boolean})
 DAG_PERSONER_SKEMA = DAG_SKEMA.extend({vol.Required("personer"): vol.All(vol.Coerce(int), vol.Range(min=0, max=30))})
 # Hvem laver mad: person.x eller et navn. "" = ingen.
@@ -212,6 +213,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def fjern_ret(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_fjern_ret(call.data["dag"])
+
+    async def flyt_ret(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_flyt_ret(call.data["dag"], call.data["til"])
 
     async def overfoer(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_overfoer(call.data.get("til", "liste"))
@@ -403,6 +407,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "ny_plan", ny_plan, schema=NY_PLAN_SKEMA)
     hass.services.async_register(DOMAIN, "byt_ret", byt_ret, schema=DAG_SKEMA)
     hass.services.async_register(DOMAIN, "fjern_ret", fjern_ret, schema=DAG_SKEMA)
+    hass.services.async_register(DOMAIN, "flyt_ret", flyt_ret, schema=FLYT_SKEMA)
     hass.services.async_register(DOMAIN, "udfoerlig_opskrift", udfoerlig, schema=DAG_SKEMA)
     hass.services.async_register(
         DOMAIN, "overfoer", overfoer, schema=SKEMA.extend({vol.Optional("til", default="liste"): vol.In(["liste", "rema"])})

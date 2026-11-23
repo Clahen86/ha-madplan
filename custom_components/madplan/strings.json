@@ -107,6 +107,24 @@
         }
       }
     },
+    "flyt_ret": {
+      "name": "Flyt ret",
+      "description": "Flyt dagens ret til en anden dag; retten dér kommer på denne dag.",
+      "fields": {
+        "dag": {
+          "name": "Dag",
+          "description": "1 = søndag … 7 = lørdag"
+        },
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "til": {
+          "name": "Til dag",
+          "description": "1 = søndag … 7 = lørdag"
+        }
+      }
+    },
     "overfoer": {
       "name": "Send indkøbsliste",
       "description": "Sender de manglende varer til indkøbslisten og/eller mail.",

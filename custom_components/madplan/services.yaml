@@ -24,6 +24,11 @@ fjern_ret:
   fields:
     entity_id: *madplan
     dag: *dag
+flyt_ret:
+  fields:
+    entity_id: *madplan
+    dag: *dag
+    til: *dag
 overfoer:
   fields:
     til:
