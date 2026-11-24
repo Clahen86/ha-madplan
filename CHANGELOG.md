@@ -2,6 +2,13 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.24.2 – 2026-11-24
+
+- Nothing in a recipe silently falls off the shopping list: an ingredient whose offer can't be found or has no price is listed by its own name
+- An offer for several things ("Chickpeas, beans or tomatoes") says which one the recipes need: "→ tomatoes"
+- The detailed recipe is told how each item is bought (a can, not fresh), so it doesn't ask you to dice fresh tomatoes
+- This week's plan is fixed once at start, without a new plan or AI: what was missing is added for the coming days, and detailed recipes for coming days built on a wrong item are made again when asked
+
 ## 1.24.1 – 2026-11-24
 
 - "Own items" is now called "Other shopping"

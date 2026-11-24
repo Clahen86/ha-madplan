@@ -213,11 +213,52 @@ class Madplan:
             if e.get("kurv") and not e.get("koebt_tid"):
                 e["koebt_tid"] = time.time()  # købt før 1.24.1: de 2 timer regnes herfra
         self._ryd_koebte()  # købt for mere end 2 timer siden, mens HA var nede
+        if self.plan.get("retter") and self.plan.get("start") and self.plan.get("rettet", 0) < 2:
+            self.entry.async_create_background_task(self.hass, self._reparer_listen(), "madplan_reparer_listen")
         if any(e.get("kurv") and not e.get("skjult") for e in self.plan.get("ekstra") or []):
             self.entry.async_on_unload(async_call_later(self.hass, KOEBT_VAEK + 5, self._ryd_koebte_job))
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
+
+    async def _reparer_listen(self) -> None:
+        """1.24.2, én gang for en plan lavet før: ingredienser, der faldt stille af indkøbslisten, kommer på (kun til
+        kommende dage), "eller"-tilbud siger, hvilken der skal tages, og en udførlig opskrift til en kommende dag, der
+        bygger på en forkert vare, laves igen næste gang. Uden AI."""
+        try:
+            async with self._laas:
+                start = datetime.date.fromisoformat(self.plan["start"])
+                await self._hent_data(start, start + datetime.timedelta(days=6))
+                foer = {v["key"] for v in self.plan.get("varer", [])}
+                self._beregn()
+                idag = (dt_util.now().date() - start).days
+                for v in self.plan.get("varer", []):
+                    if v["key"] not in foer and v.get("dage") and max(v["dage"]) <= idag:
+                        v["skjult"] = True  # kun til en dag, der er gået: ikke købt nu
+                kilde = self.plan.get("tilbud") or {}
+                for i, ret in enumerate(self.plan.get("retter") or []):
+                    forkert = any(ing.get("rettet") or " eller " in str((kilde.get(str(ing.get("vare"))[2:]) or {}).get("navn", "")).lower()
+                                  for ing in ret.get("ingredienser") or [] if isinstance(ing, dict))
+                    if i > idag and forkert:
+                        ret.pop("udfoerlig", None)
+                self.plan["rettet"] = 2
+                self._totaler()
+                await self._gem()
+            self.opdater()
+        except Exception:  # noqa: BLE001 - planen er som før
+            _LOGGER.warning("Kunne ikke rette indkøbslisten", exc_info=True)
+
+    def _linjer_til_ai(self, ret: dict) -> list[str]:
+        """Ingredienslinjerne - og hvordan en vare er købt, når det ikke er det samme ("tomater" = en dåse)."""
+        linjer = list(ret.get("_linjer") or [])
+        kilder_ = {"T": self.plan.get("tilbud") or self.tilbud, "R": self.katalog, "N": self.salling}
+        koebt = []
+        for ing in ret.get("ingredienser") or []:
+            v = str(ing.get("vare") or "") if isinstance(ing, dict) else ""
+            vare = (kilder_.get(v[:1]) or {}).get(v[2:]) if v[1:2] == ":" else None
+            if vare and not soeg.ligner(str(ing.get("navn", "")), str(vare.get("navn", ""))) or vare and " eller " in str(vare.get("navn", "")).lower():
+                koebt.append(f"{ing.get('navn')} = købt som {vare['navn']} ({vare.get('str', '')})")
+        return linjer + (["", "SÅDAN ER VARERNE KØBT (brug dem sådan, fx dåse frem for frisk):", *koebt] if koebt else [])
 
     def _ret_id_navne(self) -> None:
         """En plan lavet før 1.23.1: en ingrediens, der hedder et tilbuds-id, får tilbuddets navn - i listen og i den
@@ -229,7 +270,7 @@ class Madplan:
                 if not gammel or not (t := tilbud.get(gammel)) or not t.get("navn"):
                     continue
                 ny = str(t["navn"])
-                ing["navn"] = ny
+                ing["navn"], ing["vare"], ing["rettet"] = ny, f"T:{gammel}", True
                 ret["_linjer"] = [str(x).replace(gammel, ny) for x in ret.get("_linjer") or []]
                 if isinstance(u := ret.get("udfoerlig"), dict):
                     for k in ("trin", "tips"):
@@ -518,7 +559,7 @@ class Madplan:
         ret = retter[dag - 1]
         if ret.get("udfoerlig") or ret.get("udfoerlig_status") == "laver":
             return
-        await self._skriv_udfoerlig(ret, ret.get("personer") or self.personer, ret.get("_linjer") or [])
+        await self._skriv_udfoerlig(ret, ret.get("personer") or self.personer, self._linjer_til_ai(ret))
 
     async def _skriv_udfoerlig(self, ret: dict, n: int, linjer: list[str]) -> None:
         """Ét AI-kald: trin med temperaturer, tider og mængder, og op til 3 tips. Gemmes i retten."""
@@ -2488,6 +2529,10 @@ class Madplan:
                 vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
                 linjer.append(f"{vis} {ing.get('navn', '')}".strip() if vis else f"{ing.get('navn', '')} (efter smag)")
                 info = self._slaa_op(ing.get("vare"), start)
+                if not info and not _basis(ing) and (eget := str(ing.get("navn") or "").strip()):
+                    # Aldrig stille væk fra listen: et tilbud uden pris eller et forkert id står med sit navn.
+                    ing["vare"] = f"S:{eget.lower()}"
+                    info = self._slaa_op(ing["vare"], start)
                 if not info:
                     continue
                 navn, strr, enhedspris, _, tilbud = info
@@ -2495,6 +2540,7 @@ class Madplan:
                     ing["vare"],
                     {"navn": navn, "str": strr, "pris": enhedspris, "tilbud": tilbud, "andel": 0.0, "basis": True},
                 )
+                f.setdefault("navne", set()).add(str(ing.get("navn") or ""))
                 f["butik"] = self._anden_butik(ing["vare"])
                 f.setdefault("retter", set()).add(i)
                 # Den første dag, varen bruges - madspild skal bruges med det samme eller fryses.
@@ -2549,6 +2595,7 @@ class Madplan:
                     "kurv": key in i_kurv,
                     "skjult": key in skjult,  # købt og "Tøm kurven" trykket
                     "butik": f.get("butik"),
+                    "til": _eller_til(f["navn"], f.get("navne")),  # "Kikærter, bønner eller tomater" → tomater
                     "madspild_udsolgt": f.get("madspild_udsolgt", False),
                     # De dage varen bruges, og hvad der er tilovers af pakkerne (fx 750 g kylling, 150 g brugt).
                     "dage": sorted(f.get("retter") or ()),
@@ -2717,7 +2764,16 @@ def vare_tekst(v: dict) -> str:
     strr = v["str"].split(" / ")[0].replace("pcs", "stk").replace("GR.", "g").replace("KG.", "kg")
     strr = strr.replace("LTR.", "l").replace("ML.", "ml").replace("STK.", "stk").strip()
     antal = f"{v['antal']} × " if v["antal"] > 1 else ""
-    return f"{mark}{antal}{v['navn']} ({strr})" if strr else f"{mark}{antal}{v['navn']}"
+    navn = f"{v['navn']} → {v['til']}" if v.get("til") else v["navn"]
+    return f"{mark}{antal}{navn} ({strr})" if strr else f"{mark}{antal}{navn}"
+
+
+def _eller_til(tilbud: str, navne: Any) -> str | None:
+    """Et tilbud på flere ting ("Kikærter, bønner eller tomater"): hvilken retterne skal bruge."""
+    if " eller " not in str(tilbud).lower() or not navne:
+        return None
+    rene = sorted({re.sub(r"^REMA 1000\s+", "", str(n), flags=re.I).strip().lower() for n in navne if str(n).strip()})
+    return ", ".join(rene)[:60] or None
 
 
 def _basis(ing: dict) -> bool:
