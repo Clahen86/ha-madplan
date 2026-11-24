@@ -699,7 +699,7 @@
     },
     "egen_vare": {
       "name": "Tilføj egen vare",
-      "description": "Sætter en vare på listen Egne varer, præcis som den er skrevet – uden AI og uden pris.",
+      "description": "Sætter en vare på listen Øvrige indkøb, præcis som den er skrevet – uden AI og uden pris.",
       "fields": {
         "entity_id": {
           "name": "Madplan",

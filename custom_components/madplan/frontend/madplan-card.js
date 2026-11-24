@@ -4,7 +4,7 @@ const DAGE = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "L�
 const KORT = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 
 // Appen fra et link (uden login): kun at se planen og krydse varer af. Serveren tillader heller ikke andet.
-const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "vare", "husknap", "udfskift"]);
+const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste", "fane", "hjemme", "koebt", "vare", "husknap", "udfskift"]);
 const APP_SIDER = ["uge", "ret", "indkob"];
 // Et voksen-link må også styre ugens plan og bruge "Én ret" (serveren tjekker hvert kald).
 const STYR_TILLADT = new Set(["ny", "rester", "flytvis", "flyt", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
@@ -443,6 +443,12 @@ class MadplanCard extends HTMLElement {
       case "hjemme":
         this._visHjemme = !this._visHjemme;
         break;
+      case "koebt": {
+        this._visKoebt = this._visKoebt || new Set();
+        const k = el.dataset.k;
+        this._visKoebt.has(k) ? this._visKoebt.delete(k) : this._visKoebt.add(k);
+        break;
+      }
       case "vare": {
         // Tryk = i kurven (eller tilbage på listen). En vare, I har hjemme, kommer tilbage på listen.
         const t = el.dataset.tilstand;
@@ -1049,7 +1055,7 @@ class MadplanCard extends HTMLElement {
         ${iKurv ? this._knap("toemkurv", "Tøm kurven", "mdi:cart-remove", "graa lille") : ""}</div>
       <div class="fremdrift"><div style="width:${pct}%"></div></div>
       ${this._perButik(koeb, linje)}
-      ${kurv.map(linje).join("")}
+      ${this._koebt(kurv, linje)}
       ${
         hjemme.length
           ? `<button class="vis-hjemme" data-h="hjemme"><ha-icon icon="${this._visHjemme ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>Har hjemme (${hjemme.length})</button>
@@ -1206,21 +1212,33 @@ class MadplanCard extends HTMLElement {
     const a = s.attributes;
     const raekke = { "": 0, kurv: 1, hjemme: 2 };
     const varer = [...this._ekstra].sort((x, y) => raekke[this._tilstand(x)] - raekke[this._tilstand(y)]);
+    const ekLinje = (v) => this._vareLinje(v, "ekstra");
     const mangler = varer.filter((v) => this._tilstand(v) !== "hjemme");
     const finder = (a.status || "").startsWith("Finder priser");
     const ca = a.ekstra_uden_pris || a.ekstra_ca ? "ca. " : "";
     return `<div class="ekstra">
-      <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Egne varer</span>
+      <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Øvrige indkøb</span>
         ${varer.length ? `<span class="mangler">${mangler.length} varer${a.ekstra_total ? ` · ${ca}${kr(a.ekstra_total)}` : ""}</span>` : ""}</div>
       <form class="behov-form" data-form="egen"><input name="egen" autocomplete="off" enterkeyhint="done" maxlength="80"
           placeholder="Tilføj vare, fx toiletpapir" value="${esc(this._inputs.egen || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
-      ${varer.map((v) => this._vareLinje(v, "ekstra")).join("")}
+      ${varer.filter((v) => this._tilstand(v) !== "kurv").map(ekLinje).join("")}
+      ${this._koebt(varer.filter((v) => this._tilstand(v) === "kurv"), ekLinje, "Forsvinder 2 timer efter, de er købt.")}
       ${varer.length ? `<button class="knap findknap" data-h="findpriser" ${finder ? "disabled" : ""}>
           <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:tag-search-outline"}"></ha-icon>${finder ? "Finder priser …" : "Find priser"}</button>` : ""}
     </div>${this._ialt(s)}`;
   }
 
-  /** Aftensmad og egne varer tilsammen - kun når begge har noget. */
+  /** Købte varer foldet sammen, så kun det, der mangler, fylder. "Tøm kurven" fjerner dem helt. */
+  _koebt(varer, linje, note = "") {
+    if (!varer.length) return "";
+    this._visKoebt = this._visKoebt || new Set();
+    const id = note ? "ekstra" : "varer";
+    const aaben = this._visKoebt.has(id);
+    return `<button class="vis-hjemme" data-h="koebt" data-k="${id}"><ha-icon icon="${aaben ? "mdi:chevron-up" : "mdi:chevron-down"}"></ha-icon>Købt (${varer.length})</button>
+      ${aaben ? `${note ? `<div class="hjaelp">${note}</div>` : ""}${varer.map(linje).join("")}` : ""}`;
+  }
+
+  /** Aftensmad og øvrige indkøb tilsammen - kun når begge har noget. */
   _ialt(s) {
     const a = s.attributes;
     const mad = Number(s.state) || 0, egne = Number(a.ekstra_total) || 0;

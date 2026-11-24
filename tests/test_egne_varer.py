@@ -2,6 +2,8 @@
 
 import datetime
 
+import pytest
+
 from homeassistant.core import HomeAssistant
 
 from custom_components.madplan.planlaegger import EGNE, _egne_videre
@@ -59,3 +61,39 @@ async def test_hver_uge_kommer_med_i_ny_plan(hass: HomeAssistant) -> None:
     kaffe.update(pris=40.0, ukendt=False, hjemme=True, antal=2)
     videre = _egne_videre(m.plan["ekstra"] + [{"uid": "e1", "navn": "Rugbrød", "behov": "madpakker"}])
     assert [(e["navn"], e["antal"], e["hver_uge"], e["hjemme"], e["ukendt"]) for e in videre] == [("Kaffe", 2, True, False, True)]
+
+
+@pytest.mark.parametrize("expected_lingering_timers", [True])
+async def test_koebt_oevrig_vare_forsvinder_efter_2_timer(hass: HomeAssistant) -> None:
+    """Købt: væk efter 2 timer. En ↻-vare skjules og kommer igen næste uge. Fortrudt: bliver."""
+    import time
+
+    m = await _klar(hass)
+    for t in ("Kaffe", "Gavepapir", "Mælk"):
+        await m.async_egen_vare(t)
+    kaffe, gave, maelk = m.plan["ekstra"]
+    await m.async_hver_uge(kaffe["uid"], True)
+    for e in (kaffe, gave, maelk):
+        await m.async_marker("ekstra", e["uid"], "kurv", True)
+    await m.async_marker("ekstra", maelk["uid"], "kurv", False)  # fortrudt
+    assert not m._ryd_koebte()  # ikke 2 timer endnu
+    for e in (kaffe, gave):
+        e["koebt_tid"] = time.time() - 2 * 3600 - 1
+    assert m._ryd_koebte()
+    assert [e["navn"] for e in m.plan["ekstra"]] == ["Kaffe", "Mælk"] and kaffe["skjult"]
+    assert [e["navn"] for e in _egne_videre(m.plan["ekstra"])] == ["Kaffe"]  # næste uge igen
+
+
+@pytest.mark.parametrize("expected_lingering_timers", [True])
+async def test_toem_kurven_fjerner_det_koebte(hass: HomeAssistant) -> None:
+    """Aftensmadens købte varer skjules (planen ved stadig, de er købt); øvrige indkøb slettes."""
+    from custom_components.madplan import todo
+
+    m = await _klar(hass)
+    await m.async_egen_vare("Kaffe")
+    await m.async_marker("ekstra", m.plan["ekstra"][0]["uid"], "kurv", True)
+    await m.async_marker("varer", "pasta", "kurv", True)
+    await m.async_toem_kurv()
+    assert m.plan["ekstra"] == []
+    pasta = m.plan["varer"][0]
+    assert pasta["kurv"] and pasta["skjult"] and todo.varer(m) == []

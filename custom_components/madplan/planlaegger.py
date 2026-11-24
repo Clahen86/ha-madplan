@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.todo import TodoListEntityFeature
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -206,6 +207,14 @@ class Madplan:
             if gamle:
                 await self._p["regler_store"].async_save(r)
         self._ret_id_navne()
+        for e in self.plan.get("ekstra") or []:
+            if e.get("egen"):
+                e["behov"] = EGNE  # hed "Egne varer" i 1.24.0
+            if e.get("kurv") and not e.get("koebt_tid"):
+                e["koebt_tid"] = time.time()  # købt før 1.24.1: de 2 timer regnes herfra
+        self._ryd_koebte()  # købt for mere end 2 timer siden, mens HA var nede
+        if any(e.get("kurv") and not e.get("skjult") for e in self.plan.get("ekstra") or []):
+            self.entry.async_on_unload(async_call_later(self.hass, KOEBT_VAEK + 5, self._ryd_koebte_job))
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
@@ -1149,6 +1158,14 @@ class Madplan:
                     v["hjemme" if felt == "kurv" else "kurv"] = False
                 elif felt == "kurv":
                     v["hjemme"] = False
+                # Købt: en øvrig vare forsvinder 2 timer efter (fortrudt: bliver).
+                if felt == "kurv" and vaerdi:
+                    v["koebt_tid"] = time.time()
+                else:
+                    v.pop("koebt_tid", None)
+                    v.pop("skjult", None)
+                if liste == "ekstra" and felt == "kurv" and vaerdi:
+                    self.entry.async_on_unload(async_call_later(self.hass, KOEBT_VAEK + 5, self._ryd_koebte_job))
                 if liste == "varer" and v.get("basis") and foer != bool(v.get("hjemme")):
                     # Køkkenskabet læres: en basisvare, I manglede, regnes ikke med næste gang - og omvendt.
                     (self.mangler_ofte.discard if v.get("hjemme") else self.mangler_ofte.add)(v["navn"])
@@ -1157,10 +1174,38 @@ class Madplan:
         self.opdater()
 
     async def async_toem_kurv(self) -> None:
-        for v in self.plan.get("varer", []) + self.plan.get("ekstra", []):
-            v["kurv"] = False
+        """Færdig med at handle: det købte forsvinder fra listen. Aftensmadens varer skjules kun - planen skal stadig
+        vide, at de er købt (madspild byttes ikke, rester regnes). Øvrige indkøb slettes; ↻-varer kommer igen næste uge."""
+        self._ryd_koebte(alle=True)
+        self._totaler()
         await self._gem()
         self.opdater()
+
+    def _ryd_koebte(self, alle: bool = False) -> bool:
+        """Øvrige indkøb købt for mere end 2 timer siden (alle=True: alt købt, også aftensmaden). True = noget ændret."""
+        nu, aendret = time.time(), False
+        if alle:
+            for v in self.plan.get("varer", []):
+                if v.get("kurv") and not v.get("skjult"):
+                    v["skjult"] = aendret = True
+        behold = []
+        for e in self.plan.get("ekstra", []):
+            koebt = e.get("kurv") and not e.get("skjult") and (alle or nu - float(e.get("koebt_tid") or nu) >= KOEBT_VAEK)
+            if not koebt:
+                behold.append(e)
+                continue
+            aendret = True
+            if e.get("hver_uge"):
+                e["skjult"] = True  # kommer igen i næste uges plan
+                behold.append(e)
+        self.plan["ekstra"] = behold
+        return aendret
+
+    async def _ryd_koebte_job(self, _now: Any = None) -> None:
+        if self._ryd_koebte():
+            self._totaler()
+            await self._gem()
+            self.opdater()
 
     async def async_ekstra_antal(self, uid: str, antal: int) -> None:
         """Ret antallet af pakninger for én ekstra vare."""
@@ -1356,8 +1401,8 @@ class Madplan:
 
     async def async_overfoer(self, til: str = "liste") -> None:
         """til="liste": indkøbslisten i HA og/eller som besked. til="rema": kun REMA 1000-appen."""
-        mangler = [v for v in self.plan.get("varer", []) if not v.get("hjemme")]
-        mangler += [e for e in self.plan.get("ekstra", []) if not e.get("hjemme")]
+        mangler = [v for v in self.plan.get("varer", []) if not v.get("hjemme") and not v.get("kurv")]
+        mangler += [e for e in self.plan.get("ekstra", []) if not e.get("hjemme") and not e.get("kurv")]
         opts = self.entry.options
         if til == "rema":
             if not (opts.get(CONF_REMA_EMAIL) and opts.get(CONF_REMA_KODE)):
@@ -2475,6 +2520,7 @@ class Madplan:
         gamle = {} if ny else {v["key"]: v.get("hjemme", False) for v in self.plan.get("varer", [])}
         gamle_auto = {} if ny else {v["key"]: v.get("auto_hjemme", False) for v in self.plan.get("varer", [])}
         i_kurv = set() if ny else {v["key"] for v in self.plan.get("varer", []) if v.get("kurv")}
+        skjult = set() if ny else {v["key"] for v in self.plan.get("varer", []) if v.get("skjult")}
         varer = []
         for key, f in forbrug.items():
             antal = 1 if f["basis"] else max(1, math.ceil(f["andel"] - 0.15))
@@ -2501,6 +2547,7 @@ class Madplan:
                     # Et krydderi eller lign., der kun bruges i én ret, har man ikke altid: "Tjek".
                     "tjek": f["basis"] and not soeg.er_almindelig(f["navn"]) and len(f.get("retter") or ()) <= 1,
                     "kurv": key in i_kurv,
+                    "skjult": key in skjult,  # købt og "Tøm kurven" trykket
                     "butik": f.get("butik"),
                     "madspild_udsolgt": f.get("madspild_udsolgt", False),
                     # De dage varen bruges, og hvad der er tilovers af pakkerne (fx 750 g kylling, 150 g brugt).
@@ -2539,7 +2586,8 @@ class Madplan:
             key = f"{v['key']}#rest"
             nye.append({**v, "key": key, "navn": navn, "str": strr, "antal": rest, "pris": round(rest * pris, 2),
                         "tilbud": tilbud, "madspild": None, "madspild_rest": True,
-                        "hjemme": gamle.get(key, {}).get("hjemme", False), "kurv": gamle.get(key, {}).get("kurv", False)})
+                        "hjemme": gamle.get(key, {}).get("hjemme", False), "kurv": gamle.get(key, {}).get("kurv", False),
+                        "skjult": gamle.get(key, {}).get("skjult", False)})
         return nye
 
     def _totaler(self) -> None:
@@ -2584,7 +2632,7 @@ class Madplan:
         mangler = [v for v in mangler if "behov" not in v]
         ekstra_tekst = ""
         if ekstra:
-            ekstra_tekst = f"\n\nEGNE VARER · {len(ekstra)} varer · ca. {self.plan.get('ekstra_total', 0)} kr\n"
+            ekstra_tekst = f"\n\nØVRIGE INDKØB · {len(ekstra)} varer · ca. {self.plan.get('ekstra_total', 0)} kr\n"
             for behov in dict.fromkeys(e["behov"] for e in ekstra):
                 ekstra_tekst += f"\n{behov.capitalize()}:\n" + "\n".join(
                     f"☐ {vare_tekst(e)}  {pris_tekst(e, 0)}" for e in ekstra if e["behov"] == behov
@@ -2643,7 +2691,8 @@ def _godt_billede(url: Any) -> bool:
     return bool(url) and not str(url).rstrip("/").endswith("/image")
 
 
-EGNE = "Egne varer"
+EGNE = "Øvrige indkøb"
+KOEBT_VAEK = 2 * 3600  # en købt øvrig vare forsvinder efter 2 timer
 
 
 def _egen(tekst: str, hver_uge: bool = False) -> dict:

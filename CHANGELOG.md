@@ -2,6 +2,14 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.24.1 – 2026-11-24
+
+- "Own items" is now called "Other shopping"
+- Bought items fold into "Bought (n)", so only what's missing takes up room - in both blocks
+- Other shopping: a bought item disappears 2 hours later; one marked ↻ comes back next week
+- "Empty basket" now removes what was bought from the list instead of unticking it. The meal plan still knows its items were bought (food-waste items aren't swapped, leftovers are counted)
+- Bought items are no longer sent to the shopping list or the REMA app again
+
 ## 1.24.0 – 2026-11-24
 
 - Own items: type anything on the shopping list ("toilet paper") and it's there exactly as written - in its own block, apart from the meal plan's items. No AI

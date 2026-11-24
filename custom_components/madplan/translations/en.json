@@ -699,7 +699,7 @@
     },
     "egen_vare": {
       "name": "Add own item",
-      "description": "Puts an item on the Own items list exactly as written – no AI, no price.",
+      "description": "Puts an item on the Other shopping list exactly as written – no AI, no price.",
       "fields": {
         "entity_id": {
           "name": "Meal plan",
