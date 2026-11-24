@@ -205,9 +205,26 @@ class Madplan:
                 await self.async_gem_min_ret(g)
             if gamle:
                 await self._p["regler_store"].async_save(r)
+        self._ret_id_navne()
         # En plan, der var i gang, da HA genstartede, er ikke i gang længere.
         if str(self.plan.get("status", "")).endswith("…"):
             self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
+
+    def _ret_id_navne(self) -> None:
+        """En plan lavet før 1.23.1: en ingrediens, der hedder et tilbuds-id, får tilbuddets navn - i listen og i den
+        udførlige opskrift. Uden AI og uden ny plan."""
+        tilbud = self.plan.get("tilbud") or {}
+        for ret in self.plan.get("retter") or []:
+            for ing in ret.get("ingredienser") or []:
+                gammel = str(ing.get("navn") or "").strip() if isinstance(ing, dict) else ""
+                if not gammel or not (t := tilbud.get(gammel)) or not t.get("navn"):
+                    continue
+                ny = str(t["navn"])
+                ing["navn"] = ny
+                ret["_linjer"] = [str(x).replace(gammel, ny) for x in ret.get("_linjer") or []]
+                if isinstance(u := ret.get("udfoerlig"), dict):
+                    for k in ("trin", "tips"):
+                        u[k] = [str(x).replace(gammel, ny) for x in u.get(k) or []]
 
     async def _gem(self) -> None:
         await self._store.async_save(
@@ -2752,8 +2769,14 @@ def rens_ret(ret: dict, slaa_op: Any = None) -> None:
             continue
         navn = re.sub(r"^[STRN]:", "", str(ing.get("navn") or "")).strip()
         navn = _STR_BAGTIL.sub("", navn).strip(" ,")
+        v = str(ing.get("vare") or "")
+        if navn and slaa_op:
+            # AI'en skriver af og til varens id som navn ("9J6SDCIVEVPUWof3Xbh-L"): så varens rigtige navn.
+            for kandidat in ([v] if v[1:2] == ":" and v[2:].strip() == navn else []) + ["T:" + navn]:
+                if (fundet := slaa_op(kandidat)) and fundet.get("navn"):
+                    navn = str(fundet["navn"])
+                    break
         if not navn:
-            v = str(ing.get("vare") or "")
             fundet = slaa_op(v) if slaa_op and v[1:2] == ":" else None
             navn = (fundet or {}).get("navn") or (v[2:] if v[1:2] == ":" else v)
         ing["navn"] = navn

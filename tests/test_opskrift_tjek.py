@@ -45,3 +45,34 @@ def test_navne_og_trin_ryddes():
     rens_ret(ret, lambda v: {"navn": "Salt m/jod"} if v == "R:9" else None)
     assert [i["navn"] for i in ret["ingredienser"]] == ["Øko. kartofler", "REMA 1000 tomater", "Salt m/jod", "Peber"]
     assert ret["trin"] == ["Kog pasta efter anvisning.", "Skær kylling i stykker."]
+
+
+def test_vare_id_som_navn_bliver_varens_navn():
+    """1.23.1: AI'en skrev tilbuddets id som navn - på ingredienslisten stod "400 g 9J6SDCIVEVPUWof3Xbh-L"."""
+    from custom_components.madplan.planlaegger import rens_ret
+
+    tilbud = {"9J6SDCIVEVPUWof3Xbh-L": {"navn": "REMA 1000 hakkede tomater"}}
+    ret = {"ingredienser": [{"navn": "9J6SDCIVEVPUWof3Xbh-L", "vare": "T:9J6SDCIVEVPUWof3Xbh-L"},
+                            {"navn": "T:9J6SDCIVEVPUWof3Xbh-L", "vare": "S:tomater"},
+                            {"navn": "Oregano", "vare": "R:5"}]}
+    rens_ret(ret, lambda v: tilbud.get(v[2:]) if v.startswith("T:") else {"navn": "Oregano tørret"})
+    assert [i["navn"] for i in ret["ingredienser"]] == ["REMA 1000 hakkede tomater", "REMA 1000 hakkede tomater", "Oregano"]
+
+
+def test_gemt_plan_faar_navnet_ved_start():
+    """En plan lavet før rettelsen bliver rettet ved start, uden ny plan og uden AI."""
+    from types import SimpleNamespace
+
+    from custom_components.madplan.planlaegger import Madplan
+
+    vid = "9J6SDCIVEVPUWof3Xbh-L"
+    m = SimpleNamespace(plan={"tilbud": {vid: {"navn": "REMA 1000 hakkede tomater"}}, "retter": [
+        {"ingredienser": [{"navn": vid, "vare": f"T:{vid}"}, {"navn": "Salt", "vare": "R:1"}],
+         "_linjer": [f"400 g {vid}", "16 g Salt"], "udfoerlig": {"trin": [f"Tilsæt {vid}."], "tips": []}},
+        {"fjernet": True, "ingredienser": []},
+    ]})
+    Madplan._ret_id_navne(m)
+    ret = m.plan["retter"][0]
+    assert ret["_linjer"] == ["400 g REMA 1000 hakkede tomater", "16 g Salt"]
+    assert ret["ingredienser"][0]["navn"] == "REMA 1000 hakkede tomater"
+    assert ret["udfoerlig"]["trin"] == ["Tilsæt REMA 1000 hakkede tomater."]

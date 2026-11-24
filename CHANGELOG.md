@@ -2,6 +2,10 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.23.1 – 2026-11-24
+
+- An ingredient the AI named by its offer id ("400 g 9J6SDCIVEVPUWof3Xbh-L") gets the product's real name - also in this week's plan, fixed at start without a new plan
+
 ## 1.23.0 – 2026-11-23
 
 - "Move day": move a dish to another day of the week - the two days swap places. Same dishes, same shopping list, no new AI plan
