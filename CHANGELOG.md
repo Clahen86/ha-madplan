@@ -2,6 +2,14 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.24.0 – 2026-11-24
+
+- Own items: type anything on the shopping list ("toilet paper") and it's there exactly as written - in its own block, apart from the meal plan's items. No AI
+- "Find prices" looks your own items up in this week's offers, otherwise the store's normal price. The meal plan's items and prices are not touched
+- ↻ on an own item brings it back every week, also in a new plan
+- Each block has its own sum, and "Total" shows both together
+- The old "Extra items" (AI finding offers for needs like "lunch meat") is replaced by own items; new plans no longer ask the AI for them
+
 ## 1.23.1 – 2026-11-24
 
 - An ingredient the AI named by its offer id ("400 g 9J6SDCIVEVPUWof3Xbh-L") gets the product's real name - also in this week's plan, fixed at start without a new plan

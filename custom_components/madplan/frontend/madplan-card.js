@@ -8,7 +8,7 @@ const APP_TILLADT = new Set(["butik", "dag", "aabn", "side", "forrige", "naeste"
 const APP_SIDER = ["uge", "ret", "indkob"];
 // Et voksen-link må også styre ugens plan og bruge "Én ret" (serveren tjekker hvert kald).
 const STYR_TILLADT = new Set(["ny", "rester", "flytvis", "flyt", "handler", "fridag", "plus", "minus", "byt", "udfoerlig", "fjern", "send", "sendrema",
-  "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov",
+  "dpers", "dagmail", "toemkurv", "eplus", "eminus", "fjernbehov", "kladdefjern", "findbehov", "findpriser", "hveruge",
   "harfjern", "enpers", "findret", "envaelg", "enslet", "enmail", "enliste", "enrema", "enbyt", "enudf", "engem", "enantal"]);
 const STYR_SIDER = [...APP_SIDER, "enret"];
 const undtagen = (h) => [...h].map((x) => `:not([data-h="${x}"])`).join("");
@@ -579,6 +579,13 @@ class MadplanCard extends HTMLElement {
         if (ny >= 1) this._kald("madplan", "ekstra_antal", { entity_id: plan, uid: el.dataset.uid, antal: ny });
         break;
       }
+      case "findpriser":
+        this._kald("madplan", "find_priser", { entity_id: plan });
+        break;
+      case "hveruge":
+        ev.stopPropagation();
+        this._kald("madplan", "hver_uge", { entity_id: plan, uid: el.dataset.uid, til: el.dataset.til === "1" });
+        break;
       case "fjernbehov":
         this._kald("madplan", "fjern_behov", { entity_id: plan, tekst: el.dataset.tekst });
         break;
@@ -623,7 +630,11 @@ class MadplanCard extends HTMLElement {
   _indsend(form) {
     const a = this._hass.states[this._valgt]?.attributes || {};
     const r = a.regler || {};
-    if (form.dataset.form === "behov") {
+    if (form.dataset.form === "egen") {
+      const tekst = (this._inputs.egen || "").trim();
+      if (tekst) this._kald("madplan", "egen_vare", { entity_id: this._valgt, tekst });
+      this._inputs.egen = "";
+    } else if (form.dataset.form === "behov") {
       const tekst = (this._inputs.behov || "").trim();
       if (tekst.length >= 2 && !this._kladde.some((k) => k.toLowerCase() === tekst.toLowerCase())) this._kladde.push(tekst);
       this._inputs.behov = "";
@@ -1028,7 +1039,7 @@ class MadplanCard extends HTMLElement {
     const kurv = varer.filter((v) => this._tilstand(v) === "kurv");
     const hjemme = varer.filter((v) => this._tilstand(v) === "hjemme");
     return `<div class="indkob">
-      <div class="sektion"><ha-icon icon="mdi:cart-outline"></ha-icon><span>Indkøb</span>
+      <div class="sektion"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon><span>Aftensmad</span>
         <span class="mangler">${koeb.length + kurv.length} varer${hjemme.length ? ` · ${hjemme.length} har I` : ""} · ${kr(s.state)}</span></div>
       ${this._regnerMed(s, hjemme)}
       <div class="hjaelp">Tryk på en vare, når den er i kurven. Har I den allerede, så tryk på <ha-icon icon="mdi:home-outline"></ha-icon>, så trækkes den fra.${
@@ -1147,7 +1158,9 @@ class MadplanCard extends HTMLElement {
         }${this._mdBrug(md)}`
       : "";
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
-    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", str ? esc(str) : ""].filter(Boolean).join(" ")
+    // En egen vare, hvis pris er slået op: hvilken vare prisen er for.
+    const fundet = liste === "ekstra" ? (pa.egne_fundet || {})[v.uid] : "";
+    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", fundet ? esc(fundet.replace(/^REMA 1000 /i, "")) : "", str ? esc(str) : ""].filter(Boolean).join(" · ")
       + (butik ? ` <span class="butiktag">${esc(butik)}</span>` : "");
     return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
@@ -1155,7 +1168,7 @@ class MadplanCard extends HTMLElement {
         ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud && !md ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}
         ${mdTekst || brugTekst ? `<span class="vmeta mdmeta">${mdTekst}${brugTekst}</span>` : ""}</span>
       <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
-        ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}</span>
+        ${liste === "ekstra" && t !== "hjemme" ? this._antalKnapper(v) : ""}${liste === "ekstra" ? this._hverUgeKnap(v, pa) : ""}</span>
       ${
         t === "kurv"
           ? ""
@@ -1163,6 +1176,14 @@ class MadplanCard extends HTMLElement {
               aria-label="${t === "hjemme" ? "Skal alligevel købes" : "Har det hjemme"}"><ha-icon icon="${t === "hjemme" ? "mdi:home" : "mdi:home-outline"}"></ha-icon></button>`
       }
     </div>`;
+  }
+
+  /** ↻ = kommer med hver uge, også i en ny plan. Kun egne varer. */
+  _hverUgeKnap(v, pa) {
+    if (!(pa.egne || []).includes(v.uid)) return "";
+    const til = (pa.hver_uge || []).includes(v.uid);
+    return `<button class="hveruge ${til ? "til" : ""}" data-h="hveruge" data-uid="${esc(v.uid)}" data-til="${til ? "0" : "1"}"
+      aria-label="${til ? "Kun denne uge" : "Hver uge"}" title="${til ? "Kommer hver uge – tryk for kun denne uge" : "Kun denne uge – tryk for hver uge"}"><ha-icon icon="mdi:repeat"></ha-icon></button>`;
   }
 
   _antalKnapper(v) {
@@ -1179,55 +1200,33 @@ class MadplanCard extends HTMLElement {
   }
 
   /** Ekstra varer ud over aftensmaden: man skriver et behov, og AI finder tilbud. */
+  /** Egne varer: det, man selv skriver på - adskilt fra aftensmaden, med pris kun når man beder om den. */
   _ekstraSektion(s) {
     if (!this._ekstraId) return "";
     const a = s.attributes;
-    const behov = a.behov || [];
-    const mangler = this._ekstra.filter((v) => this._tilstand(v) !== "hjemme");
     const raekke = { "": 0, kurv: 1, hjemme: 2 };
-    const gruppe = (b) => {
-      const varer = this._ekstra
-        .filter((v) => (v.description || "").split(" · ")[1] === b)
-        .sort((x, y) => raekke[this._tilstand(x)] - raekke[this._tilstand(y)]);
-      if (!varer.length) return "";
-      return `<div class="gruppe">${esc(b.charAt(0).toUpperCase() + b.slice(1))}</div>${varer
-        .map((v) => this._vareLinje(v, "ekstra"))
-        .join("")}`;
-    };
-    const finder = (a.status || "").startsWith("Finder tilbud");
-    const antal = this._kladde.length + ((this._inputs.behov || "").trim().length >= 2 ? 1 : 0);
+    const varer = [...this._ekstra].sort((x, y) => raekke[this._tilstand(x)] - raekke[this._tilstand(y)]);
+    const mangler = varer.filter((v) => this._tilstand(v) !== "hjemme");
+    const finder = (a.status || "").startsWith("Finder priser");
+    const ca = a.ekstra_uden_pris || a.ekstra_ca ? "ca. " : "";
     return `<div class="ekstra">
-      <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Ekstra</span>
-        ${this._ekstra.length ? `<span class="mangler">${mangler.length} varer · ${a.ekstra_ca ? "ca. " : ""}${kr(a.ekstra_total)}</span>` : ""}</div>
-      <div class="hjaelp">Hvad skal I ellers bruge i ugen? Skriv én ting ad gangen og tryk +. Tryk så "Find tilbud", så finder den tilbud på det hele på én gang. Der sættes 1 af hver på, og du retter selv antallet. Det huskes til de næste uger.</div>
-      <form class="behov-form" data-form="behov"><input name="behov" autocomplete="off" enterkeyhint="done" placeholder="Fx pålæg, rugbrød, frugt …"
-          value="${esc(this._inputs.behov || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
-      ${
-        this._kladde.length
-          ? `<div class="chips kladde">${this._kladde
-              .map((k, i) => `<button class="chip-kladde" data-h="kladdefjern" data-i="${i}">${esc(k)}<ha-icon icon="mdi:close"></ha-icon></button>`)
-              .join("")}</div>`
-          : ""
-      }
-      ${
-        antal || finder
-          ? `<button class="knap findknap" data-h="findbehov" ${finder ? "disabled" : ""}>
-              <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:star-four-points"}"></ha-icon>${finder ? "Søger …" : `Find tilbud (${antal})`}</button>`
-          : ""
-      }
-      ${
-        behov.length
-          ? `<div class="gemt">Huskes hver uge</div><div class="chips">${behov
-              .map((b, i) => {
-                const bek = this._bekraeft === `fjernbehov-${i + 1}`;
-                return `<button class="chip-behov ${bek ? "bekraeft" : ""}" data-h="fjernbehov" data-dag="${i + 1}" data-tekst="${esc(b)}">
-                  ${bek ? "Fjern?" : esc(b)}<ha-icon icon="mdi:close"></ha-icon></button>`;
-              })
-              .join("")}</div>`
-          : ""
-      }
-      ${behov.map(gruppe).join("")}
-    </div>`;
+      <div class="sektion"><ha-icon icon="mdi:basket-plus-outline"></ha-icon><span>Egne varer</span>
+        ${varer.length ? `<span class="mangler">${mangler.length} varer${a.ekstra_total ? ` · ${ca}${kr(a.ekstra_total)}` : ""}</span>` : ""}</div>
+      <form class="behov-form" data-form="egen"><input name="egen" autocomplete="off" enterkeyhint="done" maxlength="80"
+          placeholder="Tilføj vare, fx toiletpapir" value="${esc(this._inputs.egen || "")}"><button type="submit" class="plusknap" aria-label="Tilføj"><ha-icon icon="mdi:plus"></ha-icon></button></form>
+      ${varer.map((v) => this._vareLinje(v, "ekstra")).join("")}
+      ${varer.length ? `<button class="knap findknap" data-h="findpriser" ${finder ? "disabled" : ""}>
+          <ha-icon icon="${finder ? "mdi:timer-sand" : "mdi:tag-search-outline"}"></ha-icon>${finder ? "Finder priser …" : "Find priser"}</button>` : ""}
+    </div>${this._ialt(s)}`;
+  }
+
+  /** Aftensmad og egne varer tilsammen - kun når begge har noget. */
+  _ialt(s) {
+    const a = s.attributes;
+    const mad = Number(s.state) || 0, egne = Number(a.ekstra_total) || 0;
+    if (!mad || !egne) return "";
+    const ca = a.ekstra_uden_pris || a.ekstra_ca || a.total_ca ? "ca. " : "";
+    return `<div class="ialt"><span>I alt</span><b>${ca}${kr(mad + egne)}</b></div>`;
   }
 
   // ------------------------------------------------------------------ tegning
@@ -1504,6 +1503,12 @@ const CSS = `
   .findknap[disabled] { opacity: .6; }
   .gruppe { margin: 14px 0 2px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
     color: var(--secondary-text-color); }
+  .hveruge { width: 30px; height: 30px; border-radius: 50%; border: none; background: none; cursor: pointer; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--disabled-text-color, #bbb); }
+  .hveruge ha-icon { --mdc-icon-size: 18px; }
+  .hveruge.til { color: var(--brand); }
+  .ialt { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; padding-top: 12px;
+    border-top: 2px solid var(--divider-color); font-size: 16px; font-weight: 600; }
   .antal { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--divider-color); border-radius: 18px;
     padding: 2px; flex: none; }
   .antal button { width: 28px; height: 28px; border-radius: 50%; border: none; background: none; cursor: pointer;
@@ -2536,7 +2541,7 @@ const PANEL_CSS = `
   .applink .hhjaelp, .applink .hplus, .applink ha-menu-button, .applink .advarsler,
   .applink:not(.appstyr) .styring, .applink:not(.appstyr) form, .applink:not(.appstyr) .ekstra > .hjaelp, .applink:not(.appstyr) .chips.kladde,
   .applink:not(.appstyr) [data-h]:not([data-h="butik"]):not([data-h="dag"]):not([data-h="aabn"]):not([data-h="side"]):not([data-h="forrige"]):not([data-h="naeste"]):not([data-h="fane"]):not([data-h="hjemme"]):not([data-h="vare"]):not([data-h="husknap"]),
-  .appstyr form:not([data-form="behov"]):not([data-form="har"]), .appstyr [data-h]${undtagen(APP_TILLADT)}${undtagen(STYR_TILLADT)} { display: none !important; }
+  .appstyr form:not([data-form="behov"]):not([data-form="har"]):not([data-form="egen"]), .appstyr [data-h]${undtagen(APP_TILLADT)}${undtagen(STYR_TILLADT)} { display: none !important; }
   .phjaelp { display: block; color: var(--secondary-text-color); font-size: 12px; margin-top: 6px; line-height: 1.4; }
   .rlinje .stepper span { min-width: 54px; justify-content: center; }
   .rchip { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px 7px 13px; border-radius: 18px; border: none; cursor: pointer;

@@ -148,6 +148,11 @@ class MadplanSensor(MadplanEntity, SensorEntity):
             "advarsler": self.madplan.advarsler(),
             "ekstra_total": p.get("ekstra_total", 0),
             "ekstra_ca": p.get("ekstra_ca", 0),
+            "ekstra_uden_pris": p.get("ekstra_uden_pris", 0),
+            # Egne varer: hvilke det er, hvilke der kommer hver uge, og hvilken vare en fundet pris er for.
+            "egne": [e["uid"] for e in p.get("ekstra", []) if e.get("egen")],
+            "hver_uge": [e["uid"] for e in p.get("ekstra", []) if e.get("egen") and e.get("hver_uge")],
+            "egne_fundet": {e["uid"]: e["vare"] for e in p.get("ekstra", []) if e.get("egen") and e.get("vare")},
             "status": p.get("status", "Ingen plan endnu"),
             "uge": p.get("uge"),
             "periode": periode,

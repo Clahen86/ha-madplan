@@ -696,6 +696,52 @@
           "description": "Number of people."
         }
       }
+    },
+    "egen_vare": {
+      "name": "Add own item",
+      "description": "Puts an item on the Own items list exactly as written – no AI, no price.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan the action is for. Can be left out when there is only one store."
+        },
+        "tekst": {
+          "name": "Item",
+          "description": "E.g. toilet paper."
+        },
+        "hver_uge": {
+          "name": "Every week",
+          "description": "The item comes on the list every week, also in a new plan."
+        }
+      }
+    },
+    "hver_uge": {
+      "name": "Own item every week",
+      "description": "Makes an own item come every week – or only this week.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan the action is for. Can be left out when there is only one store."
+        },
+        "uid": {
+          "name": "Item id",
+          "description": "The item's id on the list."
+        },
+        "til": {
+          "name": "Every week",
+          "description": "On = every week, off = only this week."
+        }
+      }
+    },
+    "find_priser": {
+      "name": "Find prices for own items",
+      "description": "Looks the own items up in this week's offers, otherwise the store's normal price. The meal plan's items aren't touched, and no AI is used.",
+      "fields": {
+        "entity_id": {
+          "name": "Meal plan",
+          "description": "The meal plan the action is for. Can be left out when there is only one store."
+        }
+      }
     }
   }
 }

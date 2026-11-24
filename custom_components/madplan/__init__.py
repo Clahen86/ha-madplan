@@ -401,6 +401,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def ekstra_antal(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_ekstra_antal(call.data["uid"], call.data["antal"])
 
+    async def egen_vare(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_egen_vare(call.data["tekst"], call.data["hver_uge"])
+
+    async def hver_uge(call: ServiceCall) -> None:
+        await _madplaner(call)[0].async_hver_uge(call.data["uid"], call.data["til"])
+
+    async def find_priser(call: ServiceCall) -> None:
+        m = _madplaner(call)[0]
+        m.entry.async_create_background_task(hass, m.async_find_priser(), "madplan_find_priser")
+
     async def fjern_behov(call: ServiceCall) -> None:
         await _madplaner(call)[0].async_fjern_behov(call.data["tekst"])
 
@@ -432,6 +442,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, "auto_plan", auto_plan, schema=SKEMA.extend({vol.Required("til"): cv.boolean}))
     hass.services.async_register(DOMAIN, "toem_kurv", toem_kurv, schema=SKEMA)
     hass.services.async_register(DOMAIN, "fjern_behov", fjern_behov, schema=BEHOV_SKEMA)
+    hass.services.async_register(DOMAIN, "egen_vare", egen_vare, schema=SKEMA.extend(
+        {vol.Required("tekst"): vol.All(cv.string, vol.Length(min=1, max=80)), vol.Optional("hver_uge", default=False): cv.boolean}))
+    hass.services.async_register(DOMAIN, "hver_uge", hver_uge, schema=SKEMA.extend(
+        {vol.Required("uid"): cv.string, vol.Required("til"): cv.boolean}))
+    hass.services.async_register(DOMAIN, "find_priser", find_priser, schema=SKEMA)
     hass.services.async_register(DOMAIN, "ekstra_antal", ekstra_antal, schema=ANTAL_SKEMA)
     hass.services.async_register(
         DOMAIN, "gem_min_ret", gem_min_ret, schema=MIN_RET_SKEMA, supports_response=SupportsResponse.OPTIONAL

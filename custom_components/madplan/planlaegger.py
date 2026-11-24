@@ -384,8 +384,8 @@ class Madplan:
                 if not dage:
                     raise HomeAssistantError("Alle dage er slået fra - vælg mindst én dag")
                 antal = len(dage)
-                # Faste behov (pålæg, madpakker …) løses i samme AI-kald - gratis-kvoten tæller kald.
-                behov = list(self.behov)
+                # 1.24: "Egne varer" afløser de faste behov - ugeplanen spørger ikke AI'en om dem mere.
+                behov: list[str] = []
 
                 def byg(dd: list[int], med_behov: bool, ogsaa_undgaa: list[str]) -> str:
                     n = len(dd)
@@ -449,7 +449,9 @@ class Madplan:
                     m = self.min_ret(retter[i])
                     if m and m.get("dage") == 2 and self._kan_blive_rester(retter, i):
                         self._lav_rester(retter, i)
+                egne = _egne_videre(self.plan.get("ekstra") or [])
                 self.plan = {
+                    "ekstra": egne,
                     "start": start.isoformat(),
                     "slut": slut.isoformat(),
                     "uge": (start + datetime.timedelta(days=1)).isocalendar()[1],
@@ -1211,6 +1213,74 @@ class Madplan:
         self._totaler()
         await self._gem()
         self.opdater()
+
+    async def async_egen_vare(self, tekst: str, hver_uge: bool = False) -> None:
+        """En vare, man selv skriver ("toiletpapir"): på listen Egne varer præcis som skrevet - uden AI og uden pris,
+        til man trykker "Find priser"."""
+        tekst = re.sub(r"\s+", " ", tekst).strip()
+        if not tekst:
+            return
+        ekstra = self.plan.setdefault("ekstra", [])
+        if any(e.get("egen") and e["navn"].lower() == tekst.lower() and not e.get("hjemme") for e in ekstra):
+            return  # står der allerede
+        ekstra.append(_egen(tekst, hver_uge))
+        self._totaler()
+        await self._gem()
+        self.opdater()
+
+    async def async_hver_uge(self, uid: str, hver_uge: bool) -> None:
+        """En egen vare, der kommer med på listen hver uge (også i en ny plan) - eller kun denne uge."""
+        for e in self.plan.get("ekstra", []):
+            if e["uid"] == uid and e.get("egen"):
+                e["hver_uge"] = bool(hver_uge)
+        await self._gem()
+        self.opdater()
+
+    async def async_find_priser(self) -> None:
+        """Slår kun de egne varer op: ugens tilbud først, ellers butikkens almindelige pris. Ugeplanens varer og
+        priser røres ikke, og der bruges ingen AI."""
+        egne = [e for e in self.plan.get("ekstra", []) if e.get("egen")]
+        if not egne or self.optaget:
+            return
+        async with self._laas:
+            try:
+                self._status("Finder priser …")
+                if self.plan.get("start"):
+                    start = datetime.date.fromisoformat(self.plan["start"])
+                    await self._hent_data(start, start + datetime.timedelta(days=6))
+                else:
+                    start, slut = self._plan_uge()
+                    await self._hent_data(start, slut, nye_tilbud=True)
+                    self.plan.update({"start": start.isoformat(), "slut": slut.isoformat(), "tilbud": self.tilbud})
+                await self.hass.async_add_executor_job(self._find_egne_priser, egne, start)
+                self.plan["salling_priser"] = self._salling_priser
+                self.plan["status"] = "Klar" if self.plan.get("retter") else "Ingen plan endnu"
+            except Exception as e:  # noqa: BLE001 - vises på kortet; varerne står der stadig
+                _LOGGER.warning("Find priser fejlede: %s", e)
+                self._status(f"Fejl: {str(e)[:120]}")
+            self._totaler()
+            await self._gem()
+            self.opdater()
+
+    def _find_egne_priser(self, egne: list[dict], dato: datetime.date) -> None:
+        tilbud = {tid: t for tid, t in self.tilbud.items() if t.get("pris") and not t.get("madspild")}
+        for e in egne:
+            tekst = e["navn"]
+            key = None
+            if tid := soeg.find_vare(tilbud, tekst, dato, None, False, pris=lambda _v, t: float(t["pris"])):
+                key = f"T:{tid}"
+            else:
+                fundet = self._find_vare(f"S:{tekst}", dato, None, kun_mad=False)
+                key = fundet if not fundet.startswith("S:") else None
+            info = self._slaa_op(key, dato) if key else None
+            if not info:
+                e.update(key=f"E:{tekst.lower()}", vare="", str="", enhedspris=0.0, pris=0.0, tilbud=False,
+                         anslaaet=False, ukendt=True, butik=None, ikke_fundet=True)
+                continue
+            vnavn, strr, enhedspris, _, paa_tilbud = info
+            e.update(key=key, vare=vnavn, str=strr, enhedspris=enhedspris, pris=round(e["antal"] * enhedspris, 2),
+                     tilbud=paa_tilbud, anslaaet=self._ca(key), ukendt=False, butik=self._anden_butik(key),
+                     ikke_fundet=False)
 
     async def _loes_behov(self, behov: list[str]) -> None:
         if self.plan.get("start"):
@@ -2483,6 +2553,8 @@ class Madplan:
         ekstra = self.plan.get("ekstra", [])
         self.plan["ekstra_total"] = round(sum(e["pris"] for e in ekstra if not e.get("hjemme")))
         self.plan["ekstra_ca"] = round(sum(e["pris"] for e in ekstra if not e.get("hjemme") and e.get("anslaaet")))
+        # Egne varer uden pris: summen er kun et cirkatal
+        self.plan["ekstra_uden_pris"] = sum(1 for e in ekstra if not e.get("hjemme") and e.get("ukendt"))
 
     def _besked(self, mangler: list[dict]) -> str:
         try:
@@ -2512,7 +2584,7 @@ class Madplan:
         mangler = [v for v in mangler if "behov" not in v]
         ekstra_tekst = ""
         if ekstra:
-            ekstra_tekst = f"\n\nEKSTRA · {len(ekstra)} varer · ca. {self.plan.get('ekstra_total', 0)} kr\n"
+            ekstra_tekst = f"\n\nEGNE VARER · {len(ekstra)} varer · ca. {self.plan.get('ekstra_total', 0)} kr\n"
             for behov in dict.fromkeys(e["behov"] for e in ekstra):
                 ekstra_tekst += f"\n{behov.capitalize()}:\n" + "\n".join(
                     f"☐ {vare_tekst(e)}  {pris_tekst(e, 0)}" for e in ekstra if e["behov"] == behov
@@ -2569,6 +2641,24 @@ def _maengde(strr: Any) -> tuple[float, str] | None:
 def _godt_billede(url: Any) -> bool:
     """Et rigtigt billede - ikke Salling's tomme skabelon (".../upload/…/image")."""
     return bool(url) and not str(url).rstrip("/").endswith("/image")
+
+
+EGNE = "Egne varer"
+
+
+def _egen(tekst: str, hver_uge: bool = False) -> dict:
+    """En vare, man selv har skrevet - uden pris, til man slår priserne op."""
+    return {
+        "uid": f"egen-{uuid.uuid4().hex[:12]}", "key": f"E:{tekst.lower()}", "egen": True, "behov": EGNE,
+        "navn": tekst, "str": "", "antal": 1, "enhedspris": 0.0, "pris": 0.0, "tilbud": False, "anslaaet": False,
+        "ukendt": True, "hver_uge": bool(hver_uge), "hjemme": False,
+    }
+
+
+def _egne_videre(ekstra: list[dict]) -> list[dict]:
+    """De egne varer, der skal med hver uge, til en ny plan: ikke krydset af, og uden sidste uges pris."""
+    return [_egen(e["navn"], True) | {"uid": e["uid"], "antal": e.get("antal", 1)}
+            for e in ekstra if e.get("egen") and e.get("hver_uge")]
 
 
 def vare_tekst(v: dict) -> str:

@@ -55,6 +55,31 @@ fjern_behov:
       example: "pålæg"
       selector:
         text:
+egen_vare:
+  fields:
+    entity_id: *madplan
+    tekst:
+      required: true
+      example: "toiletpapir"
+      selector:
+        text:
+    hver_uge:
+      selector:
+        boolean:
+hver_uge:
+  fields:
+    entity_id: *madplan
+    uid:
+      required: true
+      selector:
+        text:
+    til:
+      required: true
+      selector:
+        boolean:
+find_priser:
+  fields:
+    entity_id: *madplan
 ekstra_antal:
   fields:
     entity_id: *madplan

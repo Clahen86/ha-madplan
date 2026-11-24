@@ -36,10 +36,17 @@ def ekstra(madplan) -> list[TodoItem]:
             summary=vare_tekst(e),
             uid=e["uid"],
             status=TodoItemStatus.COMPLETED if e.get("hjemme") or e.get("kurv") else TodoItemStatus.NEEDS_ACTION,
-            description=f"{pris_tekst(e)} · {e['behov']}",
+            description=f"{_egen_pris(e)} · {e['behov']}",
         )
         for e in madplan.plan.get("ekstra", [])
     ]
+
+
+def _egen_pris(e: dict) -> str:
+    """En egen vare har ingen pris, før man beder om den - og "ikke fundet", når butikken ikke har den."""
+    if e.get("egen") and e.get("ukendt"):
+        return "ikke fundet" if e.get("ikke_fundet") else ""
+    return pris_tekst(e)
 
 
 class MadplanVarer(MadplanEntity, TodoListEntity):
@@ -59,9 +66,9 @@ class MadplanVarer(MadplanEntity, TodoListEntity):
 
 
 class MadplanEkstra(MadplanEntity, TodoListEntity):
-    """Varer til ugens øvrige behov (pålæg, madpakker …). Afkrydset = i kurven eller har det. Kan slettes."""
+    """Egne varer (det, man selv skriver på). Afkrydset = i kurven eller har det. Kan slettes."""
 
-    _attr_name = "Ekstra varer"
+    _attr_name = "Egne varer"
     _attr_icon = "mdi:basket-plus-outline"
     _attr_supported_features = (
         TodoListEntityFeature.UPDATE_TODO_ITEM

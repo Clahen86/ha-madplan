@@ -20,7 +20,7 @@ Ugens aftensmad ud fra ugens tilbud – med opskrifter, indkøbsliste og priser.
 - **Madspild** (valgfrit, samme nøgle): ekstra nedsatte varer med kort dato bruges i planens første 2 dage. Indkøbslisten viser, om de stadig er der.
 - **Opskrifter** med ingredienser og fremgangsmåde i den mængde, I skal bruge. Hver dag kan sendes på mail med sin egen indkøbsliste.
 - **Indkøbsliste**: tryk på en vare, når den er i kurven, eller på huset, hvis I har den hjemme. Kurven deles mellem jeres telefoner.
-- **Ekstra varer**: skriv fx "pålæg", "rugbrød" eller "frugt til madpakker", så finder den tilbud. De huskes til næste uge.
+- **Egne varer**: skriv fx "toiletpapir" eller "kaffe" i Indkøb – de står i deres egen blok, adskilt fra aftensmaden, præcis som du skrev dem. Tryk "Find priser", så slås de op i ugens tilbud og ellers butikkens almindelige pris (uden AI). ↻ ved en vare = med hver uge.
 - **Hvem laver mad?**: vælg for hver dag en person fra Home Assistant eller skriv et navn. Valget gemmes med planen, og Madplan fyrer eventet `madplan_cook` (se nedenfor).
 - **App uden login**: et link til familien, der åbner planen, opskrifterne og indkøbslisten uden Home Assistant-login (se nedenfor).
 - **Gæster**: sæt antallet af personer for én dag. Mængder og pris regnes om med det samme.
@@ -57,7 +57,7 @@ REMA 1000, Netto, føtex, Bilka, Lidl, 365discount, Kvickly, SuperBrugsen, Brugs
 Ja, med Googles gratis Gemini-nøgle. Integrationen er bygget til at bruge så få AI-kald som muligt:
 
 - AI'en får kun ugens tilbud. Andre varer slås op i REMA 1000's katalog af selve integrationen.
-- En ny madplan med ekstra varer er **ét** kald. Byt ret, nye ekstra varer og Én ret er ét kald hver.
+- En ny madplan er **ét** kald. Byt ret og Én ret er ét kald hver. Egne varer og "Find priser" bruger ingen AI.
 - Mængder, priser, personer, gæster, regler og indkøbsliste koster ingen kald.
 
 Gemini's gratis plan har et loft på antal kald om dagen. Almindelig brug ligger langt under det, men mange tests i træk kan ramme loftet. Så skriver Madplan, at kvoten er brugt op, og den virker igen næste dag.
@@ -125,7 +125,7 @@ Den nye profil bruger samme AI og Salling-nøgle som jeres, men ikke jeres mail,
 
 Under **Regler → App uden login** (kun for administratorer) vælger du **Børn · kun se** eller **Voksen · må styre**, skriver et navn og trykker **+**. Så får du et link, som du kan kopiere, dele eller vise som QR-kode. Linket åbner profilens madplan, opskrifterne og indkøbslisten uden login. Tryk **Installer** (på iPhone: Del → *Føj til hjemmeskærm*), så ligger den som en app.
 
-Et **børnelink** kan kun se planen og krydse varer af på indkøbslisten. Et **voksenlink** kan også lave en ny madplan, bytte eller fjerne en ret, vælge dage, personer og hvem der laver mad, tilføje ekstra varer, sende indkøbslisten og bruge **Én ret**. Ingen af dem kan ændre regler, profiler, Mine retter eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
+Et **børnelink** kan kun se planen og krydse varer af på indkøbslisten. Et **voksenlink** kan også lave en ny madplan, bytte eller fjerne en ret, vælge dage, personer og hvem der laver mad, tilføje egne varer, sende indkøbslisten og bruge **Én ret**. Ingen af dem kan ændre regler, profiler, Mine retter eller andet i Home Assistant. Hvis du sletter linket, holder appen op med at virke. Med Nabu Casa (eller en ekstern adresse) virker linket også hjemmefra.
 
 ### Kort til dine egne dashboards
 
@@ -144,7 +144,7 @@ For hver butik:
 | `sensor.madplan_<butik>` | Pris for ugens indkøb. Attributterne har retter, totaler, regler og advarsler. |
 | `sensor.madplan_<butik>_<dag>` | Dagens ret. Attributterne har opskrift, pris, personer og billede. |
 | `todo.madplan_<butik>_varer` | Indkøbslisten til aftensmaden. |
-| `todo.madplan_<butik>_ekstra_varer` | Ekstra varer (pålæg, madpakker …). |
+| `todo.madplan_<butik>_ekstra_varer` | Egne varer (det, du selv har skrevet på). |
 | `number.madplan_<butik>_personer` | Antal personer. |
 | `button.madplan_<butik>_ny_plan` | Lav en ny plan. |
 | `button.madplan_<butik>_send_indkobsliste` | Send indkøbslisten. |
@@ -160,7 +160,9 @@ For hver butik:
 | `madplan.rester` | Lav én dags ret til 2 dage (`til: false` fortryder). |
 | `madplan.auto_plan` | Automatisk lørdagsplan til/fra for en butik (`til: false`). |
 | `madplan.ekstra_butikker` | Andre kæder, planen også må bruge tilbud fra, fx `butikker: ["netto"]`. |
-| `madplan.tilfoej_behov` / `madplan.fjern_behov` | Ekstra varer, fx `tekst: ["pålæg", "frugt"]`. |
+| `madplan.egen_vare` | En egen vare på listen, fx `tekst: toiletpapir` (og `hver_uge: true`). |
+| `madplan.find_priser` | Slår de egne varer op: tilbud først, ellers almindelig pris. Ingen AI. |
+| `madplan.hver_uge` | En egen vare med hver uge (`til: true`) eller kun denne uge. |
 | `madplan.ekstra_antal` | Antal pakninger af en ekstra vare. |
 | `madplan.marker` / `madplan.toem_kurv` | I kurven eller har hjemme. |
 | `madplan.en_ret` | Én ret fra køleskabet, fx `har: ["kylling", "ris"]`. |

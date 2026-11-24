@@ -696,6 +696,52 @@
           "description": "Antal personer."
         }
       }
+    },
+    "egen_vare": {
+      "name": "Tilføj egen vare",
+      "description": "Sætter en vare på listen Egne varer, præcis som den er skrevet – uden AI og uden pris.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "tekst": {
+          "name": "Vare",
+          "description": "Fx toiletpapir."
+        },
+        "hver_uge": {
+          "name": "Hver uge",
+          "description": "Varen kommer med på listen hver uge, også i en ny plan."
+        }
+      }
+    },
+    "hver_uge": {
+      "name": "Egen vare hver uge",
+      "description": "Gør en egen vare til en, der kommer med hver uge – eller kun denne uge.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        },
+        "uid": {
+          "name": "Vare-id",
+          "description": "Varens id på listen."
+        },
+        "til": {
+          "name": "Hver uge",
+          "description": "Til = hver uge, fra = kun denne uge."
+        }
+      }
+    },
+    "find_priser": {
+      "name": "Find priser på egne varer",
+      "description": "Slår de egne varer op i ugens tilbud og ellers butikkens almindelige pris. Ugeplanens varer røres ikke, og der bruges ingen AI.",
+      "fields": {
+        "entity_id": {
+          "name": "Madplan",
+          "description": "Den madplan, handlingen gælder. Kan udelades, hvis der kun er én butik."
+        }
+      }
     }
   }
 }
