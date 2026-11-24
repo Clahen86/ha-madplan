@@ -213,7 +213,7 @@ class Madplan:
             if e.get("kurv") and not e.get("koebt_tid"):
                 e["koebt_tid"] = time.time()  # købt før 1.24.1: de 2 timer regnes herfra
         self._ryd_koebte()  # købt for mere end 2 timer siden, mens HA var nede
-        if self.plan.get("retter") and self.plan.get("start") and self.plan.get("rettet", 0) < 2:
+        if self.plan.get("retter") and self.plan.get("start") and self.plan.get("rettet", 0) < 3:
             self.entry.async_create_background_task(self.hass, self._reparer_listen(), "madplan_reparer_listen")
         if any(e.get("kurv") and not e.get("skjult") for e in self.plan.get("ekstra") or []):
             self.entry.async_on_unload(async_call_later(self.hass, KOEBT_VAEK + 5, self._ryd_koebte_job))
@@ -241,7 +241,7 @@ class Madplan:
                                   for ing in ret.get("ingredienser") or [] if isinstance(ing, dict))
                     if i > idag and forkert:
                         ret.pop("udfoerlig", None)
-                self.plan["rettet"] = 2
+                self.plan["rettet"] = 3
                 self._totaler()
                 await self._gem()
             self.opdater()
@@ -2529,10 +2529,27 @@ class Madplan:
                 vis = f"{round(mgd) if mgd >= 10 else round(mgd, 1):g} {enhed}".strip() if mgd else ""
                 linjer.append(f"{vis} {ing.get('navn', '')}".strip() if vis else f"{ing.get('navn', '')} (efter smag)")
                 info = self._slaa_op(ing.get("vare"), start)
-                if not info and not _basis(ing) and (eget := str(ing.get("navn") or "").strip()):
-                    # Aldrig stille væk fra listen: et tilbud uden pris eller et forkert id står med sit navn.
-                    ing["vare"] = f"S:{eget.lower()}"
-                    info = self._slaa_op(ing["vare"], start)
+                if (not info or str(ing.get("vare")).startswith("S:")) and not _basis(ing) \
+                        and (eget := str(ing.get("navn") or "").strip()):
+                    # Aldrig stille væk fra listen: et tilbud uden pris eller et forkert id slås op i butikkens katalog
+                    # (lokalt, ingen AI) - og står ellers med sit navn, 1 pr. ret.
+                    fundet = soeg.find_vare(self.katalog, eget, start, None, False) if self.katalog else None
+                    if fundet or not info:
+                        ing["vare"] = f"R:{fundet}" if fundet else f"S:{eget.lower()}"
+                        ing.pop("pakke", None)
+                        s_ = soeg.stoerrelse((self.katalog.get(fundet) or {}).get("str", "")) if fundet else None
+                        if s_ and s_[1] == ing.get("enhed"):
+                            ing["pakke"], ing["pakke_ukendt"] = s_[0], False
+                        else:
+                            ing["pakke_ukendt"] = True
+                        info = self._slaa_op(ing["vare"], start)
+                    if info and str(ing.get("vare")).startswith("S:") and not ing.get("pakke_ukendt"):
+                        ing["pakke_ukendt"] = True  # ingen rigtig pakning: 1 pr. ret, ikke AI'ens gæt
+                        ing.pop("pakke", None)
+                    try:
+                        pakke = float(ing.get("pakke") or 0)
+                    except (TypeError, ValueError):
+                        pakke = 0.0
                 if not info:
                     continue
                 navn, strr, enhedspris, _, tilbud = info

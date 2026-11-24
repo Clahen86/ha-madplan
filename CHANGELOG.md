@@ -2,6 +2,12 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.24.3 – 2026-11-24
+
+- An ingredient whose offer has no price is looked up in the store's catalogue (no AI), so it gets a real price and size - "Cucumber, 1 pc" instead of "10 × Cucumber, price unknown"
+- Something not found anywhere counts as 1 per dish, instead of the AI's guess at the pack size (400 g cucumber became 402 packs)
+- This week's plan is fixed again at start
+
 ## 1.24.2 – 2026-11-24
 
 - Nothing in a recipe silently falls off the shopping list: an ingredient whose offer can't be found or has no price is listed by its own name

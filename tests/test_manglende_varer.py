@@ -28,8 +28,25 @@ async def test_vare_uden_pris_falder_ikke_af_listen(hass: HomeAssistant) -> None
     m.plan = {"start": start.isoformat(), "retter": [ret] + [{"navn": "Ude", "fjernet": True, "ingredienser": []}] * 6}
     m._beregn()
     varer = {v["key"]: v for v in m.plan["varer"]}
-    assert "S:cherrytomater" in varer and varer["S:cherrytomater"]["ukendt"]
+    assert "S:cherrytomater" in varer and varer["S:cherrytomater"]["ukendt"] and varer["S:cherrytomater"]["antal"] == 1
     assert varer["T:t1"]["til"] == "tomater"
+
+
+async def test_vare_uden_pris_findes_i_kataloget(hass: HomeAssistant) -> None:
+    """Agurk på et tilbud uden pris: slås op i REMA's katalog - 1 stk pr. ret, ikke 400 g / AI'ens gæt på 1 g."""
+    m, _ = await lav_madplan(hass)
+    start = datetime.date.today()
+    m.tilbud = {}
+    m.katalog = {"55": {"navn": "Agurk", "str": "1 STK.", "priser": [{"pris": 8.0, "fra": "2000-01-01", "til": "2099-01-01", "kampagne": False}]}}
+    m._slaa_op = lambda vid, d: ("Agurk", "1 stk", 8.0, None, False) if vid == "R:55" else (
+        (vid[2:].capitalize(), "", 0.0, None, False) if str(vid).startswith("S:") else None)
+    agurk = {"navn": "Agurk", "vare": "T:udloebet", "pr_person": 100, "enhed": "g", "pakke": 1}
+    m.plan = {"start": start.isoformat(), "retter": [{"navn": "A", "ingredienser": [dict(agurk)], "trin": []},
+              {"navn": "B", "ingredienser": [{**agurk, "vare": "S:agurk"}], "trin": []}]
+              + [{"navn": "Ude", "fjernet": True, "ingredienser": []}] * 5}
+    m._beregn()
+    [v] = m.plan["varer"]
+    assert v["key"] == "R:55" and v["antal"] == 2 and v["pris"] == 16.0
 
 
 async def test_gemt_plan_rettes_ved_start(hass: HomeAssistant) -> None:
@@ -59,4 +76,4 @@ async def test_gemt_plan_rettes_ved_start(hass: HomeAssistant) -> None:
     assert varer["S:cherrytomater"]["skjult"]  # kun til i går
     assert not varer["T:t1"]["skjult"]  # bruges i morgen
     assert "udfoerlig" in m.plan["retter"][1] and "udfoerlig" not in m.plan["retter"][2]
-    assert m.plan["rettet"] == 2
+    assert m.plan["rettet"] == 3
