@@ -969,7 +969,10 @@ class MadplanCard extends HTMLElement {
     const noegle = `${h}:${dag}:${a.dato || a.id || a.navn || ""}`;
     const simpel = u && (this._simpel || (this._simpel = new Set())).has(noegle);
     const skift = (tekst, ikon) => `<button class="udf-knap" data-h="udfskift" data-k="${esc(noegle)}"><ha-icon icon="${ikon}"></ha-icon>${tekst}</button>`;
-    return u && !simpel
+    // Noget i retten, der aldrig har stået på indkøbslisten: sagt før trinene, ikke midt i madlavningen.
+    const mangler = (a.ikke_paa_listen || []).length
+      ? `<div class="ikkelist"><ha-icon icon="mdi:cart-off"></ha-icon><span>Ikke på din indkøbsliste: <b>${esc(a.ikke_paa_listen.join(", "))}</b></span></div>` : "";
+    return mangler + (u && !simpel
       ? `<div class="udf-mark"><ha-icon icon="mdi:book-open-variant"></ha-icon>Udførlig opskrift</div>
          <ol class="trin">${(u.trin || []).map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ol>
          ${(u.tips || []).length ? `<div class="udf-tips"><b>Tips</b><ul>${u.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
@@ -978,7 +981,7 @@ class MadplanCard extends HTMLElement {
          ${simpel ? skift("Vis udførlig opskrift", "mdi:book-open-variant")
            : st === "laver" ? `<div class="udf-knap venter"><ha-icon icon="mdi:loading"></ha-icon>Skriver den udførlige opskrift …</div>`
            : `<button class="udf-knap" data-h="${h}" data-dag="${dag}"><ha-icon icon="mdi:book-open-variant"></ha-icon>Vis udførlig opskrift</button>
-              ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`;
+              ${st.startsWith("fejl") ? `<div class="udf-fejl">Det lykkedes ikke – prøv igen om lidt.</div>` : ""}`}`);
   }
 
   _dag(d, i) {
@@ -1137,7 +1140,9 @@ class MadplanCard extends HTMLElement {
     const tilbud = v.summary.startsWith("🏷️");
     // "2 × REMA 1000 Hakket oksekød (400 g)" -> antal, navn og størrelse hver for sig, så navnet får plads.
     const [, antal, raa, str] = /^(?:(\d+) × )?(.*?)(?: \(([^()]*)\))?$/.exec(v.summary.replace(/^🏷️\s*/, ""));
-    const navn = raa.replace(/^REMA 1000 /i, "");
+    // Et tilbud på flere ting: "Kikærter, bønner eller tomater → tomater" - hvilken der skal tages, som eget mærke.
+    const [fuldt, tagVariant] = raa.split(" → ");
+    const navn = fuldt.replace(/^REMA 1000 /i, "");
     const pris = (v.description || "").split(" · ")[0].replace(".00", "").replace(/(\d)\.(\d)/, "$1,$2");
     // Varer fra en anden kæde (fx Netto) har butikken efter prisen: "12.00 kr · Netto".
     const butik = liste === "varer" ? (v.description || "").split(" · ")[1] : "";
@@ -1166,11 +1171,13 @@ class MadplanCard extends HTMLElement {
     // På ekstra-listen vises antallet i knapperne i stedet for i navnet.
     // En egen vare, hvis pris er slået op: hvilken vare prisen er for.
     const fundet = liste === "ekstra" ? (pa.egne_fundet || {})[v.uid] : "";
-    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "", fundet ? esc(fundet.replace(/^REMA 1000 /i, "")) : "", str ? esc(str) : ""].filter(Boolean).join(" · ")
+    const meta = [antal && liste !== "ekstra" ? `<b>${esc(antal)} ×</b>` : "",
+      [fundet ? esc(fundet.replace(/^REMA 1000 /i, "")) : "", str ? esc(str) : ""].filter(Boolean).join(" · ")].filter(Boolean).join(" ")
       + (butik ? ` <span class="butiktag">${esc(butik)}</span>` : "");
     return `<div class="vare ${t}" data-h="vare" data-liste="${liste}" data-uid="${esc(v.uid)}" data-tilstand="${t}">
       <span class="tjek">${t === "kurv" ? '<ha-icon icon="mdi:check"></ha-icon>' : t === "hjemme" ? '<ha-icon icon="mdi:home"></ha-icon>' : ""}</span>
       <span class="vtekst"><span class="vnavn">${esc(navn)}</span>
+        ${tagVariant ? `<span class="vmeta"><span class="tag tagvalg"><ha-icon icon="mdi:hand-pointing-right"></ha-icon>Tag: ${esc(tagVariant)}</span></span>` : ""}
         ${meta || tilbud || butik ? `<span class="vmeta">${meta}${tilbud && !md ? `<span class="tag">Tilbud</span>` : ""}</span>` : ""}
         ${mdTekst || brugTekst ? `<span class="vmeta mdmeta">${mdTekst}${brugTekst}</span>` : ""}</span>
       <span class="vhoejre"><span class="vpris">${esc(pris)}</span>
@@ -1473,6 +1480,11 @@ const CSS = `
   .gaest ha-icon { --mdc-icon-size: 14px; }
   .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--brand);
     color: var(--brand-tekst); vertical-align: middle; margin-left: 4px; }
+  .ikkelist { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; padding: 8px 12px; border-radius: 12px;
+    background: rgba(245, 158, 11, 0.15); color: var(--primary-text-color); font-size: 14px; }
+  .ikkelist ha-icon { --mdc-icon-size: 18px; color: #f59e0b; flex: none; }
+  .tag.tagvalg { background: #f59e0b; color: #1f1300; margin-left: 0; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+  .tag.tagvalg ha-icon { --mdc-icon-size: 13px; }
   .vpris { color: var(--secondary-text-color); white-space: nowrap; font-size: 14px; }
   .ekstra { margin-top: 22px; padding-top: 16px; border-top: 2px solid var(--divider-color); }
   .behov-form { display: flex; gap: 8px; margin: 8px 0; }

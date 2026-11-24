@@ -219,6 +219,8 @@ class MadplanDagSensor(MadplanEntity, SensorEntity):
             "billede": r.get("_billede"),
             "ingredienser": r.get("_linjer", []),
             "trin": r.get("trin", []),
+            # Det i retten, der aldrig har stået på indkøbslisten - så man ser det, før man står og laver mad.
+            "ikke_paa_listen": self.madplan.ikke_paa_listen(r) if r and not r.get("fjernet") else [],
             # Den udførlige opskrift, når man har bedt om den (eller om den er ved at blive lavet).
             "udfoerlig": r.get("udfoerlig"),
             "udfoerlig_status": r.get("udfoerlig_status"),

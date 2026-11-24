@@ -213,7 +213,7 @@ class Madplan:
             if e.get("kurv") and not e.get("koebt_tid"):
                 e["koebt_tid"] = time.time()  # købt før 1.24.1: de 2 timer regnes herfra
         self._ryd_koebte()  # købt for mere end 2 timer siden, mens HA var nede
-        if self.plan.get("retter") and self.plan.get("start") and self.plan.get("rettet", 0) < 3:
+        if self.plan.get("retter") and self.plan.get("start") and self.plan.get("rettet", 0) < 5:
             self.entry.async_create_background_task(self.hass, self._reparer_listen(), "madplan_reparer_listen")
         if any(e.get("kurv") and not e.get("skjult") for e in self.plan.get("ekstra") or []):
             self.entry.async_on_unload(async_call_later(self.hass, KOEBT_VAEK + 5, self._ryd_koebte_job))
@@ -237,16 +237,29 @@ class Madplan:
                         v["skjult"] = True  # kun til en dag, der er gået: ikke købt nu
                 kilde = self.plan.get("tilbud") or {}
                 for i, ret in enumerate(self.plan.get("retter") or []):
-                    forkert = any(ing.get("rettet") or " eller " in str((kilde.get(str(ing.get("vare"))[2:]) or {}).get("navn", "")).lower()
+                    forkert = any(ing.get("rettet") or _FLERE_VARIANTER.search(str((kilde.get(str(ing.get("vare"))[2:]) or {}).get("navn", "")))
                                   for ing in ret.get("ingredienser") or [] if isinstance(ing, dict))
-                    if i > idag and forkert:
-                        ret.pop("udfoerlig", None)
-                self.plan["rettet"] = 3
+                    if i > idag and forkert or i == idag and self.ikke_paa_listen(ret):
+                        ret.pop("udfoerlig", None)  # laves igen, når man beder om den - nu med det rigtige
+                self.plan["rettet"] = 5
                 self._totaler()
                 await self._gem()
             self.opdater()
         except Exception:  # noqa: BLE001 - planen er som før
             _LOGGER.warning("Kunne ikke rette indkøbslisten", exc_info=True)
+
+    def ikke_paa_listen(self, ret: dict) -> list[str]:
+        """Ingredienser (ikke basisvarer), der ikke er på indkøbslisten og ikke er købt - fx en vare, der faldt af
+        listen i en plan lavet før 1.24.2."""
+        varer = {v["key"]: v for v in self.plan.get("varer") or []}
+        ud = []
+        for ing in ret.get("ingredienser") or []:
+            if not isinstance(ing, dict) or _basis(ing) or not ing.get("vare"):
+                continue
+            v = varer.get(str(ing["vare"]))
+            if v is None or (v.get("skjult") and not v.get("kurv") and not v.get("hjemme")):
+                ud.append(str(ing.get("navn") or ""))
+        return [n for n in dict.fromkeys(ud) if n]
 
     def _linjer_til_ai(self, ret: dict) -> list[str]:
         """Ingredienslinjerne - og hvordan en vare er købt, når det ikke er det samme ("tomater" = en dåse)."""
@@ -256,9 +269,12 @@ class Madplan:
         for ing in ret.get("ingredienser") or []:
             v = str(ing.get("vare") or "") if isinstance(ing, dict) else ""
             vare = (kilder_.get(v[:1]) or {}).get(v[2:]) if v[1:2] == ":" else None
-            if vare and not soeg.ligner(str(ing.get("navn", "")), str(vare.get("navn", ""))) or vare and " eller " in str(vare.get("navn", "")).lower():
+            if vare and not soeg.ligner(str(ing.get("navn", "")), str(vare.get("navn", ""))) or vare and _FLERE_VARIANTER.search(str(vare.get("navn", ""))):
                 koebt.append(f"{ing.get('navn')} = købt som {vare['navn']} ({vare.get('str', '')})")
-        return linjer + (["", "SÅDAN ER VARERNE KØBT (brug dem sådan, fx dåse frem for frisk):", *koebt] if koebt else [])
+        linjer += ["", "SÅDAN ER VARERNE KØBT (brug dem sådan, fx dåse frem for frisk):", *koebt] if koebt else []
+        if mangler := self.ikke_paa_listen(ret):
+            linjer += ["", "IKKE KØBT - lav retten uden (eller med noget af det andet): " + ", ".join(mangler)]
+        return linjer
 
     def _ret_id_navne(self) -> None:
         """En plan lavet før 1.23.1: en ingrediens, der hedder et tilbuds-id, får tilbuddets navn - i listen og i den
@@ -2785,9 +2801,15 @@ def vare_tekst(v: dict) -> str:
     return f"{mark}{antal}{navn} ({strr})" if strr else f"{mark}{antal}{navn}"
 
 
+# Et tilbud, der dækker flere varer: "x eller y", "Bønner/kikærter", "flere varianter", "div. sorter", "udvalgte".
+_FLERE_VARIANTER = re.compile(
+    r"\seller\s|[a-zæøå]/[a-zæøå]|flere\s+(?:varianter|slags|sorter|typer)|div\.|diverse|udvalgte|forskellige\s+(?:varianter|slags|sorter)",
+    re.I)
+
+
 def _eller_til(tilbud: str, navne: Any) -> str | None:
     """Et tilbud på flere ting ("Kikærter, bønner eller tomater"): hvilken retterne skal bruge."""
-    if " eller " not in str(tilbud).lower() or not navne:
+    if not navne or not _FLERE_VARIANTER.search(str(tilbud)):
         return None
     rene = sorted({re.sub(r"^REMA 1000\s+", "", str(n), flags=re.I).strip().lower() for n in navne if str(n).strip()})
     return ", ".join(rene)[:60] or None

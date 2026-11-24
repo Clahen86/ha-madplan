@@ -2,6 +2,14 @@
 
 Newest first. Each version lists what changed since the one before.
 
+## 1.24.4 – 2026-11-24
+
+- An offer for several things shows which one to take as its own badge on the shopping list: "Take: tomatoes"
+- Also for offers written as "Beans/chickpeas", "several varieties", "assorted" or "selected" - then the badge says what the recipe needs
+- This week's list gets the badges at start
+- A recipe says what in it was never on your shopping list ("Not on your shopping list: cherry tomatoes"), before the steps
+- The detailed recipe is told what wasn't bought, and today's is made again when asked, if something was missing
+
 ## 1.24.3 – 2026-11-24
 
 - An ingredient whose offer has no price is looked up in the store's catalogue (no AI), so it gets a real price and size - "Cucumber, 1 pc" instead of "10 × Cucumber, price unknown"
